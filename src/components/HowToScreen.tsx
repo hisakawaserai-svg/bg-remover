@@ -25,6 +25,7 @@ import AppHeader from './ui/AppHeader';
 import Card      from './ui/Card';
 import FadeInView from './ui/FadeInView';
 import { colors, spacing, typography, radius } from './ui/theme';
+import { ALBUM_NAME } from '../imaging';
 
 // ── ステップデータ ──────────────────────────────────────────────────────────
 // 内容を配列で持つことで、ステップ追加時に JSX を触らなくて済む。
@@ -46,7 +47,7 @@ const STEPS = [
     icon:  'check-circle-outline',
     title: 'STEP 3  結果を確認・調整する',
     body:  '分割結果を確認し、ズレや合体があれば調整します。\n\n• 合体している → フッターの「分割の強さ」を上げて「再分割」\n• 隣のカットとまとめたい → カットを長押しして選択し「合体する」\n• 1枚だけ直したい → カットをタップしてポリゴン編集\n• 全部やり直したい → 「手動分割」でポリゴンモードへ',
-    note:  '完璧でなくても「保存する」で透過PNGとして「アイコン抜き」アルバムに保存されます。',
+    note:  `完璧でなくても「保存する」で透過PNGとして「${ALBUM_NAME}」アルバムに保存されます。`,
   },
 ] as const;
 

@@ -1,5 +1,5 @@
 /**
- * SavedScreen — 「アイコン抜き」アルバムの保存済み画像グリッド表示
+ * SavedScreen — 「スタンプ抜き」アルバムの保存済み画像グリッド表示
  *
  * フロー:
  *   1) マウント時に CameraRoll からアルバム画像を取得し、日付セクション別グリッドで表示
@@ -26,6 +26,7 @@ import AppHeader from './ui/AppHeader';
 import EmptyState from './ui/EmptyState';
 import { ALBUM_NAME } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
+import { APP_NAME } from '../constants';
 
 // ── 市松模様コンポーネント ────────────────────────────────────────────────────
 const TILE = 40;
@@ -236,7 +237,7 @@ export default function SavedScreen({ onClose }: Props) {
         <EmptyState
           icon={<Icon name="photo-library" size={56} color={IOS.secondary} />}
           title="まだ書き出した画像はありません"
-          description="「アイコン抜き」で処理・保存した画像がここに表示されます"
+          description={`「${APP_NAME}」で処理・保存した画像がここに表示されます`}
         />
       ) : (
         <SectionList

@@ -15,7 +15,7 @@ export type { RemoveBgResult } from './removeBackground';
 export { maskOutsidePolygon } from './maskPolygon';
 
 const TARGET_SIZE = 500;
-export const ALBUM_NAME = 'アイコン抜き';
+export const ALBUM_NAME = 'スタンプ抜き';
 
 export interface SaveResult {
   count: number;
@@ -43,7 +43,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return out;
 }
 
-// 各セルをリサイズ済み透過PNGにし、ギャラリー(写真アプリ)のアルバム「アイコン抜き」へ保存する。
+// 各セルをリサイズ済み透過PNGにし、ギャラリー(写真アプリ)のアルバム「スタンプ抜き」へ保存する。
 // AirDropやLINE Sticker Makerの写真選択からそのまま選べるようにするのが狙い。
 export async function saveCells(
   rgba: Uint8Array,

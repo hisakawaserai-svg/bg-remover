@@ -115,6 +115,7 @@ import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
 import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
 import { useSettings } from './src/settings/SettingsContext';
+import { APP_NAME } from './src/constants';
 
 // ── 型 ────────────────────────────────────────────────────────────────────────
 type SplitMode = 'auto' | 'manual';
@@ -966,7 +967,7 @@ export default function App() {
 
   const homeHeader = (
     <AppHeader
-      title="アイコン抜き"
+      title={APP_NAME}
       right={
         <View style={styles.navActions}>
           <AnimatedPressable

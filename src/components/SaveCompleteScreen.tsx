@@ -107,7 +107,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
   const header = (
     <AppHeader
       title="保存完了"
-      right={<HeaderActions showSettings onSettings={onSettings} />}
+      right={<HeaderActions showHome showSettings onHome={onHome} onSettings={onSettings} />}
     />
   );
 
@@ -165,22 +165,16 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
       {/* ── アクション ────────────────────────────────────────────────── */}
       <View style={styles.actions}>
 
-        {/* 主ボタン: 別の画像を処理する */}
+        {/* 主ボタン: 別の画像を処理する → image picker を直接起動 */}
         <AnimatedPressable style={styles.primaryBtn} onPress={onNewImage} pressedScale={0.97}>
           <Text style={styles.primaryBtnTxt}>別の画像を処理する</Text>
         </AnimatedPressable>
 
-        {/* サブ 2ボタン: 保存先 / ホーム */}
-        <View style={styles.subRow}>
-          <AnimatedPressable style={styles.subBtn} onPress={onSaved} pressedScale={0.97}>
-            <Icon name="photo-library" size={16} color={IOS.blue} />
-            <Text style={styles.subBtnTxt}>保存先</Text>
-          </AnimatedPressable>
-          <AnimatedPressable style={styles.subBtn} onPress={onHome} pressedScale={0.97}>
-            <Icon name="home" size={16} color={IOS.blue} />
-            <Text style={styles.subBtnTxt}>ホーム</Text>
-          </AnimatedPressable>
-        </View>
+        {/* 保存先 */}
+        <AnimatedPressable style={styles.subBtn} onPress={onSaved} pressedScale={0.97}>
+          <Icon name="photo-library" size={16} color={IOS.blue} />
+          <Text style={styles.subBtnTxt}>保存先を確認する</Text>
+        </AnimatedPressable>
 
         {/* LINE Sticker Maker */}
         <AnimatedPressable style={styles.lineBtn} onPress={openLineStickerMaker} pressedScale={0.97}>
@@ -255,7 +249,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginHorizontal: 16,
     marginTop: 20,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   gridLoading: {
     height: CELL_SIZE,
@@ -295,12 +289,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnTxt: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 
-  subRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
   subBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

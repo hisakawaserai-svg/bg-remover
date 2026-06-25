@@ -917,7 +917,7 @@ export default function App() {
         <StatusBar barStyle="dark-content" backgroundColor={IOS.bg} />
         <SaveCompleteScreen
           savedCount={savedCount}
-          onNewImage={reset}
+          onNewImage={pickImage}
           onSaved={goToSaved}
           onHome={reset}
           onSettings={goToSettings}

@@ -19,9 +19,9 @@ import {
   PanResponder,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
@@ -910,6 +910,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     <AppHeader
       title="手動切り抜き"
       onBack={() => onBack(polygons)}
+      backLabel="戻る"
       right={onSettings ? (
         <HeaderActions showSettings onSettings={onSettings} />
       ) : undefined}
@@ -1040,82 +1041,84 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               { mode: 'gray',    label: '灰'   },
               { mode: 'black',   label: '黒'   },
             ] as const).map(({ mode, label }) => (
-              <TouchableOpacity
+              <AnimatedPressable
                 key={mode}
                 style={[styles.bgSegBtn, bgMode === mode && styles.bgSegBtnOn]}
                 onPress={() => setBgMode(mode)}
+                pressedScale={0.94}
               >
                 <Text style={[styles.bgSegTxt, bgMode === mode && styles.bgSegTxtOn]}>
                   {label}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             ))}
           </View>
         </View>
 
         {/* ── フローティングボタン群 (右端: モード切替 + ズーム) ── */}
         <View style={styles.floating} pointerEvents="box-none">
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.floatBtn, appMode === 'draw' && styles.floatBtnActive]}
             onPress={() => setAppMode('draw')}
           >
             <Icon name="edit" size={22} color="#FFF" />
-          </TouchableOpacity>
-          <TouchableOpacity
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[styles.floatBtn, appMode === 'move' && styles.floatBtnActive]}
             onPress={() => setAppMode('move')}
           >
             <Icon name="pan-tool" size={22} color="#FFF" />
-          </TouchableOpacity>
+          </AnimatedPressable>
           {/* 区切り */}
           <View style={styles.floatDivider} />
           {/* ズームボタン */}
-          <TouchableOpacity
-            style={[styles.floatBtn, zoom.scale >= ZOOM_MAX && styles.floatBtnDisabled]}
+          <AnimatedPressable
+            style={styles.floatBtn}
             disabled={zoom.scale >= ZOOM_MAX}
             onPress={() => stepZoom(1)}
           >
             <Text style={styles.floatBtnTxt}>＋</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.floatBtn, zoom.scale <= ZOOM_MIN && styles.floatBtnDisabled]}
+          </AnimatedPressable>
+          <AnimatedPressable
+            style={styles.floatBtn}
             disabled={zoom.scale <= ZOOM_MIN}
             onPress={() => stepZoom(-1)}
           >
             <Text style={styles.floatBtnTxt}>－</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
 
       {/* ── 下部コントロールバー: undo / redo / 削除 / 保存 ── */}
       <View style={styles.bar}>
-        <TouchableOpacity
-          style={[styles.barIconBtn, past.length === 0 && styles.barIconBtnDisabled]}
+        <AnimatedPressable
+          style={styles.barIconBtn}
           disabled={past.length === 0}
           onPress={handleUndo}
         >
           <Icon name="undo" size={24} color={IOS.label} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.barIconBtn, future.length === 0 && styles.barIconBtnDisabled]}
+        </AnimatedPressable>
+        <AnimatedPressable
+          style={styles.barIconBtn}
           disabled={future.length === 0}
           onPress={handleRedo}
         >
           <Icon name="redo" size={24} color={IOS.label} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         {/* 削除ボタン: 頂点選択中=頂点削除 / ポリゴン選択中=ポリゴン削除 / 未選択=非活性 */}
-        <TouchableOpacity
-          style={[styles.barIconBtn, selectedId === null && styles.barIconBtnDisabled]}
+        <AnimatedPressable
+          style={styles.barIconBtn}
           disabled={selectedId === null}
           onPress={deleteSelected}
         >
           <Icon name="delete" size={24} color={selectedId !== null ? IOS.red : IOS.label} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         {/* プレビューボタン: ポリゴンが 1 枚以上ある時だけ活性 */}
-        <TouchableOpacity
-          style={[styles.exportBtn, !canPreview && styles.exportBtnDisabled]}
+        <AnimatedPressable
+          style={styles.exportBtn}
           disabled={!canPreview}
           onPress={() => onPreview(polygons)}
+          pressedScale={0.96}
         >
           <Icon name="preview" size={20} color="#FFF" />
           <Text style={styles.exportBtnTxt}>プレビュー</Text>
@@ -1124,7 +1127,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               <Text style={styles.exportBadgeTxt}>{polygons.length}</Text>
             </View>
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </Screen>
   );

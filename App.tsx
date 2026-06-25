@@ -19,13 +19,13 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 
 // ── 自動分割モードで使う既存 imaging API ────────────────────────────────────
 import {
@@ -36,6 +36,7 @@ import {
   trimToForeground,
   maskOutsidePolygon,
   saveSkImages,
+  addMarginToImage,
 } from './src/imaging';
 import type { BBox, RemoveBgResult } from './src/imaging';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
@@ -109,7 +110,8 @@ import SettingsScreen from './src/components/SettingsScreen';
 import SavedScreen    from './src/components/SavedScreen';
 import HowToScreen   from './src/components/HowToScreen';
 import SetupScreen   from './src/components/SetupScreen';
-import ResultScreen  from './src/components/ResultScreen';
+import ResultScreen       from './src/components/ResultScreen';
+import SaveCompleteScreen from './src/components/SaveCompleteScreen';
 import { useSettings } from './src/settings/SettingsContext';
 
 // ── 型 ────────────────────────────────────────────────────────────────────────
@@ -183,6 +185,8 @@ export default function App() {
     polys.map(p => ({ id: Number(p.id), points: p.points.map(({ x, y }) => [x, y] as [number, number]) }));
   // 現在処理中の画像 URI（doAutoExport / onSave で done upsert するために保持）
   const [currentImageUri, setCurrentImageUri] = useState('');
+  // 保存完了画面に渡す保存枚数
+  const [savedCount, setSavedCount] = useState(0);
 
   // ── アプリ設定 ─────────────────────────────────────────────────────────────
   // SettingsContext から取得する。AsyncStorage のロード・保存は Context が担当。
@@ -301,7 +305,9 @@ export default function App() {
       return;
     }
     const newCells: Cell[] = await Promise.all(bboxList.map(async (bbox, idx) => {
-      const img = cropToImage(bgResult.rgba, bgResult.width, bbox);
+      const raw = cropToImage(bgResult.rgba, bgResult.width, bbox);
+      const img = addMarginToImage(raw);
+      raw.dispose();
       const thumbUri = await saveThumbToFile(img, currentSessionId ?? undefined, idx);
       img.dispose();
       return { kind: 'auto' as const, bbox, thumbUri };
@@ -351,7 +357,9 @@ export default function App() {
     const unionBbox: BBox = { minX, minY, maxX, maxY, area: (maxX - minX + 1) * (maxY - minY + 1) };
 
     // 合体画像を生成
-    const img = cropToImage(bgResult.rgba, bgResult.width, unionBbox);
+    const raw = cropToImage(bgResult.rgba, bgResult.width, unionBbox);
+    const img = addMarginToImage(raw);
+    raw.dispose();
     const thumbUri = await saveThumbToFile(img);
     img.dispose();
 
@@ -426,11 +434,13 @@ export default function App() {
       }
 
       const data = Skia.Data.fromBytes(cropped);
-      const img = Skia.Image.MakeImage(
+      const raw = Skia.Image.MakeImage(
         { width: cw, height: ch, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
         data, cw * 4,
       );
-      if (!img) return null;
+      if (!raw) return null;
+      const img = addMarginToImage(raw);
+      raw.dispose();
       const thumbUri = await saveThumbToFile(img);
       img.dispose();
       return { kind: 'poly' as const, rgba: cropped, w: cw, h: ch, thumbUri };
@@ -484,22 +494,29 @@ export default function App() {
       const skImages: SkImage[] = await Promise.all(cells.map(async cell => {
         if (cell.kind === 'auto') {
           if (bgResult) {
-            return cropToImage(bgResult.rgba, bgResult.width, cell.bbox);
+            // fresh path: マージン付与（サムネと同じ処理）
+            const raw = cropToImage(bgResult.rgba, bgResult.width, cell.bbox);
+            const img = addMarginToImage(raw);
+            raw.dispose();
+            return img;
           }
-          // 復元セッション: thumbUri から読み込む
+          // 復元セッション: thumbUri はサムネ生成時にマージン付与済みのためそのまま使う
           const data = await Skia.Data.fromURI(cell.thumbUri);
           return Skia.Image.MakeImageFromEncoded(data)!;
         }
         // poly セル
         if (cell.rgba && cell.rgba.length > 0 && cell.w && cell.h) {
-          // in-memory: RGBA から直接生成
+          // in-memory: RGBA から直接生成し、マージン付与（サムネと同じ処理）
           const data = Skia.Data.fromBytes(cell.rgba);
-          return Skia.Image.MakeImage(
+          const raw = Skia.Image.MakeImage(
             { width: cell.w, height: cell.h, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
             data, cell.w * 4,
           )!;
+          const img = addMarginToImage(raw);
+          raw.dispose();
+          return img;
         }
-        // 復元セッション or rgba なし: thumbUri から読み込む
+        // 復元セッション or rgba なし: thumbUri はマージン付与済みのためそのまま使う
         const data = await Skia.Data.fromURI(cell.thumbUri);
         return Skia.Image.MakeImageFromEncoded(data)!;
       }));
@@ -533,7 +550,7 @@ export default function App() {
         void reloadSessions();
       }
 
-      Alert.alert('書き出し完了', `${count} 枚をアルバム「${album}」に保存しました。`);
+      setSavedCount(count);
       setAppState('done');
     } catch (e: unknown) {
       Alert.alert('書き出しエラー', e instanceof Error ? e.message : '不明なエラー');
@@ -673,12 +690,22 @@ export default function App() {
     setAppState('settings');
   }, [appState]);
 
+  // 保存先画面も同様に prevStateRef を使い、どの画面からでも元に戻れるようにする。
+  const goToSaved = useCallback(() => {
+    prevStateRef.current = appState;
+    setAppState('saved');
+  }, [appState]);
+
   // ── 設定画面: 全画面で SettingsScreen を表示 ────────────────────────────
   if (appState === 'settings') {
     return (
       <SettingsScreen
         onClose={() => setAppState(prevStateRef.current)}
-        onHowTo={() => setAppState('howto')}
+        onHowTo={() => {
+          // 設定→使い方→戻るで設定に戻れるよう prevStateRef を更新してから遷移
+          prevStateRef.current = 'settings';
+          setAppState('howto');
+        }}
       />
     );
   }
@@ -687,7 +714,7 @@ export default function App() {
   if (appState === 'saved') {
     return (
       <SavedScreen
-        onClose={() => setAppState('idle')}
+        onClose={() => setAppState(prevStateRef.current)}
       />
     );
   }
@@ -695,7 +722,7 @@ export default function App() {
   if (appState === 'howto') {
     return (
       <HowToScreen
-        onClose={() => setAppState('idle')}
+        onClose={() => setAppState(prevStateRef.current)}
       />
     );
   }
@@ -859,7 +886,7 @@ export default function App() {
           bgResult={bgResult}
           polygons={polygons}
           onBack={() => setAppState('editing')}
-          onSave={async () => {
+          onSave={async (count: number) => {
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」
             // できるよう頂点を残す。done セッションを再開しても復元できる。
@@ -875,8 +902,25 @@ export default function App() {
               });
               void reloadSessions();
             }
+            setSavedCount(count);
             setAppState('done');
           }}
+        />
+      </>
+    );
+  }
+
+  // ── 保存完了画面 ─────────────────────────────────────────────────────────────
+  if (appState === 'done') {
+    return (
+      <>
+        <StatusBar barStyle="dark-content" backgroundColor={IOS.bg} />
+        <SaveCompleteScreen
+          savedCount={savedCount}
+          onNewImage={reset}
+          onSaved={goToSaved}
+          onHome={reset}
+          onSettings={goToSettings}
         />
       </>
     );
@@ -887,13 +931,12 @@ export default function App() {
       title="アイコン抜き"
       right={
         <View style={styles.navActions}>
-          <TouchableOpacity
-            onPress={() => setAppState('saved')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          <AnimatedPressable
+            onPress={goToSaved}
             style={styles.navBtn}
           >
             <Icon name="photo-album" size={24} color={IOS.blue} />
-          </TouchableOpacity>
+          </AnimatedPressable>
           <HeaderActions
             showSettings
             onSettings={() => goToSettings()}
@@ -910,14 +953,15 @@ export default function App() {
       style={styles.container}
       header={appState === 'idle' ? homeHeader : undefined}
       footer={appState === 'idle' ? (
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.startBtn}
           onPress={pickImage}
           disabled={isBusy}
+          pressedScale={0.97}
         >
           <Icon name="add-photo-alternate" size={22} color="#FFF" />
           <Text style={styles.startBtnTxt}>新しい画像を選ぶ</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       ) : undefined}
     >
 
@@ -1012,10 +1056,10 @@ export default function App() {
 
                     return (
                       <React.Fragment key={session.id}>
-                        <TouchableOpacity
+                        <AnimatedPressable
                           style={styles.sessionRow}
                           onPress={() => void resumeSession(session)}
-                          activeOpacity={0.7}
+                          pressedScale={0.98}
                         >
                           {/* サムネイル: thumbUri があればそれを、無ければ元画像を縮小表示 */}
                           <Image
@@ -1031,14 +1075,13 @@ export default function App() {
                           </View>
 
                           {/* 削除ボタン（ゴミ箱アイコン） */}
-                          <TouchableOpacity
+                          <AnimatedPressable
                             style={styles.sessionDeleteBtn}
                             onPress={() => handleDeleteSession(session.id)}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           >
                             <Icon name="delete-outline" size={20} color={IOS.secondary} />
-                          </TouchableOpacity>
-                        </TouchableOpacity>
+                          </AnimatedPressable>
+                        </AnimatedPressable>
 
                         {/* セパレータ（最後の行には引かない） */}
                         {idx < sessions.length - 1 && (
@@ -1059,19 +1102,18 @@ export default function App() {
                     <Text style={styles.sectionLabel}>最近の書き出し</Text>
                     <View style={styles.recentRow}>
                       {recentDone.slice(0, 4).map(s => (
-                        <TouchableOpacity
+                        <AnimatedPressable
                           key={s.id}
                           style={styles.recentThumbWrap}
-                          // TODO: CameraRoll.getAlbums → 対象アルバムを Photos で開く
                           onPress={() => Alert.alert('書き出し済み', '「アイコン抜き」アルバムに保存されています。')}
-                          activeOpacity={0.75}
+                          pressedScale={0.92}
                         >
                           <Image
                             source={{ uri: s.thumbUri ?? s.imageUri }}
                             style={styles.recentThumb}
                             resizeMode="cover"
                           />
-                        </TouchableOpacity>
+                        </AnimatedPressable>
                       ))}
                       {/* 5件目以降は "+N" バッジで件数だけ示す */}
                       {recentOverflow > 0 && (
@@ -1088,67 +1130,11 @@ export default function App() {
           </>
         )}
 
-        {/* ── 完了後: モード選択・ステッパー・再開ボタン ── */}
-        {appState === 'done' && (
-          <>
-            <View style={styles.modeRow}>
-              <TouchableOpacity
-                style={[styles.modeBtn, splitMode === 'auto' && styles.modeBtnOn]}
-                onPress={() => setSplitMode('auto')}
-              >
-                <Text style={[styles.modeTxt, splitMode === 'auto' && styles.modeTxtOn]}>自動分割</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modeBtn, splitMode === 'manual' && styles.modeBtnOn]}
-                onPress={() => setSplitMode('manual')}
-              >
-                <Text style={[styles.modeTxt, splitMode === 'manual' && styles.modeTxtOn]}>手動で囲む</Text>
-              </TouchableOpacity>
-            </View>
-
-            {splitMode === 'auto' && (
-              <View style={styles.rowInput}>
-                <Text style={styles.rowLabel}>行数（段数）</Text>
-                <View style={styles.stepper}>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setRows(v => clamp(v - 1, 1, 10))}>
-                    <Text style={styles.stepTxt}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.stepVal}>{rows}</Text>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setRows(v => clamp(v + 1, 1, 10))}>
-                    <Text style={styles.stepTxt}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.primaryBtn} onPress={pickImage} disabled={isBusy}>
-              <Text style={styles.btnTxt}>ギャラリーから画像を選択</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
         {/* ── ローディングスピナー ── */}
         {isBusy && (
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={IOS.blue} />
             <Text style={styles.loadingTxt}>処理しています...</Text>
-          </View>
-        )}
-
-        {/* ── 完了画面 ── */}
-        {appState === 'done' && (
-          <View style={styles.section}>
-            <View style={styles.savedBadge}>
-              <Text style={styles.savedTxt}>✓ 「アイコン抜き」フォルダに保存しました</Text>
-            </View>
-            {splitMode === 'manual' && bgResult && (
-              <TouchableOpacity style={styles.ghostBtn} onPress={() => setAppState('editing')}>
-                <Text style={styles.ghostBtnTxt}>続けて編集する</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.ghostBtn} onPress={reset}>
-              <Text style={styles.ghostBtnTxt}>別の画像を処理する</Text>
-            </TouchableOpacity>
           </View>
         )}
 

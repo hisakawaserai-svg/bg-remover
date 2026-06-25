@@ -94,7 +94,9 @@ const styles = StyleSheet.create({
   },
   labelRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    // Android の Slider は内側に ~10dp のパディングがあるため、
+    // ラベル行を同じぶん内側に寄せてサム位置に合わせる
+    paddingHorizontal: 10,
     marginTop: -spacing.xs,
   },
   stepLabel: {

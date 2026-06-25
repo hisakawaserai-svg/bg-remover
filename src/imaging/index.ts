@@ -200,10 +200,12 @@ export async function savePolygons(
     );
     if (!img) continue;
 
-    const resized = resizeImage(img, TARGET_SIZE);
-    const bytes = resized.encodeToBytes();
+    const withMargin = addMarginToImage(img);
     img.dispose();
-    if (resized !== img) resized.dispose();
+    const resized = resizeImage(withMargin, TARGET_SIZE);
+    const bytes = resized.encodeToBytes();
+    withMargin.dispose();
+    if (resized !== withMargin) resized.dispose();
 
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
     const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
@@ -242,6 +244,38 @@ export async function saveSkImages(images: SkImage[]): Promise<SaveResult> {
 
   console.log(`[SAVED] ${count} images → album "${ALBUM_NAME}"`);
   return { count, album: ALBUM_NAME };
+}
+
+/**
+ * SkImage の四辺に透明マージンを追加して返す。
+ * ratio = 0.08 なら 幅/高さ それぞれの 8% を左右・上下に足す。
+ * 絵のサイズに比例するため大小関係なくマージンの見た目が揃う。
+ * 呼び出し側は元の image を dispose する責任を持つ。
+ */
+export function addMarginToImage(image: SkImage, ratio = 0.08): SkImage {
+  const w = image.width();
+  const h = image.height();
+  const mx = Math.round(w * ratio);
+  const my = Math.round(h * ratio);
+  const newW = w + mx * 2;
+  const newH = h + my * 2;
+
+  const surface = Skia.Surface.Make(newW, newH)!;
+  const canvas  = surface.getCanvas();
+  canvas.clear(Skia.Color('transparent'));
+
+  const paint = Skia.Paint();
+  paint.setAntiAlias(true);
+  canvas.drawImageRect(
+    image,
+    Skia.XYWHRect(0, 0, w, h),
+    Skia.XYWHRect(mx, my, w, h),
+    paint,
+  );
+
+  const result = surface.makeImageSnapshot();
+  surface.dispose();
+  return result;
 }
 
 function resizeImage(image: SkImage, size: number): SkImage {

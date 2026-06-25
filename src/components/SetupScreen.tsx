@@ -13,9 +13,9 @@ import {
   LayoutChangeEvent,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 
 import Screen from './ui/Screen';
@@ -111,6 +111,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
     <AppHeader
       title="分割設定"
       onBack={onBack}
+      backLabel="戻る"
       right={onSettings ? (
         <HeaderActions showSettings onSettings={onSettings} />
       ) : undefined}
@@ -122,18 +123,20 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
       <View style={styles.wrap}>
         {/* モードセレクタ */}
         <View style={styles.modeRow}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.modeBtn, mode === 'auto' && styles.modeBtnOn]}
             onPress={() => setMode('auto')}
+            pressedScale={0.96}
           >
             <Text style={[styles.modeTxt, mode === 'auto' && styles.modeTxtOn]}>自動分割</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[styles.modeBtn, mode === 'manual' && styles.modeBtnOn]}
             onPress={() => setMode('manual')}
+            pressedScale={0.96}
           >
             <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>手動で囲む</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
 
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
@@ -174,19 +177,19 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
               <View style={styles.rowInput}>
                 <Text style={styles.rowLabel}>行数（段数）</Text>
                 <View style={styles.stepper}>
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.stepBtn}
                     onPress={() => setRows(v => clamp(v - 1, 1, 20))}
                   >
                     <Text style={styles.stepTxt}>−</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                   <Text style={styles.stepVal}>{rows}</Text>
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.stepBtn}
                     onPress={() => setRows(v => clamp(v + 1, 1, 20))}
                   >
                     <Text style={styles.stepTxt}>+</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               </View>
             </Card>
@@ -203,14 +206,14 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           </Card>
         )}
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => onConfirm(rows, mode)}>
+        <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, mode)} pressedScale={0.97}>
           <Text style={styles.btnTxt}>
             {mode === 'auto' ? 'この行数で分割' : 'ポリゴン編集へ'}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={onBack}>
+        </AnimatedPressable>
+        <AnimatedPressable style={styles.secondaryBtn} onPress={onBack} pressedScale={0.97}>
           <Text style={styles.secondaryBtnTxt}>画像を選び直す</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </Screen>
   );

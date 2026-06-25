@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from './theme';
 import { AnimatedPressable } from './AnimatedPressable';
@@ -34,9 +34,9 @@ export default function HeaderActions({
   return (
     <View style={styles.row}>
       {showHome && (
-        <TouchableOpacity onPress={onHome} hitSlop={HIT_SLOP} style={styles.btn}>
+        <AnimatedPressable onPress={onHome!} style={styles.btn}>
           <Icon name="home" size={ICON_SIZE} color={colors.accent} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       )}
       {showSettings && (
         <AnimatedPressable onPress={onSettings!} style={styles.btn}>

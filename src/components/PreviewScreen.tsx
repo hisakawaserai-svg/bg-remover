@@ -15,9 +15,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
@@ -35,7 +35,7 @@ interface Props {
   bgResult: RemoveBgResult;
   polygons: Polygon[];
   onBack: () => void;             // 編集に戻る（polygons はApp側で保持済み）
-  onSave: () => void;             // 保存完了後に App.tsx の state を 'done' へ
+  onSave: (count: number) => void; // 保存完了後に App.tsx の state を 'done' へ
 }
 
 // ── 市松模様背景コンポーネント ─────────────────────────────────────────────────
@@ -172,10 +172,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
     setIsSaving(true);
     try {
       const { rgba, width, height } = bgResult;
-      const { count, album } = await savePolygons(rgba, width, height, polygons);
-      Alert.alert('保存完了', `${count} 枚をアルバム「${album}」に保存しました。`, [
-        { text: 'OK', onPress: onSave },
-      ]);
+      const { count } = await savePolygons(rgba, width, height, polygons);
+      onSave(count);
     } catch (e: unknown) {
       Alert.alert('保存エラー', e instanceof Error ? e.message : '不明なエラー');
     } finally {
@@ -189,10 +187,11 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
       onBack={isSaving ? undefined : onBack}
       backLabel="編集に戻る"
       right={
-        <TouchableOpacity
-          style={[styles.saveBtn, (isSaving || polygons.length === 0) && styles.saveBtnDisabled]}
+        <AnimatedPressable
+          style={styles.saveBtn}
           disabled={isSaving || polygons.length === 0}
           onPress={handleSave}
+          pressedScale={0.96}
         >
           {isSaving
             ? <ActivityIndicator size="small" color="#FFF" />
@@ -201,7 +200,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
                 <Text style={styles.saveBtnTxt}>保存（{polygons.length}枚）</Text>
               </>
           }
-        </TouchableOpacity>
+        </AnimatedPressable>
       }
     />
   );

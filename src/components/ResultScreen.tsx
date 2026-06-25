@@ -20,11 +20,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Screen from './ui/Screen';
-import ToleranceSlider from './ui/ToleranceSlider';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import { colors, spacing, radius, shadow, typography } from './ui/theme';
@@ -303,14 +303,14 @@ export default function ResultScreen({
         {/* ── 元の画像 ──────────────────────────────────────────────────── */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionLabel}>元の画像</Text>
-          <TouchableOpacity onPress={() => setZoomVisible(true)}>
+          <AnimatedPressable onPress={() => setZoomVisible(true)} pressedScale={0.97}>
             <Text style={styles.sectionHint}>タップで拡大</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
         <TouchableOpacity
-          activeOpacity={0.9}
           onPress={() => setZoomVisible(true)}
           style={styles.origImgWrap}
+          activeOpacity={0.85}
         >
           <Image
             source={{ uri: originalImageUri }}
@@ -320,14 +320,15 @@ export default function ResultScreen({
         </TouchableOpacity>
 
         {/* ── カット後グリッド ──────────────────────────────────────────── */}
-        <View style={[styles.sectionRow, { marginTop: spacing.lg }]}>
-          <Text style={styles.sectionLabel}>カット後（{cells.length}枚）</Text>
-          <Text style={styles.sectionHint}>
-            {selectingMode
-              ? `${selectedIndices.size}枚選択中`
-              : '長押しで選択・合体'}
-          </Text>
-        </View>
+        <View style={styles.cutSection}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionLabel}>カット後（{cells.length}枚）</Text>
+            <Text style={styles.sectionHint}>
+              {selectingMode
+                ? `${selectedIndices.size}枚選択中`
+                : '長押しで選択・合体'}
+            </Text>
+          </View>
         <View style={styles.grid}>
           {cells.map((cell, i) => (
             <CellItem
@@ -341,6 +342,7 @@ export default function ResultScreen({
               onLongPress={() => handleCellLongPress(i)}
             />
           ))}
+        </View>
         </View>
 
         {/* ── フッター ─────────────────────────────────────────────────── */}
@@ -356,50 +358,50 @@ export default function ResultScreen({
                     : 'すき間なく隣り合う2枚を選んでください'}
                 </Text>
               )}
-              <TouchableOpacity
-                style={[styles.saveBtn, !canMerge && styles.saveBtnDisabled]}
+              <AnimatedPressable
+                style={styles.saveBtn}
                 onPress={handleMergePress}
                 disabled={!canMerge}
+                pressedScale={0.97}
               >
                 <Icon name="merge-type" size={20} color="#FFF" style={{ marginRight: spacing.xs }} />
                 <Text style={styles.saveBtnTxt}>
                   {selectedArr.length >= 2 ? `${selectedArr.length}枚を合体する` : '2枚以上選択してください'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 style={styles.cancelBtn}
                 onPress={exitSelectingMode}
+                pressedScale={0.97}
               >
                 <Text style={styles.cancelBtnTxt}>キャンセル</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           ) : (
             /* ── 通常モード: スライダー + アクション + 保存 ── */
             <>
-              {/* 分割の強さ */}
-              <ToleranceSlider />
-
               {/* 再分割 / 手動分割 */}
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionBtn} onPress={onReSplit}>
+                <AnimatedPressable style={styles.actionBtn} onPress={onReSplit}>
                   <Icon name="refresh" size={18} color={colors.accent} />
                   <Text style={styles.actionBtnTxt}>再分割</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
                 <View style={styles.actionDivider} />
-                <TouchableOpacity style={styles.actionBtn} onPress={onManualSplit}>
+                <AnimatedPressable style={styles.actionBtn} onPress={onManualSplit}>
                   <Icon name="edit" size={18} color={colors.accent} />
                   <Text style={styles.actionBtnTxt}>手動分割</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
 
               {/* 保存する */}
-              <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+              <AnimatedPressable
+                style={styles.saveBtn}
                 onPress={() => void handleSave()}
                 disabled={saving}
+                pressedScale={0.97}
               >
                 <Text style={styles.saveBtnTxt}>{saving ? '保存中...' : '保存する'}</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           )}
         </View>
@@ -415,8 +417,8 @@ export default function ResultScreen({
       >
         <TouchableOpacity
           style={styles.zoomBackdrop}
-          activeOpacity={1}
           onPress={() => setZoomVisible(false)}
+          activeOpacity={1}
         >
           <Image
             source={{ uri: originalImageUri }}
@@ -436,6 +438,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
+  },
+
+  // ── カットセクション（top / bottom border 付き）────────────────────────────
+  cutSection: {
+    marginHorizontal: -spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+    marginTop: spacing.lg,
   },
 
   // ── セクションヘッダー ───────────────────────────────────────────────────

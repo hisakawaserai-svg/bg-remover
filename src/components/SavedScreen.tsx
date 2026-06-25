@@ -11,13 +11,11 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Modal,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
+import ImagePreviewModal from './ui/ImagePreviewModal';
 import { useGridMetrics } from '../hooks/useGridMetrics';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -120,10 +118,11 @@ export default function SavedScreen({ onClose }: Props) {
     <AppHeader
       title={`保存先  ${loading ? '…' : `${uris.length} 枚`}`}
       onBack={onClose}
+      backLabel="戻る"
       right={
-        <TouchableOpacity onPress={fetchPhotos} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.reloadBtn}>
+        <AnimatedPressable onPress={fetchPhotos} style={styles.reloadBtn}>
           <Icon name="refresh" size={22} color={IOS.blue} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       }
     />
   );
@@ -132,10 +131,10 @@ export default function SavedScreen({ onClose }: Props) {
   const renderCell = useCallback(({ item, index }: { item: string; index: number }) => {
     const bg = settings.thumbBg;
     return (
-      <TouchableOpacity
-        activeOpacity={0.8}
+      <AnimatedPressable
         onPress={() => setPreviewIdx(index)}
         style={[styles.cell, { width: cellSize, height: cellSize }]}
+        pressedScale={0.94}
       >
         {/* 透過PNGの下地。白/グレーは View の背景色、市松は Checkerboard コンポーネントで描画。
             画像自体には手を加えず、見た目の背景だけを変えている。 */}
@@ -148,7 +147,7 @@ export default function SavedScreen({ onClose }: Props) {
           style={{ width: cellSize, height: cellSize }}
           resizeMode="contain"
         />
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }, [cellSize, settings.thumbBg]);
 
@@ -184,79 +183,15 @@ export default function SavedScreen({ onClose }: Props) {
         />
       )}
 
-      {/* ── 拡大プレビューモーダル ──────────────────────────────────────────── */}
+      {/* 拡大プレビュー */}
       {previewIdx !== null && (
-        <LightboxModal
+        <ImagePreviewModal
           uris={uris}
           initial={previewIdx}
           onClose={() => setPreviewIdx(null)}
         />
       )}
     </Screen>
-  );
-}
-
-// ── 拡大プレビューモーダル ────────────────────────────────────────────────────
-// 市松模様の全画面背景に画像を中央表示。左右矢印で前後に移動できる。
-
-function LightboxModal({
-  uris,
-  initial,
-  onClose,
-}: {
-  uris: string[];
-  initial: number;
-  onClose: () => void;
-}) {
-  const [idx, setIdx] = useState(initial);
-  const total = uris.length;
-  const { width: w, height: h } = useWindowDimensions();
-
-  return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      {/*
-       * 背景: 旧実装は Checkerboard size={max(w,h)*2} = 約1700px → TILE=12 で
-       *   ceil(1700/12)=142 → 142×142 = 20,164 View を一度に生成 → フリーズ確定。
-       * 修正: 暗い不透明背景に変更。透過部分は黒背景で十分視認できる。
-       *   全画面の checker が必要な場合は TILE を大きくした Checkerboard を
-       *   画面サイズ(w×h)に対してのみ使うこと（*2 は絶対に使わない）。
-       */}
-      <View style={styles.lightboxBg}>
-
-        {/* 閉じるボタン */}
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-          <Icon name="close" size={26} color="#FFF" />
-        </TouchableOpacity>
-
-        {/* 画像本体 */}
-        <Image
-          source={{ uri: uris[idx] }}
-          style={{ width: w, height: h }}
-          resizeMode="contain"
-        />
-
-        {/* 前後ナビ */}
-        <View style={styles.navRow} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.navBtn, idx === 0 && styles.navBtnDisabled]}
-            disabled={idx === 0}
-            onPress={() => setIdx(i => i - 1)}
-          >
-            <Icon name="chevron-left" size={32} color="#FFF" />
-          </TouchableOpacity>
-
-          <Text style={styles.navCounter}>{idx + 1} / {total}</Text>
-
-          <TouchableOpacity
-            style={[styles.navBtn, idx === total - 1 && styles.navBtnDisabled]}
-            disabled={idx === total - 1}
-            onPress={() => setIdx(i => i + 1)}
-          >
-            <Icon name="chevron-right" size={32} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -291,29 +226,4 @@ const styles = StyleSheet.create({
   },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  // ── Lightbox ──────────────────────────────────────────────────────────────
-  lightboxBg: {
-    flex: 1,
-    // 不透明な黒にすることで透過部分が視認でき、かつ Checkerboard View 生成によるフリーズを回避。
-    backgroundColor: '#111111',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeBtn: {
-    position: 'absolute', top: 52, right: 20, zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 999, padding: 6,
-  },
-  navRow: {
-    position: 'absolute', bottom: 48,
-    left: 0, right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 24,
-  },
-  navBtn:         { backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: 6 },
-  navBtnDisabled: { opacity: 0.25 },
-  navCounter:     { fontSize: 14, color: '#FFF', fontWeight: '600', minWidth: 60, textAlign: 'center' },
 });

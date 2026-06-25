@@ -15,9 +15,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Screen    from './ui/Screen';
@@ -69,13 +69,9 @@ export default function HowToScreen({ onClose }: Props) {
       <AppHeader
         title="使い方"
         right={
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.doneBtn}
-          >
+          <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
             <Text style={styles.doneBtnTxt}>完了</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         }
       />
     </FadeInView>

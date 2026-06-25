@@ -20,9 +20,9 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 import Slider from '@react-native-community/slider';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
@@ -57,9 +57,9 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
     <AppHeader
       title="設定"
       right={
-        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.doneBtn}>
+        <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
           <Text style={styles.doneBtnTxt}>完了</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       }
     />
   );
@@ -110,7 +110,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             <Text style={styles.rowLabel}>プリセット</Text>
             <View style={styles.presets}>
               {([15, 30, 50] as const).map(v => (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={v}
                   style={[styles.presetBtn, tolerance === v && styles.presetBtnOn]}
                   onPress={() => {
@@ -121,7 +121,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                   <Text style={[styles.presetTxt, tolerance === v && styles.presetTxtOn]}>
                     {v === 15 ? '弱' : v === 30 ? '標準' : '強'}
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ))}
             </View>
           </View>
@@ -164,7 +164,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             <Text style={styles.rowLabel}>列数</Text>
             <View style={styles.presets}>
               {([2, 3, 4] as const).map(v => (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={v}
                   style={[styles.presetBtn, settings.gridColumns === v && styles.presetBtnOn]}
                   onPress={() => void updateSettings({ gridColumns: v })}
@@ -172,7 +172,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                   <Text style={[styles.presetTxt, settings.gridColumns === v && styles.presetTxtOn]}>
                     {v}列
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ))}
             </View>
           </View>
@@ -186,7 +186,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                 { val: 'gray',    label: 'グレー' },
                 { val: 'checker', label: '市松'  },
               ] as const).map(({ val, label }) => (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={val}
                   style={[styles.presetBtn, settings.thumbBg === val && styles.presetBtnOn]}
                   onPress={() => void updateSettings({ thumbBg: val })}
@@ -194,7 +194,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                   <Text style={[styles.presetTxt, settings.thumbBg === val && styles.presetTxtOn]}>
                     {label}
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ))}
             </View>
           </View>
@@ -215,7 +215,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
               ]).map(({ val, label }) => {
                 const isOn = (settings.splitLineColor ?? '#007AFF') === val;
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={val}
                     style={[styles.colorBtn, isOn && styles.colorBtnOn]}
                     onPress={() => void updateSettings({ splitLineColor: val })}
@@ -224,7 +224,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                     <Text style={[styles.presetTxt, isOn && styles.presetTxtOn]}>
                       {label}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
             </View>
@@ -247,10 +247,10 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
           </View>
           <View style={styles.separator} />
           {/* 使い方: ホームから移動。既存の row スタイルをそのまま流用 */}
-          <TouchableOpacity style={styles.row} onPress={onHowTo} activeOpacity={0.7}>
+          <AnimatedPressable style={styles.row} onPress={onHowTo} pressedScale={0.98}>
             <Text style={styles.rowLabel}>使い方</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
-          </TouchableOpacity>
+          </AnimatedPressable>
         </Card>
 
     </Screen>

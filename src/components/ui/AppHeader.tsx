@@ -12,11 +12,11 @@ import React from 'react';
 import {
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   type ViewStyle,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { AnimatedPressable } from './AnimatedPressable';
 
 // ── トークン（theme.ts と同値。import を増やさず自己完結させる） ──────────────
 const CARD      = '#FFFFFF';
@@ -42,16 +42,15 @@ export default function AppHeader({ title, onBack, backLabel, right, style }: Pr
       {/* ── 左: 戻るボタン or プレースホルダー ── */}
       <View style={styles.side}>
         {onBack ? (
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={onBack}
-            hitSlop={HIT_SLOP}
             style={styles.backBtn}
           >
             <Icon name="chevron-left" size={26} color={ACCENT} />
             {backLabel ? (
               <Text style={styles.backLabel}>{backLabel}</Text>
             ) : null}
-          </TouchableOpacity>
+          </AnimatedPressable>
         ) : null}
       </View>
 
@@ -91,6 +90,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems:    'center',
     paddingLeft:   4,
+    paddingRight:  8,
+    paddingVertical: 4,
   },
   backLabel: {
     fontSize:   16,

@@ -38,6 +38,7 @@ import {
   saveSkImages,
   addMarginToImage,
 } from './src/imaging';
+import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
@@ -307,10 +308,27 @@ export default function App() {
     const newCells: Cell[] = await Promise.all(bboxList.map(async (bbox, idx) => {
       const raw = cropToImage(bgResult.rgba, bgResult.width, bbox);
       const img = addMarginToImage(raw);
+
+      // 複数入り検出: セルのクロップ領域で splitConnected を実行し2体以上あるか確認
+      const cellW = bbox.maxX - bbox.minX + 1;
+      const cellH = bbox.maxY - bbox.minY + 1;
+      const cellRgba = new Uint8Array(cellW * cellH * 4);
+      for (let row = 0; row < cellH; row++) {
+        const srcOff = ((bbox.minY + row) * bgResult.width + bbox.minX) * 4;
+        cellRgba.set(bgResult.rgba.subarray(srcOff, srcOff + cellW * 4), row * cellW * 4);
+      }
+      const bodies = splitConnected(cellRgba, cellW, cellH);
+      // 小さな装飾(星・ハート・文字など)を除外してから物体数を数える。
+      // 全前景ピクセル数の BODY_MIN_RATIO 未満の成分は「装飾」とみなしカウントしない。
+      const BODY_MIN_RATIO = 0.08;
+      const totalArea = bodies.reduce((s, b) => s + b.area, 0);
+      const mainBodies = bodies.filter(b => b.area >= totalArea * BODY_MIN_RATIO);
+      const multipleObjects = mainBodies.length > 1;
+
       raw.dispose();
       const thumbUri = await saveThumbToFile(img, currentSessionId ?? undefined, idx);
       img.dispose();
-      return { kind: 'auto' as const, bbox, thumbUri };
+      return { kind: 'auto' as const, bbox, thumbUri, multipleObjects };
     }));
     setRows(n);
     setCells(newCells);
@@ -322,6 +340,7 @@ export default function App() {
         kind: cell.kind,
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
+        multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -384,6 +403,7 @@ export default function App() {
         kind: cell.kind,
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
+        multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -464,6 +484,7 @@ export default function App() {
         kind: cell.kind,
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
+        multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -619,7 +640,7 @@ export default function App() {
             const thumbUri = exists ? savedCell.thumbPath : 'MISSING';
 
             if (savedCell.kind === 'auto' && savedCell.bbox) {
-              return { kind: 'auto' as const, bbox: savedCell.bbox, thumbUri };
+              return { kind: 'auto' as const, bbox: savedCell.bbox, thumbUri, multipleObjects: savedCell.multipleObjects };
             }
             // poly セル: rgba なしで復元（export 時は thumbUri から再読み込み）
             return { kind: 'poly' as const, thumbUri };
@@ -754,6 +775,8 @@ export default function App() {
       <ResultScreen
         cells={cells}
         originalImageUri={currentImageUri}
+        srcWidth={bgResult?.width ?? null}
+        srcHeight={bgResult?.height ?? null}
         // 復元セッション（bgResult=null）の場合は row_confirm に戻れない → ホームへ
         onBack={() => bgResult ? setAppState('row_confirm') : reset()}
         onHome={reset}

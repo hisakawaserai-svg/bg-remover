@@ -7,6 +7,6 @@
 import type { BBox } from './imaging';
 
 export type Cell =
-  | { kind: 'auto'; bbox: BBox;                              thumbUri: string }
+  | { kind: 'auto'; bbox: BBox; thumbUri: string; multipleObjects?: boolean }
   // rgba/w/h は undefined になり得る（セッション復元時は thumbUri のみ保持）
   | { kind: 'poly'; rgba?: Uint8Array; w?: number; h?: number; thumbUri: string };

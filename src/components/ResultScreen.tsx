@@ -18,6 +18,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
@@ -28,7 +29,6 @@ import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import { colors, spacing, radius, shadow, typography } from './ui/theme';
-import { useGridMetrics } from '../hooks/useGridMetrics';
 import { useSettings } from '../settings/SettingsContext';
 import type { Cell } from '../cellTypes';
 import type { BBox } from '../imaging';
@@ -36,6 +36,10 @@ import type { BBox } from '../imaging';
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 
 const ORIG_IMG_FULL_H = 180;
+/** 位置ベースレイアウト: セルの最小表示サイズ(px) */
+const MIN_CELL = 44;
+/** 各セルを四方に広げてカット間の隙間を詰める量(px) */
+const CELL_EXPAND = 5;
 
 // ── 隣接判定 ─────────────────────────────────────────────────────────────────
 
@@ -79,13 +83,17 @@ function noUnselectedInUnion(cells: Cell[], indices: number[]): boolean {
 // ── チェッカー背景 ────────────────────────────────────────────────────────────
 
 const TILE = 40;
-function Checkerboard({ size }: { size: number }) {
-  const n = Math.ceil(size / TILE);
+/** poly セル用フォールバックサイズ */
+const POLY_CELL_SIZE = 100;
+
+function Checkerboard({ width, height }: { width: number; height: number }) {
+  const cols = Math.ceil(width  / TILE);
+  const rows = Math.ceil(height / TILE);
   return (
-    <View style={{ position: 'absolute', width: size, height: size, overflow: 'hidden' }}>
-      {Array.from({ length: n }, (_, r) => (
+    <View style={{ position: 'absolute', width, height, overflow: 'hidden' }}>
+      {Array.from({ length: rows }, (_, r) => (
         <View key={r} style={{ flexDirection: 'row' }}>
-          {Array.from({ length: n }, (_, c) => (
+          {Array.from({ length: cols }, (_, c) => (
             <View
               key={c}
               style={{
@@ -105,7 +113,9 @@ function Checkerboard({ size }: { size: number }) {
 interface CellItemProps {
   cell: Cell;
   index: number;
-  size: number;
+  width: number;
+  height: number;
+  posStyle?: object;
   selected: boolean;
   selectingMode: boolean;
   onPress: () => void;
@@ -113,7 +123,7 @@ interface CellItemProps {
 }
 
 function CellItem({
-  cell, index, size, selected, selectingMode, onPress, onLongPress,
+  cell, index, width, height, posStyle, selected, selectingMode, onPress, onLongPress,
 }: CellItemProps) {
   const isMissing = cell.thumbUri === 'MISSING';
   const imgSource = useMemo(
@@ -127,9 +137,9 @@ function CellItem({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
-      style={[styles.cellWrap, { width: size, height: size }]}
+      style={[styles.cellWrap, { width, height }, posStyle]}
     >
-      <Checkerboard size={size} />
+      <Checkerboard width={width} height={height} />
       {isMissing ? (
         // ファイル欠損: グレー背景 + アイコンでフォールバック表示
         <View style={[StyleSheet.absoluteFill, styles.missingOverlay]}>
@@ -142,12 +152,22 @@ function CellItem({
           resizeMode="contain"
         />
       )}
+      {/* 複数入り警告枠（選択ハイライトより下層）*/}
+      {cell.kind === 'auto' && cell.multipleObjects && !selected && (
+        <View style={styles.multipleOverlay} pointerEvents="none" />
+      )}
       {/* 選択ハイライト: Image の上に border overlay（borderWidth を wrapper に当てると白化するため）*/}
       {selected && <View style={styles.cellSelectedOverlay} pointerEvents="none" />}
       {/* 番号バッジ */}
       <View style={styles.numBadge}>
         <Text style={styles.numBadgeTxt}>{index + 1}</Text>
       </View>
+      {/* 複数入り警告アイコン（右下）*/}
+      {cell.kind === 'auto' && cell.multipleObjects && (
+        <View style={styles.multipleBadge} pointerEvents="none">
+          <Icon name="warning" size={13} color="#FFF" />
+        </View>
+      )}
       {/* チェックバッジ */}
       {selectingMode && selected && (
         <View style={styles.checkBadge}>
@@ -163,6 +183,9 @@ function CellItem({
 interface Props {
   cells: Cell[];
   originalImageUri: string;
+  /** 元画像ピクセルサイズ。位置ベースレイアウトに使用。null=復元セッションで不明 */
+  srcWidth: number | null;
+  srcHeight: number | null;
   onBack: () => void;
   onHome: () => void;
   onSettings: () => void;
@@ -178,6 +201,8 @@ interface Props {
 export default function ResultScreen({
   cells,
   originalImageUri,
+  srcWidth,
+  srcHeight,
   onBack,
   onHome,
   onSettings,
@@ -189,6 +214,7 @@ export default function ResultScreen({
 }: Props) {
   const { settings, updateSettings } = useSettings();
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
 
   const [saving,         setSaving]         = useState(false);
   const [zoomVisible,    setZoomVisible]    = useState(false);
@@ -196,14 +222,45 @@ export default function ResultScreen({
   const [selectingMode,  setSelectingMode]  = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
-  // ── collapsing header (transform + opacity のみ、height 変更なし) ───────────
+  // ── 位置ベースレイアウト計算 ────────────────────────────────────────────
+  // 表示領域の幅 = 画面幅 - 左右パディング
+  const layoutW = winW - spacing.lg * 2;
 
-  // ── グリッド寸法 ─────────────────────────────────────────────────────────
-  const { itemSize } = useGridMetrics({
-    columns: 2,
-    gap: spacing.md,
-    horizontalPadding: spacing.lg,
-  });
+  // 元画像サイズが不明（復元セッション）の場合は bbox の最大値から推定
+  const effectiveSrcW = useMemo((): number => {
+    if (srcWidth) return srcWidth;
+    let max = 0;
+    for (const c of cells) {
+      if (c.kind === 'auto') max = Math.max(max, c.bbox.maxX);
+    }
+    return max > 0 ? max : 1;
+  }, [srcWidth, cells]);
+
+  const effectiveSrcH = useMemo((): number => {
+    if (srcHeight) return srcHeight;
+    let max = 0;
+    for (const c of cells) {
+      if (c.kind === 'auto') max = Math.max(max, c.bbox.maxY);
+    }
+    return max > 0 ? max : 1;
+  }, [srcHeight, cells]);
+
+  // 表示領域の高さ（元画像のアスペクト比を保つ）
+  const layoutH = layoutW * (effectiveSrcH / effectiveSrcW);
+
+  // auto セルの位置情報（比率ベース → 表示px）
+  const cellLayouts = useMemo(() =>
+    cells.map((cell, i) => {
+      if (cell.kind !== 'auto') return null;
+      const { minX, minY, maxX, maxY } = cell.bbox;
+      const left   = (minX / effectiveSrcW) * layoutW - CELL_EXPAND;
+      const top    = (minY / effectiveSrcH) * layoutH - CELL_EXPAND;
+      const width  = ((maxX - minX) / effectiveSrcW) * layoutW + CELL_EXPAND * 2;
+      const height = ((maxY - minY) / effectiveSrcH) * layoutH + CELL_EXPAND * 2;
+      // 極端に小さいセルにも最低タップサイズを確保
+      return { left, top, width: Math.max(width, MIN_CELL), height: Math.max(height, MIN_CELL) };
+    }),
+  [cells, effectiveSrcW, effectiveSrcH, layoutW, layoutH]);
 
   // ── 保存 ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -319,7 +376,7 @@ export default function ResultScreen({
           />
         </TouchableOpacity>
 
-        {/* ── カット後グリッド ──────────────────────────────────────────── */}
+        {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
         <View style={styles.cutSection}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionLabel}>カット後（{cells.length}枚）</Text>
@@ -329,20 +386,55 @@ export default function ResultScreen({
                 : '長押しで選択・合体'}
             </Text>
           </View>
-        <View style={styles.grid}>
-          {cells.map((cell, i) => (
-            <CellItem
-              key={i}
-              cell={cell}
-              index={i}
-              size={itemSize}
-              selected={selectedIndices.has(i)}
-              selectingMode={selectingMode}
-              onPress={() => handleCellPress(i)}
-              onLongPress={() => handleCellLongPress(i)}
-            />
-          ))}
-        </View>
+
+          {/* 位置ベースレイアウト: auto セルを元画像内の矩形比率で絶対配置 */}
+          <View style={[styles.posLayout, { width: layoutW, height: layoutH }]}>
+            {cells.map((cell, i) => {
+              const layout = cellLayouts[i];
+              if (!layout) return null; // poly セルはここでは描画しない
+              return (
+                <CellItem
+                  key={i}
+                  cell={cell}
+                  index={i}
+                  width={layout.width}
+                  height={layout.height}
+                  posStyle={{ position: 'absolute', left: layout.left, top: layout.top }}
+                  selected={selectedIndices.has(i)}
+                  selectingMode={selectingMode}
+                  onPress={() => handleCellPress(i)}
+                  onLongPress={() => handleCellLongPress(i)}
+                />
+              );
+            })}
+          </View>
+
+          {/* poly セル（bbox なし）は別セクションに表示 */}
+          {cells.some(c => c.kind === 'poly') && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                手動分割
+              </Text>
+              <View style={styles.grid}>
+                {cells.map((cell, i) => {
+                  if (cell.kind !== 'poly') return null;
+                  return (
+                    <CellItem
+                      key={i}
+                      cell={cell}
+                      index={i}
+                      width={POLY_CELL_SIZE}
+                      height={POLY_CELL_SIZE}
+                      selected={selectedIndices.has(i)}
+                      selectingMode={selectingMode}
+                      onPress={() => handleCellPress(i)}
+                      onLongPress={() => handleCellLongPress(i)}
+                    />
+                  );
+                })}
+              </View>
+            </>
+          )}
         </View>
 
         {/* ── フッター ─────────────────────────────────────────────────── */}
@@ -488,14 +580,19 @@ const styles = StyleSheet.create({
     height: ORIG_IMG_FULL_H,
   },
 
-  // ── グリッド ─────────────────────────────────────────────────────────────
+  // ── 位置ベースレイアウトコンテナ ─────────────────────────────────────────
+  posLayout: {
+    position: 'relative',
+  },
+
+  // ── グリッド（poly セルフォールバック用）────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
   },
   cellWrap: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.card,
     ...shadow.xs,
@@ -506,9 +603,28 @@ const styles = StyleSheet.create({
   },
   cellSelectedOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 2.5,
     borderColor: '#FF9500',
+  },
+  // 複数入り警告: オレンジ枠（選択ハイライトと色違いで薄め）
+  multipleOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderColor: '#FF6B00',
+  },
+  // 複数入り警告アイコン: 右下
+  multipleBadge: {
+    position: 'absolute',
+    bottom: spacing.xs,
+    right: spacing.xs,
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    backgroundColor: '#FF6B00',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   missingOverlay: {
     backgroundColor: 'rgba(0,0,0,0.08)',

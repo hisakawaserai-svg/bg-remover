@@ -28,6 +28,8 @@ export interface SavedCell {
   bbox?: { minX: number; minY: number; maxX: number; maxY: number; area: number };
   /** 永続ファイルパス（file:// URI, DocumentDirectory）*/
   thumbPath: string;
+  /** 1カット内に複数の絵が含まれる（合体候補）。auto セルのみ。*/
+  multipleObjects?: boolean;
 }
 
 export interface StickerSession {

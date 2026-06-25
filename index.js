@@ -1,0 +1,28 @@
+/**
+ * @format
+ */
+
+import { AppRegistry } from 'react-native';
+// SafeAreaProvider: react-native-safe-area-context の useSafeAreaInsets / SafeAreaView が
+// 正しいインセット値を取得するために必要なコンテキスト。
+// アプリのルートに一度だけ置く（複数ネストは不要）。
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import App from './App';
+import { name as appName } from './app.json';
+// SettingsProvider: アプリ全体で設定を共有するコンテキスト。
+// SafeAreaProvider と同じくルートに一度だけ置く。
+import { SettingsProvider } from './src/settings/SettingsContext';
+
+function Root() {
+  return (
+    <SafeAreaProvider>
+      {/* SettingsProvider を SafeAreaProvider の内側に置くことで、
+          設定コンテキストが SafeArea の値を参照できる（将来の拡張余地）。 */}
+      <SettingsProvider>
+        <App />
+      </SettingsProvider>
+    </SafeAreaProvider>
+  );
+}
+
+AppRegistry.registerComponent(appName, () => Root);

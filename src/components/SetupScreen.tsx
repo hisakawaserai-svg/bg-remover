@@ -93,16 +93,19 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
   }, [fitParams, bgResult.height, rows]);
 
   // 縦線: 行ごとの列境界（display 座標）— 行の帯の範囲内にだけ引く
-  const colLines = useMemo(() => {
-    if (!fitParams) return [];
+  const { colLines, splitCount } = useMemo(() => {
+    if (!fitParams) return { colLines: [], splitCount: null };
     const { scale, padX, padY } = fitParams;
     const perRow = calcColEdgesPerRow(bgResult.rgba, bgResult.width, bgResult.height, rows);
-    return perRow.flatMap(({ bandTop, bandBot, edges }) => {
+    const lines = perRow.flatMap(({ bandTop, bandBot, edges }) => {
       const top = padY + bandTop * scale;
       const height = (bandBot - bandTop) * scale;
       // edges の先頭 (0) と末尾 (width) は画像端なので省く
       return edges.slice(1, -1).map(x => ({ left: padX + x * scale, top, height }));
     });
+    // セル総数: 各行の列数 (edges.length - 1) の合計（再検出なし）
+    const count = perRow.reduce((sum, { edges }) => sum + edges.length - 1, 0);
+    return { colLines: lines, splitCount: count };
   }, [fitParams, bgResult, rows]);
 
   const lineColor = settings.splitLineColor ?? '#007AFF';
@@ -147,6 +150,15 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
               style={StyleSheet.absoluteFill}
               resizeMode="contain"
             />
+          )}
+
+          {/* 検出数バッジ（自動モードかつ splitCount >= 1 のみ）*/}
+          {mode === 'auto' && splitCount != null && splitCount >= 1 && (
+            <View style={styles.badge} pointerEvents="none">
+              <Text style={styles.badgeTxt}>
+                {splitCount >= 2 ? `${splitCount}個に分かれます` : '分割なし'}
+              </Text>
+            </View>
           )}
 
           {mode === 'auto' && (
@@ -284,6 +296,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#1C1C1E',
+  },
+
+  // ── 検出数バッジ ──────────────────────────────────────────────────────────
+  badge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#EAF2FF',
+    borderColor: '#007AFF',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeTxt: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#007AFF',
   },
 
   // ── 横線（行境界）──────────────────────────────────────────────────────────

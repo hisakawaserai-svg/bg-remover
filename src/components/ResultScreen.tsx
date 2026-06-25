@@ -14,7 +14,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -35,11 +34,8 @@ import type { BBox } from '../imaging';
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 
-const ORIG_IMG_FULL_H = 180;
 /** 位置ベースレイアウト: セルの最小表示サイズ(px) */
 const MIN_CELL = 44;
-/** 各セルを四方に広げてカット間の隙間を詰める量(px) */
-const CELL_EXPAND = 5;
 
 // ── 隣接判定 ─────────────────────────────────────────────────────────────────
 
@@ -182,7 +178,6 @@ function CellItem({
 
 interface Props {
   cells: Cell[];
-  originalImageUri: string;
   /** 元画像ピクセルサイズ。位置ベースレイアウトに使用。null=復元セッションで不明 */
   srcWidth: number | null;
   srcHeight: number | null;
@@ -200,7 +195,6 @@ interface Props {
 
 export default function ResultScreen({
   cells,
-  originalImageUri,
   srcWidth,
   srcHeight,
   onBack,
@@ -217,7 +211,6 @@ export default function ResultScreen({
   const { width: winW } = useWindowDimensions();
 
   const [saving,         setSaving]         = useState(false);
-  const [zoomVisible,    setZoomVisible]    = useState(false);
   // 選択 state — 画像ソースとは完全に独立したオブジェクト
   const [selectingMode,  setSelectingMode]  = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -253,10 +246,10 @@ export default function ResultScreen({
     cells.map((cell, i) => {
       if (cell.kind !== 'auto') return null;
       const { minX, minY, maxX, maxY } = cell.bbox;
-      const left   = (minX / effectiveSrcW) * layoutW - CELL_EXPAND;
-      const top    = (minY / effectiveSrcH) * layoutH - CELL_EXPAND;
-      const width  = ((maxX - minX) / effectiveSrcW) * layoutW + CELL_EXPAND * 2;
-      const height = ((maxY - minY) / effectiveSrcH) * layoutH + CELL_EXPAND * 2;
+      const left   = (minX / effectiveSrcW) * layoutW;
+      const top    = (minY / effectiveSrcH) * layoutH;
+      const width  = ((maxX - minX) / effectiveSrcW) * layoutW;
+      const height = ((maxY - minY) / effectiveSrcH) * layoutH;
       // 極端に小さいセルにも最低タップサイズを確保
       return { left, top, width: Math.max(width, MIN_CELL), height: Math.max(height, MIN_CELL) };
     }),
@@ -356,25 +349,6 @@ export default function ResultScreen({
           { paddingBottom: insets.bottom + spacing.xxl },
         ]}
       >
-
-        {/* ── 元の画像 ──────────────────────────────────────────────────── */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionLabel}>元の画像</Text>
-          <AnimatedPressable onPress={() => setZoomVisible(true)} pressedScale={0.97}>
-            <Text style={styles.sectionHint}>タップで拡大</Text>
-          </AnimatedPressable>
-        </View>
-        <TouchableOpacity
-          onPress={() => setZoomVisible(true)}
-          style={styles.origImgWrap}
-          activeOpacity={0.85}
-        >
-          <Image
-            source={{ uri: originalImageUri }}
-            style={styles.origImg}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
 
         {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
         <View style={styles.cutSection}>
@@ -500,25 +474,6 @@ export default function ResultScreen({
 
       </Animated.ScrollView>
 
-      {/* ズーム拡大モーダル */}
-      <Modal
-        visible={zoomVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setZoomVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.zoomBackdrop}
-          onPress={() => setZoomVisible(false)}
-          activeOpacity={1}
-        >
-          <Image
-            source={{ uri: originalImageUri }}
-            style={styles.zoomImg}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
-      </Modal>
     </Screen>
   );
 }
@@ -560,24 +515,6 @@ const styles = StyleSheet.create({
   sectionHint: {
     ...typography.caption,
     color: colors.accent,
-  },
-
-  // ── 元の画像 ─────────────────────────────────────────────────────────────
-  origImgWrap: {
-    width: '100%',
-    height: ORIG_IMG_FULL_H,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.fill,
-    ...shadow.sm,
-  },
-  origImgInner: {
-    width: '100%',
-    height: ORIG_IMG_FULL_H,
-  },
-  origImg: {
-    width: '100%',
-    height: ORIG_IMG_FULL_H,
   },
 
   // ── 位置ベースレイアウトコンテナ ─────────────────────────────────────────
@@ -729,15 +666,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── ズームモーダル ────────────────────────────────────────────────────────
-  zoomBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.88)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zoomImg: {
-    width: '100%',
-    height: '100%',
-  },
 });

@@ -774,7 +774,6 @@ export default function App() {
     return (
       <ResultScreen
         cells={cells}
-        originalImageUri={currentImageUri}
         srcWidth={bgResult?.width ?? null}
         srcHeight={bgResult?.height ?? null}
         // 復元セッション（bgResult=null）の場合は row_confirm に戻れない → ホームへ

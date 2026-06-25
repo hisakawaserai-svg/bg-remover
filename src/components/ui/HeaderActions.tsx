@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from './theme';
+import { AnimatedPressable } from './AnimatedPressable';
 
 const ICON_SIZE = 24;
 const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
@@ -38,9 +39,9 @@ export default function HeaderActions({
         </TouchableOpacity>
       )}
       {showSettings && (
-        <TouchableOpacity onPress={onSettings} hitSlop={HIT_SLOP} style={styles.btn}>
+        <AnimatedPressable onPress={onSettings!} style={styles.btn}>
           <Icon name="settings" size={ICON_SIZE} color={colors.accent} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       )}
     </View>
   );

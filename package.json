@@ -15,7 +15,6 @@
     "@react-native-community/slider": "^5.2.0",
     "@react-native/new-app-screen": "0.86.0",
     "@shopify/react-native-skia": "^2.6.6",
-    "moti": "^0.30.0",
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-fs": "^2.20.0",
@@ -45,6 +44,10 @@
     "prettier": "2.8.8",
     "react-test-renderer": "19.2.3",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "engines": {
     "node": ">= 22.11.0"

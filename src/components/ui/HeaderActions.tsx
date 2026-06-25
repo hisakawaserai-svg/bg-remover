@@ -9,30 +9,39 @@ const HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 
 interface Props {
   /** 表示するアイコンの種類。省略すると非表示。 */
-  showHome?:     boolean;
-  showSettings?: boolean;
-  onHome?:     () => void;
-  onSettings?: () => void;
+  showHome?:          boolean;
+  showSettings?:      boolean;
+  showOriginalImage?: boolean;
+  onHome?:            () => void;
+  onSettings?:        () => void;
+  onOriginalImage?:   () => void;
 }
 
 /**
  * ヘッダー右端に配置するアイコン群の共通コンポーネント。
- * home・settings の表示/非表示と onPress を props で制御する。
+ * home・settings・originalImage の表示/非表示と onPress を props で制御する。
  *
- * アイコン: MaterialIcons "home" / "settings"（歯車）に統一。
+ * アイコン: MaterialIcons "home" / "settings" / "image"（元画像）に統一。
  * 色:       colors.accent (#007AFF)。
  * タッチ領域: hitSlop で 44pt 以上を確保。
  */
 export default function HeaderActions({
   showHome,
   showSettings,
+  showOriginalImage,
   onHome,
   onSettings,
+  onOriginalImage,
 }: Props) {
-  if (!showHome && !showSettings) return null;
+  if (!showHome && !showSettings && !showOriginalImage) return null;
 
   return (
     <View style={styles.row}>
+      {showOriginalImage && (
+        <AnimatedPressable onPress={onOriginalImage!} style={styles.btn}>
+          <Icon name="image" size={ICON_SIZE} color={colors.accent} />
+        </AnimatedPressable>
+      )}
       {showHome && (
         <AnimatedPressable onPress={onHome!} style={styles.btn}>
           <Icon name="home" size={ICON_SIZE} color={colors.accent} />

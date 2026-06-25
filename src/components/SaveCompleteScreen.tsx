@@ -78,7 +78,10 @@ interface Props {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, onHome, onSettings }: Props) {
-  const [thumbUris,  setThumbUris]  = useState<string[]>([]);
+  /** グリッド表示用: 最大 MAX_GRID 枚 */
+  const [thumbUris, setThumbUris] = useState<string[]>([]);
+  /** プレビュー用: 全 savedCount 枚 */
+  const [allUris,   setAllUris]   = useState<string[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
@@ -91,8 +94,11 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
           groupName: ALBUM_NAME,
           assetType: 'Photos',
         });
-        setThumbUris(result.edges.map(e => e.node.image.uri).slice(0, MAX_GRID));
+        const uris = result.edges.map(e => e.node.image.uri);
+        setAllUris(uris);                      // 全枚数を保持
+        setThumbUris(uris.slice(0, MAX_GRID)); // グリッドは最大 MAX_GRID 枚
       } catch {
+        setAllUris([]);
         setThumbUris([]);
       } finally {
         setLoading(false);
@@ -140,7 +146,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
               <AnimatedPressable
                 key={uri}
                 style={styles.cell}
-                onPress={() => setPreviewIdx(i)}
+                onPress={() => setPreviewIdx(showAdd ? MAX_GRID : i)}
                 pressedScale={0.93}
               >
                 <Checkerboard size={CELL_SIZE} />
@@ -187,7 +193,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
       {/* 拡大プレビュー */}
       {previewIdx !== null && (
         <ImagePreviewModal
-          uris={thumbUris}
+          uris={allUris}
           initial={previewIdx}
           onClose={() => setPreviewIdx(null)}
         />

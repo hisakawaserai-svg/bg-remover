@@ -14,6 +14,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -178,6 +179,7 @@ function CellItem({
 
 interface Props {
   cells: Cell[];
+  originalImageUri: string;
   /** 元画像ピクセルサイズ。位置ベースレイアウトに使用。null=復元セッションで不明 */
   srcWidth: number | null;
   srcHeight: number | null;
@@ -195,6 +197,7 @@ interface Props {
 
 export default function ResultScreen({
   cells,
+  originalImageUri,
   srcWidth,
   srcHeight,
   onBack,
@@ -211,6 +214,7 @@ export default function ResultScreen({
   const { width: winW } = useWindowDimensions();
 
   const [saving,         setSaving]         = useState(false);
+  const [zoomVisible,    setZoomVisible]    = useState(false);
   // 選択 state — 画像ソースとは完全に独立したオブジェクト
   const [selectingMode,  setSelectingMode]  = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -329,8 +333,10 @@ export default function ResultScreen({
       backLabel="戻る"
       right={
         <HeaderActions
+          showOriginalImage
           showHome
           showSettings
+          onOriginalImage={() => setZoomVisible(true)}
           onHome={onHome}
           onSettings={onSettings}
         />
@@ -474,6 +480,25 @@ export default function ResultScreen({
 
       </Animated.ScrollView>
 
+      {/* 元画像ズームモーダル（ヘッダーの画像アイコンから呼び出し）*/}
+      <Modal
+        visible={zoomVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZoomVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.zoomBackdrop}
+          onPress={() => setZoomVisible(false)}
+          activeOpacity={1}
+        >
+          <Image
+            source={{ uri: originalImageUri }}
+            style={styles.zoomImg}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
+      </Modal>
     </Screen>
   );
 }
@@ -664,6 +689,18 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.danger,
     textAlign: 'center',
+  },
+
+  // ── 元画像ズームモーダル ──────────────────────────────────────────────────
+  zoomBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImg: {
+    width: '100%',
+    height: '100%',
   },
 
 });

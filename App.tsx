@@ -111,8 +111,9 @@ import SettingsScreen from './src/components/SettingsScreen';
 import SavedScreen    from './src/components/SavedScreen';
 import HowToScreen   from './src/components/HowToScreen';
 import SetupScreen   from './src/components/SetupScreen';
-import ResultScreen       from './src/components/ResultScreen';
-import SaveCompleteScreen from './src/components/SaveCompleteScreen';
+import ResultScreen          from './src/components/ResultScreen';
+import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
+import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
 import { useSettings } from './src/settings/SettingsContext';
 
 // ── 型 ────────────────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ type SplitMode = 'auto' | 'manual';
 // polygon_preview: 手動モードの切り取りプレビュー（PreviewScreen を表示）
 // settings:        設定画面
 // done:            書き出し完了
-type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'settings' | 'saved' | 'howto' | 'done';
+type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'polygon_tutorial' | 'polygon_tutorial_help' | 'settings' | 'saved' | 'howto' | 'done';
 
 
 // DEFAULT_TOLERANCE は設定ロード前の初期値としてのみ使用。
@@ -694,12 +695,6 @@ export default function App() {
     : latestInProgress.step === 'keyed'  ? 2
     : 3; // 'done' セッションが作業中として残ることはほぼ無いが安全側で 3
 
-  // 「最近の書き出し」用: done セッションを最大5件取得。
-  // 先頭4件をサムネとして表示し、残りを "+N" で表す。
-  const doneSessions  = sessions.filter(s => s.step === 'done');
-  const recentDone    = doneSessions.slice(0, 5);   // 表示上限（4枚 + 溢れ分）
-  const recentOverflow = doneSessions.length > 4 ? doneSessions.length - 4 : 0;
-
   // ── レンダー ──────────────────────────────────────────────────────────────
 
   const isBusy = appState === 'processing';
@@ -740,10 +735,30 @@ export default function App() {
     );
   }
 
+  if (appState === 'polygon_tutorial') {
+    return (
+      <PolygonTutorialScreen
+        onStart={() => setAppState('editing')}
+        onBack={() => setAppState('row_confirm')}
+      />
+    );
+  }
+
   if (appState === 'howto') {
     return (
       <HowToScreen
         onClose={() => setAppState(prevStateRef.current)}
+        onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
+      />
+    );
+  }
+
+  if (appState === 'polygon_tutorial_help') {
+    return (
+      <PolygonTutorialScreen
+        mode="help"
+        onStart={() => setAppState('howto')}
+        onBack={() => setAppState('howto')}
       />
     );
   }
@@ -760,7 +775,7 @@ export default function App() {
           if (mode === 'auto') {
             doSplit(rows);
           } else {
-            setAppState('editing');
+            setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
           }
         }}
         onBack={() => setAppState('idle')}
@@ -774,6 +789,7 @@ export default function App() {
     return (
       <ResultScreen
         cells={cells}
+        originalImageUri={currentImageUri}
         srcWidth={bgResult?.width ?? null}
         srcHeight={bgResult?.height ?? null}
         // 復元セッション（bgResult=null）の場合は row_confirm に戻れない → ホームへ
@@ -982,7 +998,9 @@ export default function App() {
           pressedScale={0.97}
         >
           <Icon name="add-photo-alternate" size={22} color="#FFF" />
-          <Text style={styles.startBtnTxt}>新しい画像を選ぶ</Text>
+          <Text style={styles.startBtnTxt}>
+            {sessions.length === 0 ? '画像を選んで始める' : '新しい画像を選ぶ'}
+          </Text>
         </AnimatedPressable>
       ) : undefined}
     >
@@ -993,72 +1011,68 @@ export default function App() {
         {appState === 'idle' && (
           <>
 
-            {/* ── 進捗サマリーカード: セッションの有無に関わらず常に表示 ──
-                上段: 大きい数値で「作業中 N / 完了 N」を一覧表示。
-                下段: 最新の作業中セッションの step を3本バーで可視化。
-                セッションなし時は数値0・バー未塗りで表示し、案内文を添える。 */}
-            <Card style={styles.progressCard}>
-              {/* カードタイトル */}
-              <Text style={styles.progressTitle}>作業状況</Text>
+            {/* ── 進捗サマリーカード: セッションがあるときだけ表示 ── */}
+            {sessions.length > 0 && (
+              <Card style={styles.progressCard}>
+                {/* カードタイトル */}
+                <Text style={styles.progressTitle}>作業状況</Text>
 
-              {/* 大きい数値行: 左=作業中、右=完了 */}
-              <View style={styles.progressStats}>
-                {/* 作業中 */}
-                <View style={styles.progressStat}>
-                  <Text style={styles.progressStatNum}>{inProgressCount}</Text>
-                  <Text style={styles.progressStatLabel}>作業中</Text>
+                {/* 大きい数値行: 左=作業中、右=完了 */}
+                <View style={styles.progressStats}>
+                  {/* 作業中 */}
+                  <View style={styles.progressStat}>
+                    <Text style={styles.progressStatNum}>{inProgressCount}</Text>
+                    <Text style={styles.progressStatLabel}>作業中</Text>
+                  </View>
+                  {/* 縦の区切り線 */}
+                  <View style={styles.progressDivider} />
+                  {/* 完了 */}
+                  <View style={styles.progressStat}>
+                    <Text style={[styles.progressStatNum, styles.progressStatNumDone]}>
+                      {doneCount}
+                    </Text>
+                    <Text style={styles.progressStatLabel}>完了</Text>
+                  </View>
                 </View>
-                {/* 縦の区切り線 */}
-                <View style={styles.progressDivider} />
-                {/* 完了 */}
-                <View style={styles.progressStat}>
-                  <Text style={[styles.progressStatNum, styles.progressStatNumDone]}>
-                    {doneCount}
-                  </Text>
-                  <Text style={styles.progressStatLabel}>完了</Text>
+
+                {/* 3段階ゲージ: 常に3本表示。塗りは gaugeLevel (0=全空) で決まる */}
+                <View style={styles.gaugeRow}>
+                  <View style={[styles.gaugeBar, gaugeLevel >= 1 && styles.gaugeBarFilled]} />
+                  <View style={[styles.gaugeBar, gaugeLevel >= 2 && styles.gaugeBarFilled]} />
+                  <View style={[styles.gaugeBar, gaugeLevel >= 3 && styles.gaugeBarFilled]} />
                 </View>
-              </View>
+                <View style={styles.gaugeLabelRow}>
+                  <Text style={styles.gaugeLabel}>選択</Text>
+                  <Text style={styles.gaugeLabel}>透過</Text>
+                  <Text style={styles.gaugeLabel}>書き出し</Text>
+                </View>
+              </Card>
+            )}
 
-              {/* 3段階ゲージ: 常に3本表示。塗りは gaugeLevel (0=全空) で決まる */}
-              <View style={styles.gaugeRow}>
-                <View style={[styles.gaugeBar, gaugeLevel >= 1 && styles.gaugeBarFilled]} />
-                <View style={[styles.gaugeBar, gaugeLevel >= 2 && styles.gaugeBarFilled]} />
-                <View style={[styles.gaugeBar, gaugeLevel >= 3 && styles.gaugeBarFilled]} />
-              </View>
-              <View style={styles.gaugeLabelRow}>
-                <Text style={styles.gaugeLabel}>選択</Text>
-                <Text style={styles.gaugeLabel}>透過</Text>
-                <Text style={styles.gaugeLabel}>書き出し</Text>
-              </View>
-
-              {/* セッションなし時の案内文 */}
-              {sessions.length === 0 && (
-                <Text style={styles.progressEmptyHint}>
-                  画像を選んで始めましょう
-                </Text>
-              )}
-            </Card>
-
-            {/* セッションなし時: 使い方ガイドを兼ねた空状態コンテンツ */}
+            {/* ── 空状態: 機能説明＋CTA ── */}
             {sessions.length === 0 && (
               <View style={styles.emptyContent}>
-                <Icon name="auto-fix-high" size={52} color={IOS.fill} />
-                <Text style={styles.emptyContentTitle}>作業はまだありません</Text>
+                {/* アイコン円背景 */}
+                <View style={styles.emptyIconWrap}>
+                  <Icon name="auto-fix-high" size={44} color={IOS.blue} />
+                </View>
+                <Text style={styles.emptyContentTitle}>
+                  イラストシートからキャラを切り出す
+                </Text>
                 <Text style={styles.emptyContentDesc}>
-                  イラストシートを1枚選ぶだけで{'\n'}
-                  キャラクターを自動で切り出せます
+                  1枚選ぶだけで自動で透過。{'\n'}LINEスタンプ用の PNG が作れます。
                 </Text>
                 <View style={styles.emptyHints}>
                   <View style={styles.emptyHintRow}>
-                    <Icon name="check-circle-outline" size={15} color={IOS.blue} />
+                    <Icon name="check-circle" size={16} color={IOS.blue} />
                     <Text style={styles.emptyHintTxt}>PNG・JPEG どちらも対応</Text>
                   </View>
                   <View style={styles.emptyHintRow}>
-                    <Icon name="check-circle-outline" size={15} color={IOS.blue} />
+                    <Icon name="check-circle" size={16} color={IOS.blue} />
                     <Text style={styles.emptyHintTxt}>背景を自動で透過処理</Text>
                   </View>
                   <View style={styles.emptyHintRow}>
-                    <Icon name="check-circle-outline" size={15} color={IOS.blue} />
+                    <Icon name="check-circle" size={16} color={IOS.blue} />
                     <Text style={styles.emptyHintTxt}>透過 PNG でアルバムに保存</Text>
                   </View>
                 </View>
@@ -1067,85 +1081,69 @@ export default function App() {
 
             {sessions.length > 0 && (
               <>
-                {/* 続きからリスト */}
-                <Text style={styles.sectionLabel}>続きから</Text>
-                <Card style={styles.sessionListCard} padding={0}>
-                  {sessions.map((session, idx) => {
-                    // 日付フォーマット: M/D HH:MM
-                    const d = new Date(session.updatedAt);
-                    const dateStr = `${d.getMonth() + 1}/${d.getDate()} `
-                      + `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+                <Text style={styles.sectionLabel}>最近の作業</Text>
+                {sessions.map((session, idx) => {
+                  const d = new Date(session.updatedAt);
+                  const dateStr = `${d.getMonth() + 1}/${d.getDate()} `
+                    + `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-                    return (
-                      <React.Fragment key={session.id}>
-                        <AnimatedPressable
-                          style={styles.sessionRow}
-                          onPress={() => void resumeSession(session)}
-                          pressedScale={0.98}
-                        >
-                          {/* サムネイル: thumbUri があればそれを、無ければ元画像を縮小表示 */}
-                          <Image
-                            source={{ uri: session.thumbUri ?? session.imageUri }}
-                            style={styles.sessionThumb}
-                            resizeMode="cover"
-                          />
+                  // カット枚数ラベル
+                  const cellCount = session.autoData?.cells.length;
+                  const sheetLabel = cellCount != null
+                    ? `${cellCount} キャラのシート`
+                    : '処理前のシート';
 
-                          {/* テキスト情報 */}
-                          <View style={styles.sessionInfo}>
-                            <Chip label={stepLabel(session.step, session.mode)} tone={stepTone(session.step)} />
-                            <Text style={styles.sessionDate}>{dateStr}</Text>
-                          </View>
+                  // step → 1/2/3 本バー
+                  const barLevel =
+                    session.step === 'picked' ? 1
+                    : session.step === 'keyed' ? 2
+                    : 3;
 
-                          {/* 削除ボタン（ゴミ箱アイコン） */}
-                          <AnimatedPressable
-                            style={styles.sessionDeleteBtn}
-                            onPress={() => handleDeleteSession(session.id)}
-                          >
-                            <Icon name="delete-outline" size={20} color={IOS.secondary} />
-                          </AnimatedPressable>
-                        </AnimatedPressable>
+                  const isFirst = idx === 0;
 
-                        {/* セパレータ（最後の行には引かない） */}
-                        {idx < sessions.length - 1 && (
-                          <View style={styles.sessionSeparator} />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </Card>
+                  return (
+                    <AnimatedPressable
+                      key={session.id}
+                      style={[styles.sessionCard, isFirst && styles.sessionCardFirst]}
+                      onPress={() => void resumeSession(session)}
+                      pressedScale={0.97}
+                    >
+                      {/* サムネ */}
+                      <Image
+                        source={{ uri: session.thumbUri ?? session.imageUri }}
+                        style={styles.sessionCardThumb}
+                        resizeMode="cover"
+                      />
 
-                {/* ── 2a: 最近の書き出し ──
-                    done セッションが1件以上あるときだけ表示。
-                    thumbUri が無い場合は imageUri で代替（グレーの正方形で埋まる）。
-                    タップ時は TODO: カメラロールのアルバムを開く API が
-                    react-native-camera-roll に存在するか要確認。暫定でアラート。 */}
-                {recentDone.length > 0 && (
-                  <>
-                    <Text style={styles.sectionLabel}>最近の書き出し</Text>
-                    <View style={styles.recentRow}>
-                      {recentDone.slice(0, 4).map(s => (
-                        <AnimatedPressable
-                          key={s.id}
-                          style={styles.recentThumbWrap}
-                          onPress={() => Alert.alert('書き出し済み', '「アイコン抜き」アルバムに保存されています。')}
-                          pressedScale={0.92}
-                        >
-                          <Image
-                            source={{ uri: s.thumbUri ?? s.imageUri }}
-                            style={styles.recentThumb}
-                            resizeMode="cover"
-                          />
-                        </AnimatedPressable>
-                      ))}
-                      {/* 5件目以降は "+N" バッジで件数だけ示す */}
-                      {recentOverflow > 0 && (
-                        <View style={styles.recentOverflow}>
-                          <Text style={styles.recentOverflowTxt}>+{recentOverflow}</Text>
+                      {/* 情報エリア */}
+                      <View style={styles.sessionCardInfo}>
+                        {/* 上段: ラベル + チップ */}
+                        <View style={styles.sessionCardTop}>
+                          <Text style={styles.sessionCardLabel} numberOfLines={1}>{sheetLabel}</Text>
+                          <Chip label={stepLabel(session.step, session.mode)} tone={stepTone(session.step)} />
                         </View>
-                      )}
-                    </View>
-                  </>
-                )}
+
+                        {/* 下段: 進捗バー + 日時 */}
+                        <View style={styles.sessionCardBottom}>
+                          <View style={styles.sessionCardGaugeRow}>
+                            <View style={[styles.sessionCardBar, barLevel >= 1 && styles.sessionCardBarFilled]} />
+                            <View style={[styles.sessionCardBar, barLevel >= 2 && styles.sessionCardBarFilled]} />
+                            <View style={[styles.sessionCardBar, barLevel >= 3 && styles.sessionCardBarFilled]} />
+                          </View>
+                          <Text style={styles.sessionCardDate}>{dateStr}</Text>
+                        </View>
+                      </View>
+
+                      {/* 削除ボタン */}
+                      <AnimatedPressable
+                        style={styles.sessionDeleteBtn}
+                        onPress={() => handleDeleteSession(session.id)}
+                      >
+                        <Icon name="delete-outline" size={20} color={IOS.secondary} />
+                      </AnimatedPressable>
+                    </AnimatedPressable>
+                  );
+                })}
               </>
             )}
 
@@ -1286,94 +1284,97 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
 
-  // ── HOME: セッションリスト（Card 内） ─────────────────────────────────────────
-  sessionListCard: {
+  // ── HOME: セッションカード ─────────────────────────────────────────────────
+  sessionCard: {
     width: '100%',
-    marginBottom: 16, // カード間 16px で統一（3. 余白調整）
-    overflow: 'hidden',  // radius の内側に行を収める
-  },
-
-  // ── HOME: 最近の書き出し（2a）──────────────────────────────────────────────
-  // done セッションのサムネを横並び4枚 + 溢れ分 "+N" で表示
-  recentRow: {
-    flexDirection: 'row',
-    gap: 8,
-    width: '100%',
-    marginBottom: 16,
-  },
-  recentThumbWrap: {
-    // (全幅 - 左右padding40 - gap*3=24) / 4 ≈ 可変。flex で均等割り
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: IOS.fill,
-  },
-  recentThumb: {
-    width: '100%',
-    height: '100%',
-  },
-  // 5件目以降を示す "+N" バッジ: サムネと同じサイズ感のグレー枠
-  recentOverflow: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 10,
-    backgroundColor: IOS.fill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentOverflowTxt: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: IOS.secondary,
-  },
-
-  // ── HOME: クイックアクション（2b）─────────────────────────────────────────
-  sessionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
     gap: 12,
+    backgroundColor: IOS.card,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  sessionThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+  // 最新セッション: 左端に青のアクセントボーダー
+  sessionCardFirst: {
+    borderLeftWidth: 3,
+    borderLeftColor: IOS.blue,
+    paddingLeft: 10, // ボーダー分を補正
+  },
+  sessionCardThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: 10,
     backgroundColor: IOS.fill,
   },
-  sessionInfo: {
+  sessionCardInfo: {
     flex: 1,
+    gap: 6,
+  },
+  sessionCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sessionCardLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: IOS.label,
+  },
+  sessionCardBottom: {
+    gap: 4,
+  },
+  sessionCardGaugeRow: {
+    flexDirection: 'row',
     gap: 3,
   },
-  sessionMeta: {
-    fontSize: 12,
-    color: IOS.secondary,
+  sessionCardBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: IOS.fill,
   },
-  sessionDate: {
+  sessionCardBarFilled: {
+    backgroundColor: IOS.blue,
+  },
+  sessionCardDate: {
     fontSize: 11,
     color: IOS.secondary,
   },
   sessionDeleteBtn: {
     padding: 4,
   },
-  sessionSeparator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: IOS.separator,
-    marginLeft: 70,  // サムネイル幅(44) + paddingH(14) + gap(12) に揃える
-  },
 
   // ── HOME: セッションなし 空状態コンテンツ ────────────────────────────────
   emptyContent: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 32,
-    gap: 8,
+    gap: 10,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#EAF2FF', // blue 薄め
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   emptyContentTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: IOS.label,
-    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 26,
+    paddingHorizontal: 8,
   },
   emptyContentDesc: {
     fontSize: 14,

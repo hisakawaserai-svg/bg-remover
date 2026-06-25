@@ -24,6 +24,8 @@ export interface AppSettings {
   splitLineColor: SplitLineColor;
   /** エクスポート完了後にセッション（画像ファイル含む）を自動削除するか */
   autoDeleteOnExport: boolean;
+  /** 手動切り抜きのチュートリアルをスキップするか */
+  skipPolygonTutorial: boolean;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -35,6 +37,7 @@ export const DEFAULTS: AppSettings = {
   thumbBg:        'white',
   splitLineColor: '#007AFF',
   autoDeleteOnExport: true,
+  skipPolygonTutorial: false,
 };
 
 /** 設定を読み込む。失敗時はデフォルト値を返す（UI がクラッシュしないよう）。*/

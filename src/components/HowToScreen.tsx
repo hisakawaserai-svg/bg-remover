@@ -54,11 +54,12 @@ const STEPS = [
 
 interface Props {
   onClose: () => void;
+  onPolygonTutorial?: () => void;
 }
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function HowToScreen({ onClose }: Props) {
+export default function HowToScreen({ onClose, onPolygonTutorial }: Props) {
 
   // stagger の起点delay。各ステップは STAGGER_INTERVAL ずつずれて登場する。
   // FadeInView に delay を渡すだけで stagger を実現している（ループは親が担当）。
@@ -121,8 +122,28 @@ export default function HowToScreen({ onClose }: Props) {
        * スクロール前から非表示・スクロール後に表示、という動きは未対応。
        */}
 
+      {/* 手動切り抜きチュートリアルへのリンク */}
+      {onPolygonTutorial && (
+        <FadeInView delay={STAGGER_INTERVAL * 5}>
+          <AnimatedPressable
+            style={styles.tutorialRow}
+            onPress={onPolygonTutorial}
+            pressedScale={0.98}
+          >
+            <View style={styles.tutorialIcon}>
+              <Icon name="gesture" size={20} color={colors.accent} />
+            </View>
+            <View style={styles.tutorialText}>
+              <Text style={styles.tutorialLabel}>手動切り抜きの使い方</Text>
+              <Text style={styles.tutorialSub}>四角で囲む操作のアニメーション説明</Text>
+            </View>
+            <Icon name="chevron-right" size={20} color={colors.secondary} />
+          </AnimatedPressable>
+        </FadeInView>
+      )}
+
       {/* コツ */}
-      <FadeInView delay={STAGGER_INTERVAL * 5}>
+      <FadeInView delay={STAGGER_INTERVAL * 6}>
         <Card style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <Icon name="tips-and-updates" size={16} color="#FF9500" />
@@ -135,7 +156,7 @@ export default function HowToScreen({ onClose }: Props) {
       </FadeInView>
 
       {/* 注意事項 */}
-      <FadeInView delay={STAGGER_INTERVAL * 6}>
+      <FadeInView delay={STAGGER_INTERVAL * 7}>
         <Card style={styles.cautionCard}>
           <View style={styles.tipsHeader}>
             <Icon name="info-outline" size={16} color={colors.secondary} />
@@ -230,4 +251,33 @@ const styles = StyleSheet.create({
   tipRow:   { flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start' },
   tipBullet: { ...typography.body, color: colors.secondary, lineHeight: 22 },
   tipTxt:   { ...typography.body, color: colors.label2, flex: 1, lineHeight: 22 },
+
+  // 手動チュートリアルへのリンク行
+  tutorialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tutorialIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tutorialText: { flex: 1, gap: 2 },
+  tutorialLabel: { ...typography.callout, fontWeight: '600', color: colors.label },
+  tutorialSub:   { ...typography.caption, color: colors.secondary },
 });

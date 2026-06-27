@@ -19,6 +19,8 @@ import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import ImagePreviewModal from './ui/ImagePreviewModal';
+import CheckerboardBg from './ui/CheckerboardBg';
+import { useThumbBg } from '../hooks/useThumbBg';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
@@ -26,33 +28,8 @@ import { ALBUM_NAME } from '../imaging';
 
 // グリッドの最大表示枚数
 const MAX_GRID = 9;
-// 市松タイルサイズ
-const TILE = 30;
 
-// ── 市松模様 ─────────────────────────────────────────────────────────────────
-
-function Checkerboard({ size }: { size: number }) {
-  const n = Math.ceil(size / TILE);
-  return (
-    <View style={{ position: 'absolute', width: size, height: size, overflow: 'hidden' }}>
-      {Array.from({ length: n }, (_, r) => (
-        <View key={r} style={{ flexDirection: 'row' }}>
-          {Array.from({ length: n }, (_, c) => (
-            <View
-              key={c}
-              style={{
-                width: TILE, height: TILE,
-                backgroundColor: (r + c) % 2 === 0 ? '#CCCCCC' : '#FFFFFF',
-              }}
-            />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-// ── LINE Sticker Maker を開く ─────────────────────────────────────────────────
+// ── LINE スタンプ Maker を開く ─────────────────────────────────────────────────
 
 async function openLineStickerMaker() {
   const appScheme = Platform.OS === 'android'
@@ -78,6 +55,7 @@ interface Props {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, onHome, onSettings }: Props) {
+  const bg = useThumbBg();
   /** グリッド表示用: 最大 MAX_GRID 枚 */
   const [thumbUris, setThumbUris] = useState<string[]>([]);
   /** プレビュー用: 全 savedCount 枚 */
@@ -149,7 +127,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
                 onPress={() => setPreviewIdx(showAdd ? MAX_GRID : i)}
                 pressedScale={0.93}
               >
-                <Checkerboard size={CELL_SIZE} />
+                <CheckerboardBg mode={bg} tile={30} width={CELL_SIZE} height={CELL_SIZE} />
                 <Image source={{ uri }} style={styles.cellImg} resizeMode="contain" />
                 {showAdd && (
                   <View style={styles.overflowOverlay}>
@@ -182,9 +160,9 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
           <Text style={styles.subBtnTxt}>保存先を確認する</Text>
         </AnimatedPressable>
 
-        {/* LINE Sticker Maker */}
+        {/* LINE スタンプ Maker */}
         <AnimatedPressable style={styles.lineBtn} onPress={openLineStickerMaker} pressedScale={0.97}>
-          <Text style={styles.lineBtnTxt}>LINE Sticker Maker を開く</Text>
+          <Text style={styles.lineBtnTxt}>LINE スタンプ Maker を開く</Text>
           <Icon name="open-in-new" size={16} color="#FFF" />
         </AnimatedPressable>
 

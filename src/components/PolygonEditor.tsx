@@ -39,6 +39,7 @@ import {
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import type { RemoveBgResult } from '../imaging';
+import { useThumbBg } from '../hooks/useThumbBg';
 // イラスト輪郭切り抜きでは直線スナップの利得が小さく点が飛ぶ副作用が大きいため除去した。
 
 // ── 定数 ───────────────────────────────────────────────────────────────────
@@ -204,9 +205,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   //   依存追加なし（既存 Skia で完結）。
   // 白・グレー・黒: Rect 1 枚で単色塗り。
   //
-  // 永続化は不要（画面ごとのローカル state）。
+  // 初期値はアプリ設定（サムネ背景）を既定とする。マウント時に1回だけ読み、
+  // 以降は画面内のセグメント切替（setBgMode）でローカルに上書きできる（永続化しない）。
+  // BgMode は ThumbMode('white'|'gray'|'checker') に 'black' を足した上位集合のため、
+  // 設定値をそのまま初期値に使える。
   type BgMode = 'checker' | 'white' | 'gray' | 'black';
-  const [bgMode, setBgMode] = useState<BgMode>('checker');
+  const defaultBgMode = useThumbBg();
+  const [bgMode, setBgMode] = useState<BgMode>(defaultBgMode);
 
   // 表示スケール: PAD 余白を除いた利用可能エリアに画像を収める
   // canvasSize が未確定(0)のときは 0 にして描画をスキップ

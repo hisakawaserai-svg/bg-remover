@@ -101,10 +101,12 @@ import {
 import type { StickerSession, SessionPolygon, SavedCell } from './src/session/types';
 
 // ── 共通 UI プリミティブ ──────────────────────────────────────────────────────
-import Card         from './src/components/ui/Card';
-import Chip         from './src/components/ui/Chip';
-import HeaderActions from './src/components/ui/HeaderActions';
-import AppHeader     from './src/components/ui/AppHeader';
+import Card           from './src/components/ui/Card';
+import Chip           from './src/components/ui/Chip';
+import HeaderActions  from './src/components/ui/HeaderActions';
+import AppHeader      from './src/components/ui/AppHeader';
+import CheckerboardBg from './src/components/ui/CheckerboardBg';
+import { useThumbBg } from './src/hooks/useThumbBg';
 
 // ── 設定画面 ──────────────────────────────────────────────────────────────────
 import SettingsScreen from './src/components/SettingsScreen';
@@ -194,7 +196,8 @@ export default function App() {
   // ── アプリ設定 ─────────────────────────────────────────────────────────────
   // SettingsContext から取得する。AsyncStorage のロード・保存は Context が担当。
   // App.tsx 側での useState / loadSettings / saveSettings は不要になった。
-  const { settings: appSettings, updateSettings } = useSettings();
+  const { settings: appSettings, loaded: settingsLoaded, updateSettings } = useSettings();
+  const thumbBg = useThumbBg();
 
   // ── セッション管理 ─────────────────────────────────────────────────────────
   // sessions: ホーム一覧に表示するセッション配列（updatedAt 降順）
@@ -754,6 +757,23 @@ export default function App() {
     );
   }
 
+  // 初回起動ゲート: 設定ロード完了後、未オンボなら自動でオンボーディングを表示。
+  // settingsLoaded を待つのは、ロード中は appSettings が DEFAULTS(false) のため
+  // 既存ユーザーにも一瞬オンボが出てしまうのを防ぐため。
+  // skipPolygonTutorial の分岐（[App.tsx]）と同じ書き味で、永続フラグで一度きり表示する。
+  if (appState === 'idle' && settingsLoaded && !appSettings.hasSeenOnboarding) {
+    return (
+      <HowToScreen
+        mode="onboarding"
+        // onboarding はヘッダー「完了」を出さないため onClose は到達しないが、
+        // 型の都合で「はじめる」と同じくフラグを立てて閉じる安全側にしておく。
+        onClose={() => void updateSettings({ hasSeenOnboarding: true })}
+        onStart={() => void updateSettings({ hasSeenOnboarding: true })}
+        onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
+      />
+    );
+  }
+
   if (appState === 'polygon_tutorial_help') {
     return (
       <PolygonTutorialScreen
@@ -1110,11 +1130,14 @@ export default function App() {
                       pressedScale={0.97}
                     >
                       {/* サムネ */}
-                      <Image
-                        source={{ uri: session.thumbUri ?? session.imageUri }}
-                        style={styles.sessionCardThumb}
-                        resizeMode="cover"
-                      />
+                      <View style={styles.sessionCardThumb}>
+                        <CheckerboardBg mode={thumbBg} tile={10} width={60} height={60} />
+                        <Image
+                          source={{ uri: session.thumbUri ?? session.imageUri }}
+                          style={StyleSheet.absoluteFill}
+                          resizeMode="contain"
+                        />
+                      </View>
 
                       {/* 情報エリア */}
                       <View style={styles.sessionCardInfo}>
@@ -1311,7 +1334,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 10,
-    backgroundColor: IOS.fill,
+    overflow: 'hidden',
   },
   sessionCardInfo: {
     flex: 1,

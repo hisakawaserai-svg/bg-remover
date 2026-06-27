@@ -28,6 +28,12 @@ interface SettingsContextValue {
   /** 現在の設定値。読み込み完了前は DEFAULTS が入っている。 */
   settings: AppSettings;
   /**
+   * AsyncStorage からの初回ロードが完了したか。
+   * false の間は settings が DEFAULTS（永続値ではない）ため、
+   * 初回起動判定など「保存値に依存する分岐」は loaded=true を待つこと。
+   */
+  loaded: boolean;
+  /**
    * 設定を部分的に更新する。
    * 渡したキーだけ上書きし、残りは現在値を維持する（スプレッドでマージ）。
    * 例: updateSettings({ tolerance: 50 }) → gridColumns/thumbBg はそのまま。
@@ -41,6 +47,7 @@ interface SettingsContextValue {
 // 通常は index.js でラップするので到達しないが、テスト時などの安全弁。
 const SettingsContext = createContext<SettingsContextValue>({
   settings:       DEFAULTS,
+  loaded:         false,
   updateSettings: async () => {},
 });
 
@@ -50,11 +57,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // 初期値を DEFAULTS にすることで AsyncStorage 読み込み前もクラッシュしない。
   // ハードコード値を App.tsx に書かなくて済むのは DEFAULTS を export した理由。
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  const [loaded, setLoaded] = useState(false);
 
   // マウント時に AsyncStorage から設定を読み込む（1回のみ）。
   // loadSettings は失敗時も DEFAULTS を返すため、catch は不要。
   useEffect(() => {
-    void loadSettings().then(setSettings);
+    void loadSettings().then(s => {
+      setSettings(s);
+      setLoaded(true);
+    });
   }, []);
 
   const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
@@ -67,7 +78,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings]);
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings }}>
+    <SettingsContext.Provider value={{ settings, loaded, updateSettings }}>
       {children}
     </SettingsContext.Provider>
   );

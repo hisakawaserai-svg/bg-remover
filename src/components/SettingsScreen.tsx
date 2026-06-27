@@ -23,12 +23,13 @@ import {
   View,
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
-import Slider from '@react-native-community/slider';
 import Screen from './ui/Screen';
+import ToleranceSlider from './ui/ToleranceSlider';
 import AppHeader from './ui/AppHeader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Card from './ui/Card';
+import OnboardingScreen from './OnboardingScreen';
 import { ALBUM_NAME } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
@@ -53,6 +54,9 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
   // AsyncStorage への書き込み回数を最小化する
   const [tolerance, setTolerance] = useState(settings.tolerance);
 
+  // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
   const header = (
     <AppHeader
       title="設定"
@@ -63,6 +67,11 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
       }
     />
   );
+
+  // [仮] オンボーディングを全画面オーバーレイで表示。完了/「はじめる」で閉じる。
+  if (showOnboarding) {
+    return <OnboardingScreen onComplete={() => setShowOnboarding(false)} />;
+  }
 
   return (
     <Screen header={header} style={styles.container}>
@@ -81,50 +90,15 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             {/* 現在値を数値でリアルタイム表示 */}
             <Text style={styles.rowValue}>{Math.round(tolerance)}</Text>
           </View>
-          {/* スライダー: Card 内でフル幅を使うため padding を個別設定 */}
-          <View style={styles.sliderWrap}>
-            <Text style={styles.sliderEdge}>0</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={100}
-              step={1}
-              value={tolerance}
-              minimumTrackTintColor={IOS.blue}
-              maximumTrackTintColor={IOS.fill}
-              thumbTintColor={IOS.blue}
-              // onValueChange: UI のリアルタイム更新のみ（AsyncStorage は呼ばない）
-              onValueChange={v => setTolerance(v)}
-              // onSlidingComplete: 操作確定時にのみ保存（書き込み回数を減らす）
-              onSlidingComplete={v => {
-                const next = Math.round(v);
-                setTolerance(next);
-                void updateSettings({ tolerance: next });
-              }}
-            />
-            <Text style={styles.sliderEdge}>100</Text>
-          </View>
-          <View style={styles.separator} />
-          {/* プリセット行: よく使う値を3つのボタンで素早く選択できる */}
-          <View style={styles.presetRow}>
-            <Text style={styles.rowLabel}>プリセット</Text>
-            <View style={styles.presets}>
-              {([15, 30, 50] as const).map(v => (
-                <AnimatedPressable
-                  key={v}
-                  style={[styles.presetBtn, tolerance === v && styles.presetBtnOn]}
-                  onPress={() => {
-                    setTolerance(v);
-                    void updateSettings({ tolerance: v });
-                  }}
-                >
-                  <Text style={[styles.presetTxt, tolerance === v && styles.presetTxtOn]}>
-                    {v === 15 ? '弱' : v === 30 ? '標準' : '強'}
-                  </Text>
-                </AnimatedPressable>
-              ))}
-            </View>
-          </View>
+          {/* 共通スライダー（連続値＋弱/中/強ソフトスナップ）。
+              セットアップ画面と同一コンポーネントを使う。Card 内なので bare 指定。 */}
+          <ToleranceSlider
+            bare
+            showLabel={false}
+            value={tolerance}
+            onChange={setTolerance}
+            onComplete={v => void updateSettings({ tolerance: v })}
+          />
         </Card>
 
         {/* ════════════════════════════════════════
@@ -251,6 +225,12 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             <Text style={styles.rowLabel}>使い方</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
+          <View style={styles.separator} />
+          {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
+          <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
+            <Text style={styles.rowLabel}>オンボーディング(SVG)を表示(仮)</Text>
+            <Icon name="chevron-right" size={20} color={IOS.secondary} />
+          </AnimatedPressable>
         </Card>
 
     </Screen>
@@ -327,33 +307,7 @@ const styles = StyleSheet.create({
     marginLeft: 16, // 左端のラベルと揃える
   },
 
-  // ── スライダー ──────────────────────────────────────────────────────────────
-  sliderWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 4,
-  },
-  slider: {
-    flex: 1,
-    height: 40,
-  },
-  sliderEdge: {
-    fontSize: 12,
-    color: IOS.secondary,
-    minWidth: 20,
-    textAlign: 'center',
-  },
-
   // ── プリセットボタン行 ───────────────────────────────────────────────────────
-  presetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
   presets: {
     flexDirection: 'row',
     gap: 6,

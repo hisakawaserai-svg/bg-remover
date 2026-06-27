@@ -56,11 +56,20 @@ const STEPS = [
 interface Props {
   onClose: () => void;
   onPolygonTutorial?: () => void;
+  /**
+   * 'help'(既定):      設定>使い方からの閲覧。右上「完了」でいつでも閉じる。
+   * 'onboarding':      初回フロー。末尾CTA「はじめる」で前進。
+   * PolygonTutorialScreen と命名を揃える。
+   */
+  mode?: 'onboarding' | 'help';
+  /** onboarding 時のCTAハンドラ。フラグ保存等の副作用は呼び出し側が持つ。 */
+  onStart?: () => void;
 }
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function HowToScreen({ onClose, onPolygonTutorial }: Props) {
+export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help', onStart }: Props) {
+  const isOnboarding = mode === 'onboarding';
 
   // stagger の起点delay。各ステップは STAGGER_INTERVAL ずつずれて登場する。
   // FadeInView に delay を渡すだけで stagger を実現している（ループは親が担当）。
@@ -71,9 +80,12 @@ export default function HowToScreen({ onClose, onPolygonTutorial }: Props) {
       <AppHeader
         title="使い方"
         right={
-          <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
-            <Text style={styles.doneBtnTxt}>完了</Text>
-          </AnimatedPressable>
+          // help は「完了」でいつでも閉じる。onboarding は末尾CTAで前進するため非表示。
+          isOnboarding ? undefined : (
+            <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
+              <Text style={styles.doneBtnTxt}>完了</Text>
+            </AnimatedPressable>
+          )
         }
       />
     </FadeInView>
@@ -123,8 +135,9 @@ export default function HowToScreen({ onClose, onPolygonTutorial }: Props) {
        * スクロール前から非表示・スクロール後に表示、という動きは未対応。
        */}
 
-      {/* 手動切り抜きチュートリアルへのリンク */}
-      {onPolygonTutorial && (
+      {/* 手動切り抜きチュートリアルへのリンク。
+          初回オンボ中は踏むと help 版に化けて初回フローが分断するため非表示にする。 */}
+      {!isOnboarding && onPolygonTutorial && (
         <FadeInView delay={STAGGER_INTERVAL * 5}>
           <AnimatedPressable
             style={styles.tutorialRow}
@@ -168,6 +181,15 @@ export default function HowToScreen({ onClose, onPolygonTutorial }: Props) {
           <TipRow text="背景除去・分割の処理中はアプリを閉じないでください" />
         </Card>
       </FadeInView>
+
+      {/* オンボーディング時のみ: 読み終えて前進するCTA */}
+      {isOnboarding && (
+        <FadeInView delay={STAGGER_INTERVAL * 8}>
+          <AnimatedPressable style={styles.startBtn} onPress={() => onStart?.()} pressedScale={0.97}>
+            <Text style={styles.startBtnTxt}>はじめる</Text>
+          </AnimatedPressable>
+        </FadeInView>
+      )}
 
     </Screen>
   );
@@ -281,4 +303,16 @@ const styles = StyleSheet.create({
   tutorialText: { flex: 1, gap: 2 },
   tutorialLabel: { ...typography.callout, fontWeight: '600', color: colors.label },
   tutorialSub:   { ...typography.caption, color: colors.secondary },
+
+  // onboarding CTA（PolygonTutorialScreen の startBtn と揃える）
+  startBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  startBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
 });

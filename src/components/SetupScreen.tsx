@@ -7,7 +7,7 @@
  * 行数ステッパーで変更するたびに縦横両線がリアルタイムで更新される。
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Image,
   LayoutChangeEvent,
@@ -15,6 +15,11 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  withTiming,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 
@@ -43,8 +48,10 @@ interface Props {
 }
 
 export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto', onConfirm, onBack, onSettings }: Props) {
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const [rows, setRows] = useState(initialRows);
+  // スライダー操作中の表示用。確定時に updateSettings へ反映する。
+  const [tolerance, setTolerance] = useState(settings.tolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
 
@@ -110,6 +117,20 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
 
   const lineColor = settings.splitLineColor ?? '#007AFF';
 
+  // 分割線「伸びる」アニメ: 初回表示(レイアウト確定)＋行数変更で 0→1 を再生する。
+  // transform のみで動かし（白化回避）、全線が同じ grow を共有する。
+  // tolerance は線に無関係なので依存に入れない。
+  const grow = useSharedValue(0);
+  const fitReady = fitParams != null;
+  useEffect(() => {
+    if (!fitReady) return;
+    grow.value = 0;
+    grow.value = withTiming(1, { duration: 280 });
+  }, [rows, fitReady, grow]);
+  // 横線=左から右へ（scaleX のみ / 原点 left）, 縦線=上から下へ（scaleY のみ / 原点 top）
+  const hAnim = useAnimatedStyle(() => ({ transform: [{ scaleX: grow.value }] }));
+  const vAnim = useAnimatedStyle(() => ({ transform: [{ scaleY: grow.value }] }));
+
   const header = (
     <AppHeader
       title="分割設定"
@@ -163,19 +184,19 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
 
           {mode === 'auto' && (
             <>
-              {/* 横線（行境界）*/}
+              {/* 横線（行境界）: 左から右へ伸びる（scaleX のみ・原点 left）*/}
               {lineYs.map((y, i) => (
                 <React.Fragment key={`h${i}`}>
-                  <View style={[styles.hLineBg, { top: y - 2 }]} />
-                  <View style={[styles.hLine, { top: y - 1, backgroundColor: lineColor }]} />
+                  <Animated.View style={[styles.hLineBg, { top: y - 2 }, hAnim]} />
+                  <Animated.View style={[styles.hLine, { top: y - 1, backgroundColor: lineColor }, hAnim]} />
                 </React.Fragment>
               ))}
 
-              {/* 縦線（列境界: 各行の帯内だけに描く）*/}
+              {/* 縦線（列境界: 各行の帯内だけに描く）: 上から下へ伸びる（scaleY のみ・原点 top）*/}
               {colLines.map((seg, i) => (
                 <React.Fragment key={`v${i}`}>
-                  <View style={[styles.vLineBg, { left: seg.left - 2, top: seg.top, height: seg.height }]} />
-                  <View style={[styles.vLine, { left: seg.left - 1, top: seg.top, height: seg.height, backgroundColor: lineColor }]} />
+                  <Animated.View style={[styles.vLineBg, { left: seg.left - 2, top: seg.top, height: seg.height }, vAnim]} />
+                  <Animated.View style={[styles.vLine, { left: seg.left - 1, top: seg.top, height: seg.height, backgroundColor: lineColor }, vAnim]} />
                 </React.Fragment>
               ))}
             </>
@@ -205,7 +226,11 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
                 </View>
               </View>
             </Card>
-            <ToleranceSlider />
+            <ToleranceSlider
+              value={tolerance}
+              onChange={setTolerance}
+              onComplete={final => void updateSettings({ tolerance: final })}
+            />
           </>
         )}
 
@@ -323,12 +348,14 @@ const styles = StyleSheet.create({
     right: 0,
     height: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    transformOrigin: 'left', // 左から右へ伸ばすためスケール原点を左端に
   },
   hLine: {
     position: 'absolute',
     left: 0,
     right: 0,
     height: 2,
+    transformOrigin: 'left',
   },
 
   // ── 縦線（列境界: 行の帯内のみ）──────────────────────────────────────────
@@ -336,10 +363,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    transformOrigin: 'top', // 上から下へ伸ばすためスケール原点を上端に
   },
   vLine: {
     position: 'absolute',
     width: 2,
+    transformOrigin: 'top',
   },
 
   // ── カード内コントロール ───────────────────────────────────────────────────

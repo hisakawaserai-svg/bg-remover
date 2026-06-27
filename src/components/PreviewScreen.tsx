@@ -20,6 +20,8 @@ import {
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
+import CheckerboardBg from './ui/CheckerboardBg';
+import { useThumbBg } from '../hooks/useThumbBg';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { savePolygons } from '../imaging';
@@ -28,39 +30,12 @@ import type { Polygon } from './PolygonEditor';
 
 // サムネイル表示サイズ (px)
 const THUMB_SIZE = 140;
-// 市松模様タイルサイズ (px)
-const TILE = 14;
 
 interface Props {
   bgResult: RemoveBgResult;
   polygons: Polygon[];
   onBack: () => void;             // 編集に戻る（polygons はApp側で保持済み）
   onSave: (count: number) => void; // 保存完了後に App.tsx の state を 'done' へ
-}
-
-// ── 市松模様背景コンポーネント ─────────────────────────────────────────────────
-// transparent PNG の背景として敷くことで透過部分が視認できる
-
-function Checkerboard({ size }: { size: number }) {
-  const cols = Math.ceil(size / TILE);
-  const rows = Math.ceil(size / TILE);
-  return (
-    <View style={{ position: 'absolute', width: size, height: size, overflow: 'hidden' }}>
-      {Array.from({ length: rows }, (_, r) => (
-        <View key={r} style={{ flexDirection: 'row' }}>
-          {Array.from({ length: cols }, (_, c) => (
-            <View
-              key={c}
-              style={{
-                width: TILE, height: TILE,
-                backgroundColor: (r + c) % 2 === 0 ? '#CCCCCC' : '#FFFFFF',
-              }}
-            />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
 }
 
 // ── サムネイル生成 ────────────────────────────────────────────────────────────
@@ -154,6 +129,7 @@ function pointInPoly(px: number, py: number, pts: [number, number][]): boolean {
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
 export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Props) {
+  const bg = useThumbBg();
   // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
   const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -221,8 +197,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
           <ScrollView contentContainerStyle={styles.grid}>
             {thumbs.map((uri, idx) => (
               <View key={polygons[idx]?.id ?? idx} style={styles.cell}>
-                {/* 市松模様: 透過部分が白/グレーの格子として見える */}
-                <Checkerboard size={THUMB_SIZE} />
+                <CheckerboardBg mode={bg} tile={14} width={THUMB_SIZE} height={THUMB_SIZE} />
                 {uri
                   ? <Image source={{ uri }} style={styles.thumb} resizeMode="contain" />
                   : <Text style={styles.errorTxt}>×</Text>

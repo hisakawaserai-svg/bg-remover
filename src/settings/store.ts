@@ -26,6 +26,8 @@ export interface AppSettings {
   autoDeleteOnExport: boolean;
   /** 手動切り抜きのチュートリアルをスキップするか */
   skipPolygonTutorial: boolean;
+  /** 全体オンボーディングを表示済みか（false = 未表示 = 初回） */
+  hasSeenOnboarding: boolean;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -38,6 +40,7 @@ export const DEFAULTS: AppSettings = {
   splitLineColor: '#007AFF',
   autoDeleteOnExport: true,
   skipPolygonTutorial: false,
+  hasSeenOnboarding: false,
 };
 
 /** 設定を読み込む。失敗時はデフォルト値を返す（UI がクラッシュしないよう）。*/

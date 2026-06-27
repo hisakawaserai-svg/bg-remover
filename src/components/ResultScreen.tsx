@@ -29,7 +29,8 @@ import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import { colors, spacing, radius, shadow, typography } from './ui/theme';
-import { useSettings } from '../settings/SettingsContext';
+import CheckerboardBg from './ui/CheckerboardBg';
+import { useThumbBg } from '../hooks/useThumbBg';
 import type { Cell } from '../cellTypes';
 import type { BBox } from '../imaging';
 
@@ -77,33 +78,10 @@ function noUnselectedInUnion(cells: Cell[], indices: number[]): boolean {
   return true;
 }
 
-// ── チェッカー背景 ────────────────────────────────────────────────────────────
+// ── 定数 ─────────────────────────────────────────────────────────────────────
 
-const TILE = 40;
 /** poly セル用フォールバックサイズ */
 const POLY_CELL_SIZE = 100;
-
-function Checkerboard({ width, height }: { width: number; height: number }) {
-  const cols = Math.ceil(width  / TILE);
-  const rows = Math.ceil(height / TILE);
-  return (
-    <View style={{ position: 'absolute', width, height, overflow: 'hidden' }}>
-      {Array.from({ length: rows }, (_, r) => (
-        <View key={r} style={{ flexDirection: 'row' }}>
-          {Array.from({ length: cols }, (_, c) => (
-            <View
-              key={c}
-              style={{
-                width: TILE, height: TILE,
-                backgroundColor: (r + c) % 2 === 0 ? '#CCCCCC' : '#FFFFFF',
-              }}
-            />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
 
 // ── CellItem ────────────────────────────────────────────────────────────────
 
@@ -127,6 +105,7 @@ function CellItem({
     () => isMissing ? null : { uri: cell.thumbUri },
     [cell.thumbUri, isMissing],
   );
+  const thumbBg = useThumbBg();
 
   return (
     <TouchableOpacity
@@ -136,7 +115,7 @@ function CellItem({
       delayLongPress={400}
       style={[styles.cellWrap, { width, height }, posStyle]}
     >
-      <Checkerboard width={width} height={height} />
+      <CheckerboardBg mode={thumbBg} tile={40} width={width} height={height} />
       {isMissing ? (
         // ファイル欠損: グレー背景 + アイコンでフォールバック表示
         <View style={[StyleSheet.absoluteFill, styles.missingOverlay]}>
@@ -209,7 +188,6 @@ export default function ResultScreen({
   onEditCell,
   onMerge,
 }: Props) {
-  const { settings, updateSettings } = useSettings();
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
 

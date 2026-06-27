@@ -44,7 +44,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 // 各セルをリサイズ済み透過PNGにし、ギャラリー(写真アプリ)のアルバム「スタンプ抜き」へ保存する。
-// AirDropやLINE Sticker Makerの写真選択からそのまま選べるようにするのが狙い。
+// AirDropやLINE スタンプ Makerの写真選択からそのまま選べるようにするのが狙い。
 export async function saveCells(
   rgba: Uint8Array,
   srcW: number,
@@ -247,12 +247,18 @@ export async function saveSkImages(images: SkImage[]): Promise<SaveResult> {
 }
 
 /**
+ * 出力画像に付与する比率マージン（全経路: 自動/合体/手動 共通の単一の出所）。
+ * 幅/高さ それぞれのこの割合を左右・上下に足す。微調整はこの値だけ変える。
+ */
+export const OUTPUT_MARGIN_RATIO = 0.04;
+
+/**
  * SkImage の四辺に透明マージンを追加して返す。
- * ratio = 0.08 なら 幅/高さ それぞれの 8% を左右・上下に足す。
+ * ratio = 0.04 なら 幅/高さ それぞれの 4% を左右・上下に足す。
  * 絵のサイズに比例するため大小関係なくマージンの見た目が揃う。
  * 呼び出し側は元の image を dispose する責任を持つ。
  */
-export function addMarginToImage(image: SkImage, ratio = 0.08): SkImage {
+export function addMarginToImage(image: SkImage, ratio = OUTPUT_MARGIN_RATIO): SkImage {
   const w = image.width();
   const h = image.height();
   const mx = Math.round(w * ratio);

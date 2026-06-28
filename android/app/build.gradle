@@ -1,8 +1,11 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-// react-native-vector-icons: フォントファイルを assets/fonts に自動コピー
-apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+// react-native-vector-icons のフォント自動登録は無効化する。
+// iOS と同じく react-native-asset 方式（assets/fonts/MaterialIcons.ttf の実ファイル）に
+// 一本化するため。これを有効にすると ReactNativeVectorIcons/fonts/ 経由でも
+// 同名フォントが登録され、mergeReleaseAssets で Duplicate resources になる。
+// apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 
 /**
  * This is the configuration block to customize your React Native Android app.

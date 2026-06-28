@@ -25,6 +25,7 @@ import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
+import ImageZoomModal from './ui/ImageZoomModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {
   Canvas,
@@ -101,6 +102,10 @@ interface Props {
   onPolygonsChange?: (polys: Polygon[]) => void;
   /** 設定画面へ遷移。省略可（ヘッダーに設定アイコンを出さない）。 */
   onSettings?: () => void;
+  /** ホームへ戻る。省略可（ヘッダーにホームアイコンを出さない）。 */
+  onHome?: () => void;
+  /** ヘッダーの「元画像」ズーム用 URI。分割結果とヘッダーを揃える。 */
+  originalImageUri?: string;
 }
 
 // ── ポリゴン色 ──────────────────────────────────────────────────────────────
@@ -179,7 +184,7 @@ function distPointToSegment(
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onSettings }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onSettings, onHome, originalImageUri }: Props) {
 
   // ── SkImage ──────────────────────────────────────────────────────────────
   const skImage = useMemo<SkImage | null>(() => {
@@ -194,6 +199,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 実測キャンバスサイズ (onLayout で確定するまで 0 のまま)
   // 0 の間は Canvas を描画しない（初回レンダーのズレを防ぐ）
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
+  const [zoomVisible, setZoomVisible] = useState(false);
   const canvasSizeRef = useRef(canvasSize);
   canvasSizeRef.current = canvasSize;
 
@@ -916,9 +923,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       title="手動切り抜き"
       onBack={() => onBack(polygons)}
       backLabel="戻る"
-      right={onSettings ? (
-        <HeaderActions showSettings onSettings={onSettings} />
-      ) : undefined}
+      right={
+        <HeaderActions
+          showOriginalImage={!!originalImageUri}
+          showHome={!!onHome}
+          showSettings={!!onSettings}
+          onOriginalImage={() => setZoomVisible(true)}
+          onHome={onHome}
+          onSettings={onSettings}
+        />
+      }
     />
   );
 
@@ -1134,6 +1148,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           )}
         </AnimatedPressable>
       </View>
+
+      {/* 元画像ズーム（分割結果と同じヘッダー挙動）*/}
+      {originalImageUri ? (
+        <ImageZoomModal visible={zoomVisible} uri={originalImageUri} onClose={() => setZoomVisible(false)} />
+      ) : null}
     </Screen>
   );
 }

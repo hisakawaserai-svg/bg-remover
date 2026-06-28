@@ -310,7 +310,9 @@ const s = StyleSheet.create({
   previewBox: {
     width: '100%',
     flex: 1,
-    minHeight: 200,
+    // 分割しないチェック行を追加したぶん固定高が増えたので、プレビューは
+    // より小さくまで縮めて CTA が枠外(overflow:hidden)に押し出されないようにする。
+    minHeight: 140,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#1C1C1E',

@@ -167,6 +167,10 @@ export default function App() {
   const [appState,  setAppState]  = useState<AppState>('idle');
   // 設定画面を開く直前の state を退避し、閉じた時に元の画面へ戻すために使う
   const prevStateRef = useRef<AppState>('idle');
+  // 使い方(howto)画面の戻り先。prevStateRef を上書きすると設定→使い方→戻る後に
+  // prevStateRef が 'settings' のまま固定され、設定の「完了」が自分自身へ戻って
+  // 閉じなくなるため、howto は専用 ref で戻り先を管理する。
+  const howtoReturnRef = useRef<AppState>('idle');
 
   // 自動分割モード用
   const [rows,        setRows]        = useState(DEFAULT_ROWS);
@@ -727,8 +731,9 @@ export default function App() {
       <SettingsScreen
         onClose={() => setAppState(prevStateRef.current)}
         onHowTo={() => {
-          // 設定→使い方→戻るで設定に戻れるよう prevStateRef を更新してから遷移
-          prevStateRef.current = 'settings';
+          // 設定→使い方→戻るで設定に戻れるよう、howto 専用 ref に戻り先を保存。
+          // prevStateRef は設定自身の戻り先なので上書きしない。
+          howtoReturnRef.current = 'settings';
           setAppState('howto');
         }}
       />
@@ -756,7 +761,7 @@ export default function App() {
   if (appState === 'howto') {
     return (
       <HowToScreen
-        onClose={() => setAppState(prevStateRef.current)}
+        onClose={() => setAppState(howtoReturnRef.current)}
         onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
       />
     );
@@ -781,8 +786,8 @@ export default function App() {
     return (
       <PolygonTutorialScreen
         mode="help"
-        onStart={() => setAppState('howto')}
-        onBack={() => setAppState('howto')}
+        onStart={() => { howtoReturnRef.current = 'polygon_tutorial_help'; setAppState('howto'); }}
+        onBack={() => { howtoReturnRef.current = 'polygon_tutorial_help'; setAppState('howto'); }}
       />
     );
   }
@@ -802,8 +807,13 @@ export default function App() {
             setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
           }
         }}
-        onBack={() => setAppState('idle')}
+        // ホームへ戻る際は reset() を使う。setAppState('idle') 直行だと
+        // sessions 一覧が再読込されず、手動編集で mode:'custom' に変えても
+        // カードのラベルが「透過済み（自動）」のまま残る（在庫の stale 表示）。
+        onBack={reset}
         onSettings={goToSettings}
+        onHome={reset}
+        originalImageUri={currentImageUri}
       />
     );
   }
@@ -876,6 +886,8 @@ export default function App() {
           bgResult={bgResult}
           displayW={winW}
           displayH={winH}
+          onHome={reset}
+          originalImageUri={currentImageUri}
           // セッション復元時: polygons が空でなければ initialPolygons として渡す。
           // 座標は画像ピクセル基準なのでそのまま渡せる（変換不要）。
           initialPolygons={polygons.length > 0 ? polygons : undefined}

@@ -27,6 +27,7 @@ import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
+import ImageZoomModal from './ui/ImageZoomModal';
 import Card from './ui/Card';
 import ToleranceSlider from './ui/ToleranceSlider';
 import { calcRowBoundaries, calcColEdgesPerRow } from '../imaging/splitObjects';
@@ -46,11 +47,16 @@ interface Props {
   onConfirm: (rows: number, mode: SetupMode, noSplit: boolean) => void;
   onBack: () => void;
   onSettings?: () => void;
+  onHome?: () => void;
+  /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
+  originalImageUri?: string;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto', onConfirm, onBack, onSettings }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto', onConfirm, onBack, onSettings, onHome, originalImageUri }: Props) {
   const { settings, updateSettings } = useSettings();
   const [rows, setRows] = useState(initialRows);
+  // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
+  const [zoomVisible, setZoomVisible] = useState(false);
   // スライダー操作中の表示用。確定時に updateSettings へ反映する。
   const [tolerance, setTolerance] = useState(settings.tolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
@@ -154,9 +160,16 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
       title="分割設定"
       onBack={onBack}
       backLabel="戻る"
-      right={onSettings ? (
-        <HeaderActions showSettings onSettings={onSettings} />
-      ) : undefined}
+      right={
+        <HeaderActions
+          showOriginalImage={!!originalImageUri}
+          showHome={!!onHome}
+          showSettings={!!onSettings}
+          onOriginalImage={() => setZoomVisible(true)}
+          onHome={onHome}
+          onSettings={onSettings}
+        />
+      }
     />
   );
 
@@ -297,6 +310,11 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           </Animated.View>
         )}
       </View>
+
+      {/* 元画像ズーム（分割結果と同じヘッダー挙動）*/}
+      {originalImageUri ? (
+        <ImageZoomModal visible={zoomVisible} uri={originalImageUri} onClose={() => setZoomVisible(false)} />
+      ) : null}
     </Screen>
   );
 }

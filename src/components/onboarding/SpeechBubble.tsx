@@ -47,13 +47,18 @@ export default function SpeechBubble({
 
   const bubble = (
     <Animated.View style={[s.bubbleWrap, bubbleStyle]}>
-      <View style={s.bubble}>
-        {/* しっぽ(三角): 吹き出し(青箱)基準で縦中央に固定。話し手の方向へ。 */}
-        <View style={[s.tail, direction === 'left' ? s.tailLeft : s.tailRight]} />
-        <View style={s.numCircle}>
-          <Text style={s.numTxt}>{stepNumber}</Text>
+      {/* しっぽ(三角)は吹き出しの「兄弟」にして、row(alignItems:center)で縦中央に置く。
+          absolute top:'50%' は Android で解決されず上端に寄る(=行数で位置がズレる)ため、
+          flex で中央寄せして行数に依らず常に箱の縦中央へ向かせる。 */}
+      <View style={s.bubbleRow}>
+        {direction === 'left' && <View style={[s.tail, s.tailLeft]} />}
+        <View style={s.bubble}>
+          <View style={s.numCircle}>
+            <Text style={s.numTxt}>{stepNumber}</Text>
+          </View>
+          <Text style={s.text} numberOfLines={2}>{text}</Text>
         </View>
-        <Text style={s.text} numberOfLines={2}>{text}</Text>
+        {direction === 'right' && <View style={[s.tail, s.tailRight]} />}
       </View>
     </Animated.View>
   );
@@ -84,11 +89,17 @@ const s = StyleSheet.create({
     alignItems: 'flex-start', // 吹き出しは中身に合わせて左寄せ(横いっぱいに伸ばさない)
     justifyContent: 'center',
   },
-  bubble: {
+  // しっぽ+吹き出しを横並びにし、縦中央で揃える(行数に依らずしっぽが箱中央を向く)
+  bubbleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',  // 中身ぶんだけの幅
     maxWidth: '100%',         // 残り幅で頭打ち → テキストが折り返す
+  },
+  bubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,            // 残り幅で頭打ち → テキストが折り返す
     gap: 10,
     backgroundColor: COLORS.brandBlue,
     borderRadius: 18,
@@ -115,11 +126,8 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  // しっぽ(三角) — 縦中央。左向き/右向きで色の付く辺を変える。
+  // しっぽ(三角) — row の縦中央に並ぶ。左向き/右向きで色の付く辺を変える。
   tail: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -TAIL,
     width: 0,
     height: 0,
     borderTopWidth: TAIL,
@@ -128,12 +136,12 @@ const s = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tailLeft: {
-    left: -TAIL,
+    marginRight: -1,          // 箱と隙間なく接する
     borderRightWidth: TAIL,
     borderRightColor: COLORS.brandBlue,
   },
   tailRight: {
-    right: -TAIL,
+    marginLeft: -1,           // 箱と隙間なく接する
     borderLeftWidth: TAIL,
     borderLeftColor: COLORS.brandBlue,
   },

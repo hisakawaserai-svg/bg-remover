@@ -36,8 +36,8 @@ async function openLineStickerMaker() {
     ? 'linestickercreator://'
     : 'linestickercreator://';
   const storeUrl = Platform.OS === 'android'
-    ? 'https://play.google.com/store/apps/details?id=com.linecorp.LSMS'
-    : 'https://apps.apple.com/app/line-sticker-maker/id1239310100';
+    ? 'https://play.google.com/store/apps/details?id=com.linecorp.usersticker'
+    : 'https://apps.apple.com/app/line-sticker-maker/id1239684967';
   const canOpen = await Linking.canOpenURL(appScheme).catch(() => false);
   Linking.openURL(canOpen ? appScheme : storeUrl);
 }

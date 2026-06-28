@@ -191,13 +191,20 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
             </Animated.View>
           </View>
 
-          {/* 行数(段数)ステッパー */}
+          {/* 行数(段数)ステッパー + 分割しないチェック(静的・OFF表示) */}
           <View style={s.card}>
-            <Text style={s.rowLabel}>行数（段数）</Text>
-            <View style={s.stepper}>
-              <View style={s.stepBtn}><Text style={s.stepTxt}>−</Text></View>
-              <Text style={s.stepVal}>1</Text>
-              <View style={s.stepBtn}><Text style={s.stepTxt}>＋</Text></View>
+            <View style={s.cardRow}>
+              <Text style={s.rowLabel}>行数（段数）</Text>
+              <View style={s.stepper}>
+                <View style={s.stepBtn}><Text style={s.stepTxt}>−</Text></View>
+                <Text style={s.stepVal}>1</Text>
+                <View style={s.stepBtn}><Text style={s.stepTxt}>＋</Text></View>
+              </View>
+            </View>
+            <View style={s.cardDivider} />
+            <View style={s.checkRow}>
+              <View style={s.checkbox} />
+              <Text style={s.checkLabel}>分割しない（1枚だけくり抜く）</Text>
             </View>
           </View>
 
@@ -350,17 +357,39 @@ const s = StyleSheet.create({
   },
   badgeTxt: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
 
-  // カード(行数 / 強さ)
+  // カード(行数 / 強さ): 縦積みコンテナ
   card: {
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  cardDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#E3E3E8',
+    marginVertical: 12,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#C6C6C8',
+    backgroundColor: '#FFFFFF',
+  },
+  checkLabel: { fontSize: 15, color: '#000' },
   rowLabel: { fontSize: 15, color: '#000' },
 
   // ステッパー

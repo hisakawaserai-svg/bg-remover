@@ -786,8 +786,11 @@ export default function App() {
     return (
       <PolygonTutorialScreen
         mode="help"
-        onStart={() => { howtoReturnRef.current = 'polygon_tutorial_help'; setAppState('howto'); }}
-        onBack={() => { howtoReturnRef.current = 'polygon_tutorial_help'; setAppState('howto'); }}
+        // polygon_tutorial_help は 使い方(howto) の子画面。ここから howto へ戻るだけで、
+        // howto 自身の戻り先(howtoReturnRef=設定 など)は書き換えない。
+        // 書き換えると howto の「戻る」が tutorial へループしてしまう。
+        onStart={() => setAppState('howto')}
+        onBack={() => setAppState('howto')}
       />
     );
   }

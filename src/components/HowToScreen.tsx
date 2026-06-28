@@ -79,14 +79,9 @@ export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help',
     <FadeInView delay={0}>
       <AppHeader
         title="使い方"
-        right={
-          // help は「完了」でいつでも閉じる。onboarding は末尾CTAで前進するため非表示。
-          isOnboarding ? undefined : (
-            <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
-              <Text style={styles.doneBtnTxt}>完了</Text>
-            </AnimatedPressable>
-          )
-        }
+        // help は「戻る」で呼び出し元へ戻る。onboarding は末尾CTAで前進するため非表示。
+        onBack={isOnboarding ? undefined : onClose}
+        backLabel={isOnboarding ? undefined : '戻る'}
       />
     </FadeInView>
   );
@@ -209,9 +204,6 @@ function TipRow({ text }: { text: string }) {
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  doneBtn:    { paddingHorizontal: 4 },
-  doneBtnTxt: { ...typography.headline, color: colors.accent },
-
   lead: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,

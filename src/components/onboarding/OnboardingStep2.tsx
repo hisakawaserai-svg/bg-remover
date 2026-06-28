@@ -26,6 +26,7 @@ import Animated, {
   withTiming,
   cancelAnimation,
   Easing,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import BirdMascot from './BirdMascot';
@@ -62,7 +63,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
     }
     phase.value = 0;
     phase.value = withRepeat(
-      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear }),
+      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
     );

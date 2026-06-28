@@ -18,6 +18,7 @@ import Animated, {
   withRepeat,
   withTiming,
   cancelAnimation,
+  ReduceMotion,
   Easing,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -59,7 +60,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
     }
     phase.value = 0;
     phase.value = withRepeat(
-      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear }),
+      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
     );

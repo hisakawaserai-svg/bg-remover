@@ -30,6 +30,7 @@ import Animated, {
   withRepeat,
   Easing,
   SharedValue,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
@@ -128,7 +129,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   useEffect(() => {
     progress.value = 0;
     progress.value = withRepeat(
-      withTiming(1, { duration: STEP_DURATIONS[currentIndex] ?? 12000, easing: Easing.linear }),
+      withTiming(1, { duration: STEP_DURATIONS[currentIndex] ?? 12000, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
     );

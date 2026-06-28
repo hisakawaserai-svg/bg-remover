@@ -29,6 +29,7 @@ import Animated, {
   Easing,
   interpolateColor,
   runOnJS,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import {
@@ -524,7 +525,7 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
   const phase = useSharedValue(0);
   useEffect(() => {
     phase.value = withRepeat(
-      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear }),
+      withTiming(1, { duration: CYCLE_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
     );

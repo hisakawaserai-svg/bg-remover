@@ -31,6 +31,7 @@ import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 import {
   removeBackground,
   splitRowsThenCols,
+  splitNone,
   detectRowCount,
   cropToImage,
   trimToForeground,
@@ -112,6 +113,7 @@ import { useThumbBg } from './src/hooks/useThumbBg';
 import SettingsScreen from './src/components/SettingsScreen';
 import SavedScreen    from './src/components/SavedScreen';
 import HowToScreen   from './src/components/HowToScreen';
+import OnboardingScreen from './src/components/OnboardingScreen';
 import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
@@ -303,9 +305,12 @@ export default function App() {
   // row_confirm 画面で「この行数で分割」を押した時に呼ぶ。
   // 行はユーザーが指定（n）、各行内の列は splitRowsThenCols が自動検出する。
 
-  const doSplit = useCallback(async (n: number) => {
+  const doSplit = useCallback(async (n: number, noSplit = false) => {
     if (!bgResult) return;
-    const bboxList = splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n);
+    // noSplit: projection split をスキップし画像全体を1カットにする（くり抜きは共通パス）
+    const bboxList = noSplit
+      ? splitNone(bgResult.rgba, bgResult.width, bgResult.height)
+      : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n);
     if (bboxList.length === 0) {
       Alert.alert('結果', '前景が検出されませんでした。行数を変えて再試行してください。');
       return;
@@ -763,13 +768,11 @@ export default function App() {
   // skipPolygonTutorial の分岐（[App.tsx]）と同じ書き味で、永続フラグで一度きり表示する。
   if (appState === 'idle' && settingsLoaded && !appSettings.hasSeenOnboarding) {
     return (
-      <HowToScreen
-        mode="onboarding"
-        // onboarding はヘッダー「完了」を出さないため onClose は到達しないが、
-        // 型の都合で「はじめる」と同じくフラグを立てて閉じる安全側にしておく。
-        onClose={() => void updateSettings({ hasSeenOnboarding: true })}
-        onStart={() => void updateSettings({ hasSeenOnboarding: true })}
-        onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
+      <OnboardingScreen
+        // 「はじめる」(最終ステップ)タップで初回フラグを永続化 → 以後は出ない。
+        // 書き込みは onComplete の1回だけ(スキップ/離脱では書かない)。
+        // フラグ=true で本ゲート条件が false になり、通常ホーム(idle)へ自動遷移する。
+        onComplete={() => void updateSettings({ hasSeenOnboarding: true })}
       />
     );
   }
@@ -791,10 +794,10 @@ export default function App() {
         bgResult={bgResult}
         initialRows={confirmRows}
         initialMode={splitMode}
-        onConfirm={(rows, mode) => {
+        onConfirm={(rows, mode, noSplit) => {
           setSplitMode(mode);
           if (mode === 'auto') {
-            doSplit(rows);
+            doSplit(rows, noSplit);
           } else {
             setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
           }

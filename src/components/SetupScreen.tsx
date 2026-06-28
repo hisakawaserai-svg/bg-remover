@@ -7,10 +7,11 @@
  * 行数ステッパーで変更するたびに縦横両線がリアルタイムで更新される。
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Image,
   LayoutChangeEvent,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -42,7 +43,7 @@ interface Props {
   bgResult: RemoveBgResult;
   initialRows: number;
   initialMode?: SetupMode;
-  onConfirm: (rows: number, mode: SetupMode) => void;
+  onConfirm: (rows: number, mode: SetupMode, noSplit: boolean) => void;
   onBack: () => void;
   onSettings?: () => void;
 }
@@ -53,7 +54,24 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
   // スライダー操作中の表示用。確定時に updateSettings へ反映する。
   const [tolerance, setTolerance] = useState(settings.tolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
+  const [noSplit, setNoSplit] = useState(false);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
+
+  // ── 簡易トースト（連打防止つき）─────────────────────────────────────────────
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastOpacity = useSharedValue(0);
+  const toastBusy = useRef(false);
+  const showToast = useCallback((msg: string) => {
+    if (toastBusy.current) return; // 表示中は再発火しない
+    toastBusy.current = true;
+    setToastMsg(msg);
+    toastOpacity.value = withTiming(1, { duration: 150 });
+    setTimeout(() => {
+      toastOpacity.value = withTiming(0, { duration: 250 });
+      setTimeout(() => { setToastMsg(null); toastBusy.current = false; }, 250);
+    }, 1400);
+  }, [toastOpacity]);
+  const toastAnim = useAnimatedStyle(() => ({ opacity: toastOpacity.value }));
 
   // bgResult.rgba → base64 PNG URI（変換は1回だけ）
   const imageUri = useMemo(() => {
@@ -174,7 +192,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           )}
 
           {/* 検出数バッジ（自動モードかつ splitCount >= 1 のみ）*/}
-          {mode === 'auto' && splitCount != null && splitCount >= 1 && (
+          {mode === 'auto' && !noSplit && splitCount != null && splitCount >= 1 && (
             <View style={styles.badge} pointerEvents="none">
               <Text style={styles.badgeTxt}>
                 {splitCount >= 2 ? `${splitCount}個に分かれます` : '分割なし'}
@@ -182,7 +200,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
             </View>
           )}
 
-          {mode === 'auto' && (
+          {mode === 'auto' && !noSplit && (
             <>
               {/* 横線（行境界）: 左から右へ伸びる（scaleX のみ・原点 left）*/}
               {lineYs.map((y, i) => (
@@ -208,8 +226,9 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           <>
             <Card style={styles.card}>
               <View style={styles.rowInput}>
-                <Text style={styles.rowLabel}>行数（段数）</Text>
-                <View style={styles.stepper}>
+                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>行数（段数）</Text>
+                {/* 行数ステッパー: noSplit 時はグレーアウト＋上に Pressable を重ねてタップを横取り */}
+                <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
                     onPress={() => setRows(v => clamp(v - 1, 1, 20))}
@@ -223,8 +242,27 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
                   >
                     <Text style={styles.stepTxt}>+</Text>
                   </AnimatedPressable>
+                  {noSplit && (
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      onPress={() => showToast('分割しない時は行数を指定できません')}
+                    />
+                  )}
                 </View>
               </View>
+
+              {/* 分割しないチェックボックス */}
+              <View style={styles.separator} />
+              <AnimatedPressable
+                style={styles.checkRow}
+                onPress={() => setNoSplit(v => !v)}
+                pressedScale={0.98}
+              >
+                <View style={[styles.checkBox, noSplit && styles.checkBoxOn]}>
+                  {noSplit && <Text style={styles.checkMark}>✓</Text>}
+                </View>
+                <Text style={styles.checkLabel}>分割しない（1枚だけくり抜く）</Text>
+              </AnimatedPressable>
             </Card>
             <ToleranceSlider
               value={tolerance}
@@ -243,14 +281,21 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           </Card>
         )}
 
-        <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, mode)} pressedScale={0.97}>
+        <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, mode, noSplit)} pressedScale={0.97}>
           <Text style={styles.btnTxt}>
-            {mode === 'auto' ? 'この行数で分割' : 'ポリゴン編集へ'}
+            {mode === 'auto' ? (noSplit ? '分割せずにくり抜く' : 'この行数で分割') : 'ポリゴン編集へ'}
           </Text>
         </AnimatedPressable>
         <AnimatedPressable style={styles.secondaryBtn} onPress={onBack} pressedScale={0.97}>
           <Text style={styles.secondaryBtnTxt}>画像を選び直す</Text>
         </AnimatedPressable>
+
+        {/* トースト */}
+        {toastMsg && (
+          <Animated.View style={[styles.toast, toastAnim]} pointerEvents="none">
+            <Text style={styles.toastTxt}>{toastMsg}</Text>
+          </Animated.View>
+        )}
       </View>
     </Screen>
   );
@@ -390,6 +435,63 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: IOS.separator,
     marginVertical: 4,
+  },
+  disabled: {
+    opacity: 0.35,
+  },
+  disabledTxt: {
+    color: IOS.secondary,
+  },
+
+  // ── 分割しないチェックボックス ─────────────────────────────────────────────
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: IOS.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: IOS.card,
+  },
+  checkBoxOn: {
+    backgroundColor: IOS.blue,
+    borderColor: IOS.blue,
+  },
+  checkMark: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  checkLabel: {
+    fontSize: 15,
+    color: IOS.label,
+  },
+
+  // ── トースト ───────────────────────────────────────────────────────────────
+  toast: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    bottom: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.82)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  toastTxt: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 
   // ── ステッパー ─────────────────────────────────────────────────────────────

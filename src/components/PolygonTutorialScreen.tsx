@@ -42,6 +42,7 @@ import {
 import type { AnimatedProp } from '@shopify/react-native-skia';
 import type { Vector } from '@shopify/react-native-skia';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import BirdMascot from './onboarding/BirdMascot';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
@@ -74,11 +75,13 @@ const INIT_TR = { x: TAP_X + INIT_HALF, y: TAP_Y - INIT_HALF };
 const INIT_BL = { x: TAP_X - INIT_HALF, y: TAP_Y + INIT_HALF };
 const INIT_BR = { x: TAP_X + INIT_HALF, y: TAP_Y + INIT_HALF };
 
-// 最終(キャラを囲む)ボックス角
-const FINAL_TL = { x: 52, y: 44 };
-const FINAL_TR = { x: 148, y: 44 };
-const FINAL_BL = { x: 52, y: 162 };
-const FINAL_BR = { x: 148, y: 162 };
+// 最終(キャラを囲む)ボックス角。
+// day の BirdMascot(後述: left50/top50/size100 → 円の外接は x50..150 / y50..150、
+// 尻尾が右下 ~(134,136) まで)に、少しだけ余白を足してゆるく囲む。
+const FINAL_TL = { x: 44, y: 44 };
+const FINAL_TR = { x: 156, y: 44 };
+const FINAL_BL = { x: 44, y: 158 };
+const FINAL_BR = { x: 156, y: 158 };
 
 const HANDLE_R  = 5;   // ハンドル円半径
 const FINGER_R  = 7;   // 指カーソル円半径
@@ -288,6 +291,16 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
   return (
     // plain View: ダーク背景は常に表示、Canvas 内要素は sceneOp Group で一括制御
     <View style={fig.wrap}>
+      {/* 飾り: night を右に半分見切れ配置(静止・非インタラクティブ・背面・やや小さめ)。
+          fig.wrap の overflow:hidden で右端がクリップされ「見切れ」になる。囲み対象ではない。 */}
+      <View style={fig.nightDeco} pointerEvents="none">
+        <BirdMascot variant="night" size={76} />
+      </View>
+      {/* くり抜き見本本体: day を Canvas の背面に重ねる(箱線・ハンドルは Canvas 側が上に描く)。
+          Skia は別 Canvas をネストできないため View レイヤーで重ね、同じ 200×200 座標系に乗せる。 */}
+      <View style={fig.dayMascot} pointerEvents="none">
+        <BirdMascot variant="day" size={100} />
+      </View>
       <Canvas style={{ width: CANVAS_W, height: CANVAS_H }}>
         {/*
           最上位 Group で sceneOp を適用。
@@ -297,9 +310,7 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
         */}
         <Group opacity={sceneOp as unknown as AnimatedProp<number>}>
 
-          {/* ─ キャラシルエット (静止) ─ */}
-          <Circle cx={HEAD_CX} cy={HEAD_CY} r={HEAD_R} color="#4A4A4E" />
-          <Oval x={BODY_X} y={BODY_Y} width={BODY_W} height={BODY_H} color="#4A4A4E" />
+          {/* ─ キャラシルエットは BirdMascot(day) を背面 View で表示するためここでは描かない ─ */}
 
           {/* ─ ペンボタン (右端フローティング) — ステップ1でグロー ─ */}
           {/* ハロー: ボタン外側の柔らかい青グロー */}
@@ -403,6 +414,12 @@ const fig = StyleSheet.create({
     alignSelf: 'center',
     overflow: 'hidden',
   },
+  // 重ね順は zIndex を付けず JSX のソース順で決める: night → day → Canvas(箱線/ハンドル)。
+  // ※zIndex を付けると Canvas より前面に出てしまい、箱線がキャラの裏に回るので付けない。
+  // くり抜き見本本体(day): 200×200 座標系の中央に size100(left/top=50 → 円は 50..150)。Canvas より背面。
+  dayMascot: { position: 'absolute', left: 50, top: 50 },
+  // 飾り(night): 右端から半分はみ出す(left164 + size76 = 240 > 200 でクリップ)。day より背面・静止。
+  nightDeco: { position: 'absolute', left: 164, top: 62 },
 });
 
 // ── アニメーション連動ステップカード ─────────────────────────────────────────

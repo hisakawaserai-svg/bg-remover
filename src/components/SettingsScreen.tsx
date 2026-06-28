@@ -228,7 +228,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
           <View style={styles.separator} />
           {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>オンボーディング(SVG)を表示(仮)</Text>
+            <Text style={styles.rowLabel}>チュートリアルをもう一度見る</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
         </Card>

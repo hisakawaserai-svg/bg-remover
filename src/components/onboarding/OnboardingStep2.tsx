@@ -5,7 +5,7 @@
  * 実画面(SetupScreen の自動分割)をそっくり再現し、
  *   A) 「自動分割」で切り分ける案内
  *   B) 分割線が上から伸びる + 「2個に分かれます」バッジ出現
- *   C) 行数・強さを整えて「分割」をタップ
+ *   C) 行数・細かさを整えて「分割」をタップ
  * をループアニメで見せる。
  *
  * アニメ作法は OnboardingStep1 / SetupScreen と同じ:
@@ -38,17 +38,17 @@ import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '
 // ゆっくり(間込み)。
 const CYCLE_MS = 13000;
 
-// 強さスライダーのスナップラベル(弱/中/強)。位置は簡略のため等間隔(25/50/75%)。
+// 細かさスライダーのスナップラベル(粗い/中/細かい)。位置は簡略のため等間隔(25/50/75%)。
 const STRENGTHS = [
-  { label: '弱', pct: 25 },
+  { label: '粗い', pct: 25 },
   { label: '中', pct: 50 },
-  { label: '強', pct: 75 },
+  { label: '細かい', pct: 75 },
 ] as const;
 const STRENGTH_ON = 1; // つまみの位置(中)
 
 // 進行に合わせて差し替えるキャプション文言(後で調整しやすいよう定数化)
 const CAPTION_A = '「自動分割」で自動的に切り分けます';   // フェーズA(下に表示)
-const CAPTION_C = '行数と強さを整えて「分割」をタップ';    // フェーズC(上に表示)
+const CAPTION_C = '行数と細かさを整えて「分割」をタップ';    // フェーズC(上に表示)
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function OnboardingStep2({ active = true }: { active?: boolean }) {
@@ -209,9 +209,9 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
             </View>
           </View>
 
-          {/* 分割の強さ(連続スライダー風・弱/中/強スナップ。簡略表示) */}
+          {/* 分割の細かさ(連続スライダー風・粗い/中/細かいスナップ。簡略表示) */}
           <View style={s.sliderCard}>
-            <Text style={s.rowLabel}>分割の強さ</Text>
+            <Text style={s.rowLabel}>分割の細かさ</Text>
             {/* トラック + 塗り + つまみ + スナップ目盛り */}
             <View style={s.track}>
               <View style={[s.trackFill, { width: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
@@ -223,7 +223,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
                 <TouchIndicator progress={phase} window={[0.80, 0.90]} />
               </View>
             </View>
-            {/* 弱/中/強ラベル(スナップ点の真下) */}
+            {/* 粗い/中/細かいラベル(スナップ点の真下) */}
             <View style={s.labelRow}>
               {STRENGTHS.map((snp, i) => (
                 <Text
@@ -360,7 +360,7 @@ const s = StyleSheet.create({
   },
   badgeTxt: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
 
-  // カード(行数 / 強さ): 縦積みコンテナ
+  // カード(行数 / 細かさ): 縦積みコンテナ
   card: {
     width: '100%',
     backgroundColor: '#FFFFFF',
@@ -410,7 +410,7 @@ const s = StyleSheet.create({
   stepTxt: { fontSize: 20, color: '#007AFF', lineHeight: 24 },
   stepVal: { fontSize: 16, fontWeight: '600', color: '#000', minWidth: 24, textAlign: 'center' },
 
-  // 強さ(連続スライダー風)
+  // 細かさ(連続スライダー風)
   sliderCard: {
     width: '100%',
     backgroundColor: '#FFFFFF',

@@ -1,5 +1,5 @@
 /**
- * ToleranceSlider — 連続値＋ソフトスナップの「分割の強さ」スライダー
+ * ToleranceSlider — 連続値＋ソフトスナップの「分割の細かさ」スライダー
  *
  * tolerance(0〜100連続) を読み書きする共通 UI。
  * 値の状態は外（呼び出し側）が持つ。useSettings を内部で直接叩かないことで
@@ -28,9 +28,9 @@ interface Snap {
   label: string;
 }
 const SNAPS: Snap[] = [
-  { value: 15, label: '弱' },
+  { value: 15, label: '粗い' },
   { value: 30, label: '中' },
-  { value: 50, label: '強' },
+  { value: 50, label: '細かい' },
 ];
 
 // Slider のつまみ半径ぶん、トラック両端は内側にオフセットしてつまみが移動する。
@@ -126,8 +126,8 @@ export default function ToleranceSlider({
     <View style={bare ? styles.wrapBare : styles.wrap}>
       {showLabel && (
         <View style={styles.titleRow}>
-          <Text style={styles.label}>分割の強さ</Text>
-          <Text style={styles.hint}>合体するなら上げる</Text>
+          <Text style={styles.label}>分割の細かさ</Text>
+          <Text style={styles.hint}>合体するなら細かく</Text>
         </View>
       )}
 

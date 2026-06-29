@@ -497,7 +497,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const pan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder:  () => true,
+    // 微小なジッタ（タップ時の指ブレ）では responder を奪わず、明確なドラッグ
+    // （PAN_THRESHOLD=8px 以上の移動）のときだけパンを開始する。これにより
+    // キャンバス上のフローティングボタンの onPress が横取りされず生き残る。
+    onMoveShouldSetPanResponder:  (_, gs) =>
+      Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD,
 
     onPanResponderGrant: (evt) => {
       const lx = evt.nativeEvent.locationX;

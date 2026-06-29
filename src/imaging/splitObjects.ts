@@ -88,9 +88,10 @@ export function calcRowBoundaries(height: number, rows: number): number[] {
 /**
  * 列数を自動推定する（列数ステッパーの初期値用）。
  *
- * 段ごとの自動検出（calcColEdgesPerRow を cols 無しで実行）で各段の列数を求め、
- * その最頻値を代表値として返す。行ごとに列数がブレても安定するよう mode を使い、
- * 同数で並んだ時は多い方（密に割れる方）を優先する。
+ * calcColEdgesPerRow（cols 無し）で列数を求める。列は全幅共通に統一済みのため
+ * 全段で同じ列数になり、実質その共通列数をそのまま返す。
+ * （全幅共通化以前は段ごとに列数がブレたため最頻値を採っていた名残でロジックは mode のまま。
+ *   同数で並んでも安全側に倒れるよう多い方を優先する。）
  * detectRowCount と対になる関数で、SetupScreen の列数ステッパー初期値に使う。
  */
 export function detectColCount(
@@ -142,22 +143,29 @@ export function calcColEdgesPerRow(
   // 列数が手動指定されているか判定。0/NaN/undefined は「自動」扱い（後方互換）。
   const useFixedCols = typeof cols === 'number' && Number.isInteger(cols) && cols > 0;
 
+  // 行の帯(bandTop/bandBot)を先に確定する。行ロジック(rowBoundaries)はここでは一切変えない。
+  const bands: Array<{ bandTop: number; bandBot: number }> = [];
   for (let r = 0; r < rows; r++) {
-    const bandTop = Math.round(r * bandH);
-    const bandBot = Math.round((r + 1) * bandH);
+    bands.push({ bandTop: Math.round(r * bandH), bandBot: Math.round((r + 1) * bandH) });
+  }
 
-    let edges: number[];
-    if (useFixedCols) {
-      // 手動指定: 段の横幅(0..width)を cols 等分する。
-      // calcRowBoundaries が height を rows 等分するのと同じ考え方。
-      // findColEdges の返り値と同形式 [0, x1, ..., width] に揃える（下流が形式依存のため）。
-      edges = [0];
-      for (let c = 1; c < cols!; c++) {
-        edges.push(Math.round((c * width) / cols!));
-      }
-      edges.push(width);
-    } else {
-      // 未指定: 従来通り段ごとに前景プロジェクションから列を自動検出（差分ゼロ）。
+  // 全幅共通の縦線 x配列を1セット決める。横線(行)が全幅共通なのと同じモデルに列も揃える。
+  let commonEdges: number[];
+  if (useFixedCols) {
+    // 手動指定: 段の横幅(0..width)を cols 等分する（不変）。
+    // calcRowBoundaries が height を rows 等分するのと同じ考え方。
+    // findColEdges の返り値と同形式 [0, x1, ..., width] に揃える（下流が形式依存のため）。
+    commonEdges = [0];
+    for (let c = 1; c < cols!; c++) {
+      commonEdges.push(Math.round((c * width) / cols!));
+    }
+    commonEdges.push(width);
+  } else {
+    // 自動: 「段ごとに列検出 → 結果を集約して全幅共通の縦線にする」（方向A）。
+    // 全段を縦に重ねた OR 投影で1回検出すると、段間の水平ズレで列間corridorが塞がり
+    // 列が1に縮退する回帰が出た。段ごとに検出すれば段内ではcorridorが保たれて堅い。
+    // しきい値は段内検出(findColEdges)の既存の自動決定ロジックをそのまま使う（新規定数なし）。
+    const perBandEdges = bands.map(({ bandTop, bandBot }, r) => {
       const colFg = new Uint8Array(width);
       for (let y = bandTop; y < bandBot; y++) {
         const rowBase = y * width;
@@ -167,15 +175,100 @@ export function calcColEdgesPerRow(
           }
         }
       }
-      edges = findColEdges(colFg, width, r);
-    }
+      return findColEdges(colFg, width, r);
+    });
+    commonEdges = aggregateColEdges(perBandEdges, width);
+  }
 
-    result.push({ bandTop, bandBot, edges });
+  // 全段に同一の全幅共通 x を適用する。各段が独立した配列を持てるよう複製する
+  // （後段のドラッグ編集で段別に触っても他段へ影響しないための安全策。値はどの段も同一）。
+  for (const { bandTop, bandBot } of bands) {
+    result.push({ bandTop, bandBot, edges: commonEdges.slice() });
   }
 
   return result;
 }
 
+/**
+ * 段ごとの列エッジ群を、全幅共通の単一縦線セット [0, ...共通縦線, width] に集約する（方向A）。
+ * edgesPerBand: 各段の findColEdges 結果 [0, x1, ..., width]。
+ */
+function aggregateColEdges(edgesPerBand: number[][], width: number): number[] {
+  // 各段の「内部縦線（端 0/width を除く切り目）」を取り出す。本数 = その段の列数 - 1。
+  const innerPerBand = edgesPerBand.map(e => e.slice(1, -1));
+  const lineCounts = innerPerBand.map(inner => inner.length);
+
+  // (a) 共通の内部縦線本数を最頻値(mode)で決める。
+  //     段ごとに歪み等で本数がブレても、最も多くの段が支持した割り方に揃えるため mode を使う。
+  //     タイ（同頻度）時は本数が多い側を採用する: スタンプ用途では割りすぎは後で合体で
+  //     復旧できるが、割り足りないと2枚が1枚に結合して詰むため、多い側に倒すのが安全。
+  const freq = new Map<number, number>();
+  for (const c of lineCounts) freq.set(c, (freq.get(c) ?? 0) + 1);
+  let targetLines = 0;
+  let bestFreq = -1;
+  for (const [c, f] of freq) {
+    if (f > bestFreq || (f === bestFreq && c > targetLines)) {
+      targetLines = c;
+      bestFreq = f;
+    }
+  }
+
+  console.log(`[split] per-band lineCounts: [${lineCounts.join(', ')}] → common cols=${targetLines + 1}`);
+
+  // 内部縦線0本（全段が「1列」を支持）→ 縦線なし＝端のみ。
+  if (targetLines === 0) return [0, width];
+
+  // (b) 共通の縦線位置を決める。
+  //     対象は採用本数 targetLines に一致した段だけ（本数が違う段は左からn本目の対応が
+  //     取れないため位置集約から除外。ただし(a)の本数集計には参加済み）。
+  const matched = innerPerBand.filter(inner => inner.length === targetLines);
+
+  const common: number[] = [];
+  for (let k = 0; k < targetLines; k++) {
+    // 左から k 本目の縦線 x を対象段から集める。
+    const xs = matched.map(inner => inner[k]).sort((a, b) => a - b);
+    // 平均でなく中央値を採る: 歪んだ段や外れ値の x に引っ張られにくく、
+    // 多数の段がほぼ揃えた位置にロバストに合わせられるため。
+    common.push(median(xs));
+  }
+
+  console.log(`[split] aggregated common col x: [${common.join(', ')}]`);
+  return [0, ...common, width];
+}
+
+/** ソート済み配列の中央値（偶数個は中央2値の平均を整数化）。位置集約のロバスト統計用。 */
+function median(sorted: number[]): number {
+  const n = sorted.length;
+  const mid = n >> 1;
+  return n % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+/**
+ * 分割で実際に使った境界線データ。
+ * 次段階の「自動検出した分割線を指で動かして直す」編集UIの入力にするための“線データ”。
+ *
+ * - rowBoundaries: 行(段)の境界 y のリスト（画像座標系）。全幅共通＝列に依らず1本の横線。
+ *     端（0 と height）は含めない。切り出しに使った各段の上端そのものを並べる。
+ * - colBoundaries: 列の境界 x のリスト（画像座標系）。列も全幅共通に統一したため、
+ *     段に依らず1本の縦線として単一 x配列で持つ（rowBoundaries と対称なモデル）。
+ *     端（0 と width）は含めない。次段階のドラッグUIが共通縦線を前提にするための形。
+ */
+export interface SplitLines {
+  rowBoundaries: number[];
+  colBoundaries: number[];
+}
+
+/** 切り出し結果(bboxes)と、その切り出しに使った境界線(lines)をまとめて返す。 */
+export interface SplitResult {
+  bboxes: BBox[];
+  lines: SplitLines;
+}
+
+/**
+ * 後方互換ラッパ: 従来通りカット結果(BBox[])だけを返す。
+ * 境界線データも必要な呼び出し側は splitRowsThenColsWithLines を使う。
+ * カット結果は splitRowsThenColsWithLines と完全に同一（同じ loop の bboxes をそのまま返す）。
+ */
 export function splitRowsThenCols(
   rgba: Uint8Array,
   width: number,
@@ -183,12 +276,29 @@ export function splitRowsThenCols(
   rows: number,
   cols?: number, // 列数の手動指定。calcColEdgesPerRow にそのまま渡すだけ
 ): BBox[] {
+  return splitRowsThenColsWithLines(rgba, width, height, rows, cols).bboxes;
+}
+
+/**
+ * splitRowsThenCols と同じ切り出しを行い、結果に加えて「検出した境界線」も返す。
+ * 切り出しロジック（順序・しきい値・EMPTY_CELL_RATIO 判定）は一切変えていないため、
+ * bboxes は従来の splitRowsThenCols と完全に一致する（回帰なし）。
+ */
+export function splitRowsThenColsWithLines(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  rows: number,
+  cols?: number, // 列数の手動指定。calcColEdgesPerRow にそのまま渡すだけ
+): SplitResult {
   const bboxes: BBox[] = [];
   // 「先に行で切ってから各段で列」の順序は不変。cols は列の決め方だけを変える。
   const perRow = calcColEdgesPerRow(rgba, width, height, rows, cols);
 
-  // 【重要】必ず「先に行(段)で切ってから、各段の中だけで列を探す」順序にする。
-  // 列検出を画像全体で行うと、縦一直線の空白が無い限り列で切れない（3×3が3枚になるバグ）。
+  // 【重要】切り出しは「先に行(段)で切ってから、各段の中で共通縦線 x ごとに切る」順序を維持。
+  // 列の x は全幅共通(calcColEdgesPerRow)だが、ここで段ごとに分けて切るのは変えない。
+  // 画像全体を縦に一括で切ると、段境界をまたいで縦すき間が繋がらない限り割れない
+  // （3×3 が縦3枚になるバグ）。共通 x を各段に適用しても、この段ごと切りなら綺麗に格子化する。
   for (const { bandTop, bandBot, edges: colEdges } of perRow) {
     const bandArea = (bandBot - bandTop) * width;
     for (let ci = 0; ci < colEdges.length - 1; ci++) {
@@ -202,8 +312,20 @@ export function splitRowsThenCols(
     }
   }
 
+  // 行境界 y: 切り出しに実際に使った各段の上端 bandTop をそのまま採用する。
+  // 先頭の段(index 0)の上端は画像端(0)なので端として除外し、段1以降の上端だけを横線とする。
+  // calcRowBoundaries の等分割式と同値だが、ここでは「実際に切った位置」を出すことで
+  // 線データと切り出し位置のズレを構造的に防ぐ（全幅共通なので number[] で持つ）。
+  const rowBoundaries = perRow.slice(1).map(band => band.bandTop);
+
+  // 列境界 x: 列は全幅共通に統一済みで全段の edges が同一なので、先頭段の内側 edges を
+  // そのまま全幅共通の縦線として採用する（端 0/width は slice(1,-1) で除外）。
+  // perRow が空（rows<1 は来ない想定だが防御）の場合は縦線なし。
+  const colBoundaries = perRow.length > 0 ? perRow[0].edges.slice(1, -1) : [];
+
   console.log(`[split] total cells: ${bboxes.length}`);
-  return bboxes;
+  console.log(`[split] common row y: [${rowBoundaries.join(', ')}], common col x: [${colBoundaries.join(', ')}]`);
+  return { bboxes, lines: { rowBoundaries, colBoundaries } };
 }
 
 function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[] {

@@ -43,8 +43,10 @@ type SetupMode = 'auto' | 'manual';
 interface Props {
   bgResult: RemoveBgResult;
   initialRows: number;
+  /** 列数ステッパーの初期値。自動推定した列数（detectColCount）を渡す。 */
+  initialCols?: number;
   initialMode?: SetupMode;
-  onConfirm: (rows: number, mode: SetupMode, noSplit: boolean) => void;
+  onConfirm: (rows: number, cols: number, mode: SetupMode, noSplit: boolean) => void;
   onBack: () => void;
   onSettings?: () => void;
   onHome?: () => void;
@@ -52,9 +54,11 @@ interface Props {
   originalImageUri?: string;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto', onConfirm, onBack, onSettings, onHome, originalImageUri }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialMode = 'auto', onConfirm, onBack, onSettings, onHome, originalImageUri }: Props) {
   const { settings, updateSettings } = useSettings();
   const [rows, setRows] = useState(initialRows);
+  // 列数。行数ステッパーと全く同じUI・挙動。初期値は自動推定した列数(initialCols)。
+  const [cols, setCols] = useState(initialCols ?? 1);
   // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
   const [zoomVisible, setZoomVisible] = useState(false);
   // スライダー操作中の表示用。確定時に updateSettings へ反映する。
@@ -127,7 +131,9 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
   const { colLines, splitCount } = useMemo(() => {
     if (!fitParams) return { colLines: [], splitCount: null };
     const { scale, padX, padY } = fitParams;
-    const perRow = calcColEdgesPerRow(bgResult.rgba, bgResult.width, bgResult.height, rows);
+    // cols をプレビューにも渡す。切り出し(splitRowsThenCols)と同じ列の決め方にし、
+    // プレビュー線と実際の割れ方が必ず一致するようにする。
+    const perRow = calcColEdgesPerRow(bgResult.rgba, bgResult.width, bgResult.height, rows, cols);
     const lines = perRow.flatMap(({ bandTop, bandBot, edges }) => {
       const top = padY + bandTop * scale;
       const height = (bandBot - bandTop) * scale;
@@ -137,7 +143,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
     // セル総数: 各行の列数 (edges.length - 1) の合計（再検出なし）
     const count = perRow.reduce((sum, { edges }) => sum + edges.length - 1, 0);
     return { colLines: lines, splitCount: count };
-  }, [fitParams, bgResult, rows]);
+  }, [fitParams, bgResult, rows, cols]);
 
   const lineColor = settings.splitLineColor ?? '#007AFF';
 
@@ -150,7 +156,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
     if (!fitReady) return;
     grow.value = 0;
     grow.value = withTiming(1, { duration: 280 });
-  }, [rows, fitReady, grow]);
+  }, [rows, cols, fitReady, grow]);
   // 横線=左から右へ（scaleX のみ / 原点 left）, 縦線=上から下へ（scaleY のみ / 原点 top）
   const hAnim = useAnimatedStyle(() => ({ transform: [{ scaleX: grow.value }] }));
   const vAnim = useAnimatedStyle(() => ({ transform: [{ scaleY: grow.value }] }));
@@ -264,6 +270,33 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
                 </View>
               </View>
 
+              {/* 列数ステッパー（行数と同じUI・初期値は自動推定値）: noSplit 時は無効化 */}
+              <View style={styles.separator} />
+              <View style={styles.rowInput}>
+                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>列数</Text>
+                <View style={[styles.stepper, noSplit && styles.disabled]}>
+                  <AnimatedPressable
+                    style={styles.stepBtn}
+                    onPress={() => setCols(v => clamp(v - 1, 1, 20))}
+                  >
+                    <Text style={styles.stepTxt}>−</Text>
+                  </AnimatedPressable>
+                  <Text style={styles.stepVal}>{cols}</Text>
+                  <AnimatedPressable
+                    style={styles.stepBtn}
+                    onPress={() => setCols(v => clamp(v + 1, 1, 20))}
+                  >
+                    <Text style={styles.stepTxt}>+</Text>
+                  </AnimatedPressable>
+                  {noSplit && (
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      onPress={() => showToast('分割しない時は列数を指定できません')}
+                    />
+                  )}
+                </View>
+              </View>
+
               {/* 分割しないチェックボックス */}
               <View style={styles.separator} />
               <AnimatedPressable
@@ -294,7 +327,7 @@ export default function SetupScreen({ bgResult, initialRows, initialMode = 'auto
           </Card>
         )}
 
-        <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, mode, noSplit)} pressedScale={0.97}>
+        <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, cols, mode, noSplit)} pressedScale={0.97}>
           <Text style={styles.btnTxt}>
             {mode === 'auto' ? (noSplit ? '分割せずにくり抜く' : 'この行数で分割') : 'ポリゴン編集へ'}
           </Text>

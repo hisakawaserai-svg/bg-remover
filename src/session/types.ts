@@ -10,6 +10,7 @@ export type SessionStep = 'picked' | 'keyed' | 'done';
 export interface KeyConfig {
   tolerance: number;
   rows?: number;
+  cols?: number; // 列数の手動指定。未指定(undefined)なら従来通り段ごとに列を自動検出する
 }
 
 export interface SessionPolygon {

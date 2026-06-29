@@ -85,6 +85,39 @@ export function calcRowBoundaries(height: number, rows: number): number[] {
   return result;
 }
 
+/**
+ * 列数を自動推定する（列数ステッパーの初期値用）。
+ *
+ * 段ごとの自動検出（calcColEdgesPerRow を cols 無しで実行）で各段の列数を求め、
+ * その最頻値を代表値として返す。行ごとに列数がブレても安定するよう mode を使い、
+ * 同数で並んだ時は多い方（密に割れる方）を優先する。
+ * detectRowCount と対になる関数で、SetupScreen の列数ステッパー初期値に使う。
+ */
+export function detectColCount(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  rows: number,
+): number {
+  // cols を渡さない＝従来の自動検出。ここで等分してしまうと推定にならない。
+  const perRow = calcColEdgesPerRow(rgba, width, height, rows);
+  const counts = perRow.map(({ edges }) => edges.length - 1);
+  if (counts.length === 0) return 1;
+
+  const freq = new Map<number, number>();
+  for (const c of counts) freq.set(c, (freq.get(c) ?? 0) + 1);
+
+  let best = 1;
+  let bestFreq = -1;
+  for (const [c, f] of freq) {
+    if (f > bestFreq || (f === bestFreq && c > best)) {
+      best = c;
+      bestFreq = f;
+    }
+  }
+  return Math.max(1, best);
+}
+
 export interface RowColEdges {
   bandTop: number;
   bandBot: number;
@@ -101,25 +134,43 @@ export function calcColEdgesPerRow(
   width: number,
   height: number,
   rows: number,
+  cols?: number, // 列数の手動指定。正の整数なら自動検出せず段の横幅を等分する
 ): RowColEdges[] {
   const bandH = height / rows;
   const result: RowColEdges[] = [];
+
+  // 列数が手動指定されているか判定。0/NaN/undefined は「自動」扱い（後方互換）。
+  const useFixedCols = typeof cols === 'number' && Number.isInteger(cols) && cols > 0;
 
   for (let r = 0; r < rows; r++) {
     const bandTop = Math.round(r * bandH);
     const bandBot = Math.round((r + 1) * bandH);
 
-    const colFg = new Uint8Array(width);
-    for (let y = bandTop; y < bandBot; y++) {
-      const rowBase = y * width;
-      for (let x = 0; x < width; x++) {
-        if (colFg[x] === 0 && rgba[(rowBase + x) * 4 + 3] > ALPHA_TH) {
-          colFg[x] = 1;
+    let edges: number[];
+    if (useFixedCols) {
+      // 手動指定: 段の横幅(0..width)を cols 等分する。
+      // calcRowBoundaries が height を rows 等分するのと同じ考え方。
+      // findColEdges の返り値と同形式 [0, x1, ..., width] に揃える（下流が形式依存のため）。
+      edges = [0];
+      for (let c = 1; c < cols!; c++) {
+        edges.push(Math.round((c * width) / cols!));
+      }
+      edges.push(width);
+    } else {
+      // 未指定: 従来通り段ごとに前景プロジェクションから列を自動検出（差分ゼロ）。
+      const colFg = new Uint8Array(width);
+      for (let y = bandTop; y < bandBot; y++) {
+        const rowBase = y * width;
+        for (let x = 0; x < width; x++) {
+          if (colFg[x] === 0 && rgba[(rowBase + x) * 4 + 3] > ALPHA_TH) {
+            colFg[x] = 1;
+          }
         }
       }
+      edges = findColEdges(colFg, width, r);
     }
 
-    result.push({ bandTop, bandBot, edges: findColEdges(colFg, width, r) });
+    result.push({ bandTop, bandBot, edges });
   }
 
   return result;
@@ -130,9 +181,11 @@ export function splitRowsThenCols(
   width: number,
   height: number,
   rows: number,
+  cols?: number, // 列数の手動指定。calcColEdgesPerRow にそのまま渡すだけ
 ): BBox[] {
   const bboxes: BBox[] = [];
-  const perRow = calcColEdgesPerRow(rgba, width, height, rows);
+  // 「先に行で切ってから各段で列」の順序は不変。cols は列の決め方だけを変える。
+  const perRow = calcColEdgesPerRow(rgba, width, height, rows, cols);
 
   // 【重要】必ず「先に行(段)で切ってから、各段の中だけで列を探す」順序にする。
   // 列検出を画像全体で行うと、縦一直線の空白が無い限り列で切れない（3×3が3枚になるバグ）。

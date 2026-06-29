@@ -225,15 +225,30 @@ export default function ResultScreen({
 
   // auto セルの位置情報（比率ベース → 表示px）
   const cellLayouts = useMemo(() =>
-    cells.map((cell, i) => {
+    cells.map(cell => {
       if (cell.kind !== 'auto') return null;
       const { minX, minY, maxX, maxY } = cell.bbox;
+      // 表示px は必ず実寸(bbox)から算出する。枠のアスペクト比もこの実寸由来にする。
       const left   = (minX / effectiveSrcW) * layoutW;
       const top    = (minY / effectiveSrcH) * layoutH;
-      const width  = ((maxX - minX) / effectiveSrcW) * layoutW;
-      const height = ((maxY - minY) / effectiveSrcH) * layoutH;
-      // 極端に小さいセルにも最低タップサイズを確保
-      return { left, top, width: Math.max(width, MIN_CELL), height: Math.max(height, MIN_CELL) };
+      const rawW   = ((maxX - minX) / effectiveSrcW) * layoutW;
+      const rawH   = ((maxY - minY) / effectiveSrcH) * layoutH;
+      // 最低タップサイズの確保で「幅・高さを個別に」クランプしてはいけない。
+      // 個別クランプすると枠のアスペクト比が実寸とズレ、contain 描画の中身が
+      // 枠内でレターボックス＝横にズレて見え、さらに枠が実寸より広がって隣へはみ出す。
+      // （列が自動検出の可変幅→列数指定の等分幅になり、細いセルが増えて顕在化した。）
+      // 実寸比を保ったまま一律スケールで拡大し、枠のアスペクト＝中身のアスペクトを維持する。
+      const scale  = Math.max(1, MIN_CELL / rawW, MIN_CELL / rawH);
+      const width  = rawW * scale;
+      const height = rawH * scale;
+      // 拡大ぶんは上下左右へ均等に広げ、枠の中心を実寸セルの中心に保つ。
+      // contain で中身も枠の中心に来るため、中身が元の位置から横ズレしない。
+      return {
+        left: left - (width - rawW) / 2,
+        top:  top  - (height - rawH) / 2,
+        width,
+        height,
+      };
     }),
   [cells, effectiveSrcW, effectiveSrcH, layoutW, layoutH]);
 

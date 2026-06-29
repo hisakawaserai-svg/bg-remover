@@ -33,6 +33,7 @@ import {
   splitRowsThenCols,
   splitNone,
   detectRowCount,
+  detectColCount,
   cropToImage,
   trimToForeground,
   maskOutsidePolygon,
@@ -177,6 +178,10 @@ export default function App() {
   // confirmRows: detectRowCount で推定した行数を初期値とし、ユーザーが確認・修正する値。
   // row_confirm 画面でのみ使用。分割実行後はリセットしない（再試行時に再利用）。
   const [confirmRows, setConfirmRows] = useState(DEFAULT_ROWS);
+  // cols: 確定した列数（再分割や保存で再利用）。confirmCols は detectColCount の
+  // 推定値で、SetupScreen の列数ステッパー初期値として渡す（行数と同じ作り）。
+  const [cols, setCols] = useState(1);
+  const [confirmCols, setConfirmCols] = useState(1);
   // cells: 自動分割結果のセル一覧。auto=BBox保持, poly=マスク済みRGBA保持。
   const [cells,     setCells]     = useState<Cell[]>([]);
   // editingCellIdx: cell_editing 中に手動分割中のセルのインデックス
@@ -292,11 +297,17 @@ export default function App() {
         // 手動セッション再開: 保存済みポリゴンを復元し、編集画面へ直行する。
         // 戻る時は SetupScreen(row_confirm)経由になる(onBack参照)。
         setPolygons(resumePolygons);
-        setConfirmRows(detectRowCount(result.rgba, result.width, result.height));
+        const dRows = detectRowCount(result.rgba, result.width, result.height);
+        setConfirmRows(dRows);
+        // 列数の初期値も推定値にセット（行数と同じく、ユーザーが確認・修正する）
+        setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
         setAppState('editing');
       } else {
         // 新規選択 / 自動再開: SetupScreen を経由してモードと行数を確認する。
-        setConfirmRows(detectRowCount(result.rgba, result.width, result.height));
+        const dRows = detectRowCount(result.rgba, result.width, result.height);
+        setConfirmRows(dRows);
+        // 列数の初期値も推定値にセット（行数と同じく、ユーザーが確認・修正する）
+        setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
         setAppState('row_confirm');
       }
     } catch (e: unknown) {
@@ -307,14 +318,15 @@ export default function App() {
 
   // ── 行数確認後の分割実行 ───────────────────────────────────────────────────
   // row_confirm 画面で「この行数で分割」を押した時に呼ぶ。
-  // 行はユーザーが指定（n）、各行内の列は splitRowsThenCols が自動検出する。
+  // 行・列ともユーザーが指定（n 行 × c 列の等分割）する。
 
-  const doSplit = useCallback(async (n: number, noSplit = false) => {
+  const doSplit = useCallback(async (n: number, noSplit = false, c = 1) => {
     if (!bgResult) return;
     // noSplit: projection split をスキップし画像全体を1カットにする（くり抜きは共通パス）
+    // c(列数)は段の横幅を c 等分する（行数 n と同じ「等分」の考え方）。
     const bboxList = noSplit
       ? splitNone(bgResult.rgba, bgResult.width, bgResult.height)
-      : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n);
+      : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n, c);
     if (bboxList.length === 0) {
       Alert.alert('結果', '前景が検出されませんでした。行数を変えて再試行してください。');
       return;
@@ -345,6 +357,7 @@ export default function App() {
       return { kind: 'auto' as const, bbox, thumbUri, multipleObjects };
     }));
     setRows(n);
+    setCols(c); // 再分割時に同じ列数指定を引き継ぐため保持
     setCells(newCells);
     setAppState('preview');
 
@@ -361,7 +374,7 @@ export default function App() {
         imageUri: currentImageUri,
         step: 'keyed',
         mode: 'auto',
-        keyConfig: { tolerance: appSettings.tolerance, rows: n },
+        keyConfig: { tolerance: appSettings.tolerance, rows: n, cols: c },
         autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells },
         thumbUri: newCells[0]?.thumbUri,
         updatedAt: Date.now(),
@@ -628,6 +641,7 @@ export default function App() {
     const mode: SplitMode = latest.mode === 'custom' ? 'manual' : 'auto';
     setSplitMode(mode);
     if (latest.keyConfig?.rows) setRows(latest.keyConfig.rows);
+    if (latest.keyConfig?.cols) setCols(latest.keyConfig.cols); // 確定した列数も復元
 
     // ── 自動モードで autoData（カット一覧）が保存済みの場合 ──────────────────
     // doSplit を再実行せず、保存済みセルを復元して ResultScreen を直接開く。
@@ -678,7 +692,9 @@ export default function App() {
       try {
         const result = await removeBackground(latest.imageUri, appSettings.tolerance);
         setBgResult(result);
-        setConfirmRows(detectRowCount(result.rgba, result.width, result.height));
+        const dRows = detectRowCount(result.rgba, result.width, result.height);
+        setConfirmRows(dRows);
+        setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
         setPolygons(latest.polygons?.length ? fromSessionPolygons(latest.polygons) : []);
         setAppState('editing');
       } catch (e: unknown) {
@@ -801,11 +817,12 @@ export default function App() {
       <SetupScreen
         bgResult={bgResult}
         initialRows={confirmRows}
+        initialCols={confirmCols}
         initialMode={splitMode}
-        onConfirm={(rows, mode, noSplit) => {
+        onConfirm={(rows, cols, mode, noSplit) => {
           setSplitMode(mode);
           if (mode === 'auto') {
-            doSplit(rows, noSplit);
+            doSplit(rows, noSplit, cols);
           } else {
             setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
           }
@@ -834,7 +851,7 @@ export default function App() {
         onHome={reset}
         onSettings={() => goToSettings()}
         onSave={doAutoExport}
-        onReSplit={() => doSplit(rows)}
+        onReSplit={() => doSplit(rows, false, cols)}
         onManualSplit={() => setAppState('editing')}
         onEditCell={(i) => {
           // poly セル（セッション復元 or 編集済み）はセル編集不可

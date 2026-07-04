@@ -36,8 +36,9 @@ import type { BBox } from '../imaging';
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 
-/** 位置ベースレイアウト: セルの最小表示サイズ(px) */
-const MIN_CELL = 44;
+// 位置ベースレイアウトの枠は実寸のまま描く（最低タップサイズ確保の拡大は廃止）。
+// 以前は MIN_CELL=44px までセルを拡大していたが、はみ出し・位置ズレの原因になったため撤去。
+// 最低タップサイズが必要になったら枠サイズではなくヒット領域だけを広げること。
 
 // ── 隣接判定 ─────────────────────────────────────────────────────────────────
 
@@ -224,33 +225,62 @@ export default function ResultScreen({
   const layoutH = layoutW * (effectiveSrcH / effectiveSrcW);
 
   // auto セルの位置情報（比率ベース → 表示px）
-  const cellLayouts = useMemo(() =>
-    cells.map(cell => {
+  //
+  // 位置再現（元画像の配置を縮小再現）を維持しつつ、小さいセルが潰れる/枠が重なる/透明カットが
+  // 大きな枠内に小さく浮く（＝切った後に見えない）問題をまとめて解消する。
+  // 手順:
+  //  1) 各セルの実寸bbox を表示px の矩形(edges)＋実寸サイズ(w/h)に変換する（元画像どおり）。
+  //  2) 各セルが使えるグリッド区画を、上下左右それぞれ隣接セルとの「中点」まで広げて求める
+  //     （隣同士が同じ中点で接するので重ならず・隙間なくタイル化。隣が無い端は表示領域端まで）。
+  //  3) その区画内に「カットの縦横比」を保った札を最大サイズで収める(contain)。
+  //     - 実寸より拡大されるので小さいカットも潰れない。区画内に収まるので重ならない。
+  //     - 札＝カットの比率なので中身が枠にぴったり収まり、透明カットでも余分な余白が出ず
+  //       「切った後」の見た目になる。区画中央に置くので元画像上の配置（位置再現）も保たれる。
+  const cellLayouts = useMemo(() => {
+    // 1) 実寸bbox → 表示px の矩形と実寸サイズ
+    const rects = cells.map(cell => {
       if (cell.kind !== 'auto') return null;
       const { minX, minY, maxX, maxY } = cell.bbox;
-      // 表示px は必ず実寸(bbox)から算出する。枠のアスペクト比もこの実寸由来にする。
       const left   = (minX / effectiveSrcW) * layoutW;
       const top    = (minY / effectiveSrcH) * layoutH;
-      const rawW   = ((maxX - minX) / effectiveSrcW) * layoutW;
-      const rawH   = ((maxY - minY) / effectiveSrcH) * layoutH;
-      // 最低タップサイズの確保で「幅・高さを個別に」クランプしてはいけない。
-      // 個別クランプすると枠のアスペクト比が実寸とズレ、contain 描画の中身が
-      // 枠内でレターボックス＝横にズレて見え、さらに枠が実寸より広がって隣へはみ出す。
-      // （列が自動検出の可変幅→列数指定の等分幅になり、細いセルが増えて顕在化した。）
-      // 実寸比を保ったまま一律スケールで拡大し、枠のアスペクト＝中身のアスペクトを維持する。
-      const scale  = Math.max(1, MIN_CELL / rawW, MIN_CELL / rawH);
-      const width  = rawW * scale;
-      const height = rawH * scale;
-      // 拡大ぶんは上下左右へ均等に広げ、枠の中心を実寸セルの中心に保つ。
-      // contain で中身も枠の中心に来るため、中身が元の位置から横ズレしない。
+      const right  = (maxX / effectiveSrcW) * layoutW;
+      const bottom = (maxY / effectiveSrcH) * layoutH;
+      return { left, top, right, bottom, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
+    });
+
+    return rects.map((r, i) => {
+      if (!r) return null;
+      // 2) グリッド区画（隣接との中点でタイル化）= このセルが使える範囲
+      let L = 0, T = 0, R = layoutW, B = layoutH;
+      for (let j = 0; j < rects.length; j++) {
+        if (j === i) continue;
+        const o = rects[j];
+        if (!o) continue;
+        // 縦範囲が重なる=同じ行 → 左右の隣を中点で仕切る
+        if (r.top < o.bottom && o.top < r.bottom) {
+          if (o.right <= r.left) L = Math.max(L, (o.right + r.left) / 2); // 左隣
+          if (o.left  >= r.right) R = Math.min(R, (r.right + o.left) / 2); // 右隣
+        }
+        // 横範囲が重なる=同じ列 → 上下の隣を中点で仕切る
+        if (r.left < o.right && o.left < r.right) {
+          if (o.bottom <= r.top) T = Math.max(T, (o.bottom + r.top) / 2); // 上隣
+          if (o.top    >= r.bottom) B = Math.min(B, (r.bottom + o.top) / 2); // 下隣
+        }
+      }
+      const tileW = R - L;
+      const tileH = B - T;
+      // 3) 区画内にカット比率を保った最大の札を contain 配置（区画≥実寸なので scale≥1＝拡大）
+      const scale  = Math.min(tileW / r.w, tileH / r.h);
+      const width  = Math.max(1, r.w * scale);
+      const height = Math.max(1, r.h * scale);
       return {
-        left: left - (width - rawW) / 2,
-        top:  top  - (height - rawH) / 2,
+        left: L + (tileW - width) / 2,  // 区画中央に置いて位置再現を保つ
+        top:  T + (tileH - height) / 2,
         width,
         height,
       };
-    }),
-  [cells, effectiveSrcW, effectiveSrcH, layoutW, layoutH]);
+    });
+  }, [cells, effectiveSrcW, effectiveSrcH, layoutW, layoutH]);
 
   // ── 保存 ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {

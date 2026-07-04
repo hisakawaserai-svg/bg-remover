@@ -7,7 +7,7 @@ import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
 import type { BBox } from './splitObjects';
 
 export { removeBackground, TOLERANCE } from './removeBackground';
-export { splitRowsThenCols, splitRowsThenColsWithLines, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
+export { splitRowsThenCols, splitRowsThenColsWithLines, splitByBoundaries, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
 export type { RowColEdges, SplitLines, SplitResult } from './splitObjects';
 export { splitConnected, MIN_AREA, MERGE_GAP } from './splitConnected';
 export type { BBox } from './splitObjects';

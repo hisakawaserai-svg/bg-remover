@@ -328,6 +328,49 @@ export function splitRowsThenColsWithLines(
   return { bboxes, lines: { rowBoundaries, colBoundaries } };
 }
 
+/**
+ * 明示した境界線（画像座標系）でカットする。
+ * SetupScreen でユーザーがドラッグ/◀▶ボタンで動かした横線・縦線を、そのまま切り出しに
+ * 反映するための入口。線データ = 切り出し位置になるので、プレビューと結果が必ず一致する。
+ *
+ * - rowYsImg: 内部の横線 y（端 0/height は含めない・昇順）
+ * - colXsImg: 内部の縦線 x（端 0/width は含めない・昇順、全幅共通）
+ *
+ * 切り出しロジック（先に行(段)で切ってから各段を共通縦線で切る順序・trimToForeground・
+ * EMPTY_CELL_RATIO 判定）は splitRowsThenColsWithLines と完全に同一。
+ * 境界を等分値（calcRowBoundaries 相当）で渡せば従来の等分割割りと一致する（回帰なし）。
+ */
+export function splitByBoundaries(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  rowYsImg: number[],
+  colXsImg: number[],
+): BBox[] {
+  // 端を含む境界配列に整形する（findColEdges と同形式 [0, ...内側, 端]）。
+  const rowBounds = [0, ...rowYsImg, height];
+  const colEdges = [0, ...colXsImg, width];
+  const bboxes: BBox[] = [];
+
+  // 「先に行(段)で切ってから各段の中で共通縦線 x ごとに切る」順序を維持（縦一括切り禁止）。
+  for (let ri = 0; ri < rowBounds.length - 1; ri++) {
+    const bandTop = rowBounds[ri];
+    const bandBot = rowBounds[ri + 1];
+    const bandArea = (bandBot - bandTop) * width;
+    if (bandArea <= 0) continue; // 線が重なって帯が潰れた場合の防御
+    for (let ci = 0; ci < colEdges.length - 1; ci++) {
+      const bb = trimToForeground(
+        rgba, width,
+        colEdges[ci], bandTop, colEdges[ci + 1], bandBot,
+      );
+      if (bb && bb.area / bandArea >= EMPTY_CELL_RATIO) {
+        bboxes.push(bb);
+      }
+    }
+  }
+  return bboxes;
+}
+
 function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[] {
   const gaps: Array<{ start: number; end: number; width: number }> = [];
   let i = 0;

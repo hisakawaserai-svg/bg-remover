@@ -51,5 +51,10 @@ export interface StickerSession {
     rows: number;
     tolerance: number;
     cells: SavedCell[];
+    /**
+     * ユーザーが編集した分割境界線（画像座標系）。SetupScreen に戻って再編集する時の
+     * 初期値に使う。未編集/等分のままでも等分値がそのまま入る。復元後の再編集用。
+     */
+    bounds?: { rowYsImg: number[]; colXsImg: number[] };
   };
 }

@@ -15,6 +15,7 @@ jest.mock('@shopify/react-native-skia', () => ({
 import {
   splitRowsThenCols,
   splitRowsThenColsWithLines,
+  splitByBoundaries,
   calcRowBoundaries,
   calcColEdgesPerRow,
   detectColCount,
@@ -69,6 +70,31 @@ test('境界線を返しても bboxes は splitRowsThenCols と完全一致', ()
 
   expect(withLines.bboxes).toEqual(viaLegacy);
   expect(viaLegacy.length).toBe(4); // 2x2 に格子分割
+});
+
+test('splitByBoundaries: 等分値を渡すと固定列の splitRowsThenCols と完全一致（回帰なし）', () => {
+  const { rgba, width, height } = makeAlignedSheet();
+  const rows = 2;
+  const cols = 2;
+  // SetupScreen が未編集で渡す境界＝等分値（calcRowBoundaries 相当）。
+  const rowYsImg = calcRowBoundaries(height, rows);
+  const colXsImg = calcRowBoundaries(width, cols);
+
+  const viaBoundaries = splitByBoundaries(rgba, width, height, rowYsImg, colXsImg);
+  const viaLegacy = splitRowsThenCols(rgba, width, height, rows, cols);
+
+  expect(viaBoundaries).toEqual(viaLegacy);
+  expect(viaBoundaries.length).toBe(4);
+});
+
+test('splitByBoundaries: 線を動かすと切り出し位置も追従する', () => {
+  const { rgba, width, height } = makeAlignedSheet();
+  // 縦線を右へずらす（左セルを広く・右セルを狭く）。切り出し左端がその x に一致するはず。
+  const movedX = 28;
+  const bboxes = splitByBoundaries(rgba, width, height, calcRowBoundaries(height, 2), [movedX]);
+  // 右上セル（前景 [24,38)×[2,16)）は縦線 28 の右側だけを見るので minX>=28 になる。
+  const topRightRightOfLine = bboxes.find(b => b.minX >= movedX && b.maxY < 20);
+  expect(topRightRightOfLine).toBeTruthy();
 });
 
 test('行境界 y は等分割式(calcRowBoundaries)と一致し全幅共通', () => {

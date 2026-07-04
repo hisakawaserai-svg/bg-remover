@@ -31,6 +31,7 @@ import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 import {
   removeBackground,
   splitRowsThenCols,
+  splitByBoundaries,
   splitNone,
   detectRowCount,
   detectColCount,
@@ -182,6 +183,9 @@ export default function App() {
   // 推定値で、SetupScreen の列数ステッパー初期値として渡す（行数と同じ作り）。
   const [cols, setCols] = useState(1);
   const [confirmCols, setConfirmCols] = useState(1);
+  // confirmBounds: SetupScreen で編集した分割境界線（画像座標系）。分割後に SetupScreen へ
+  // 戻った時の線の初期値に使う（null なら等分割で初期化）。編集内容を画面遷移で失わないため。
+  const [confirmBounds, setConfirmBounds] = useState<{ rowYsImg: number[]; colXsImg: number[] } | null>(null);
   // cells: 自動分割結果のセル一覧。auto=BBox保持, poly=マスク済みRGBA保持。
   const [cells,     setCells]     = useState<Cell[]>([]);
   // editingCellIdx: cell_editing 中に手動分割中のセルのインデックス
@@ -320,13 +324,22 @@ export default function App() {
   // row_confirm 画面で「この行数で分割」を押した時に呼ぶ。
   // 行・列ともユーザーが指定（n 行 × c 列の等分割）する。
 
-  const doSplit = useCallback(async (n: number, noSplit = false, c = 1) => {
+  const doSplit = useCallback(async (
+    n: number,
+    noSplit = false,
+    c = 1,
+    // SetupScreen で編集した境界線（画像座標系）。渡された場合はこの線でそのまま切る。
+    // 未編集でも等分値がそのまま来るため、従来の等分割割りと結果は一致する（回帰なし）。
+    bounds?: { rowYsImg: number[]; colXsImg: number[] },
+  ) => {
     if (!bgResult) return;
     // noSplit: projection split をスキップし画像全体を1カットにする（くり抜きは共通パス）
     // c(列数)は段の横幅を c 等分する（行数 n と同じ「等分」の考え方）。
     const bboxList = noSplit
       ? splitNone(bgResult.rgba, bgResult.width, bgResult.height)
-      : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n, c);
+      : bounds
+        ? splitByBoundaries(bgResult.rgba, bgResult.width, bgResult.height, bounds.rowYsImg, bounds.colXsImg)
+        : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n, c);
     if (bboxList.length === 0) {
       Alert.alert('結果', '前景が検出されませんでした。行数を変えて再試行してください。');
       return;
@@ -358,6 +371,11 @@ export default function App() {
     }));
     setRows(n);
     setCols(c); // 再分割時に同じ列数指定を引き継ぐため保持
+    // SetupScreen へ戻った時の初期値を実際に切った内容へ揃える。
+    // bounds があればその線を、なければ等分割(=confirmBounds:null)を初期値にする。
+    setConfirmRows(n);
+    setConfirmCols(c);
+    setConfirmBounds(noSplit ? null : (bounds ?? null));
     setCells(newCells);
     setAppState('preview');
 
@@ -375,7 +393,8 @@ export default function App() {
         step: 'keyed',
         mode: 'auto',
         keyConfig: { tolerance: appSettings.tolerance, rows: n, cols: c },
-        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells },
+        // bounds も保存し、復元後に SetupScreen へ戻っても編集した線を再現できるようにする。
+        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds: noSplit ? undefined : bounds },
         thumbUri: newCells[0]?.thumbUri,
         updatedAt: Date.now(),
       });
@@ -642,6 +661,10 @@ export default function App() {
     setSplitMode(mode);
     if (latest.keyConfig?.rows) setRows(latest.keyConfig.rows);
     if (latest.keyConfig?.cols) setCols(latest.keyConfig.cols); // 確定した列数も復元
+    // SetupScreen へ戻った時の初期値も復元する（行数・列数・編集した境界線）。
+    if (latest.keyConfig?.rows) setConfirmRows(latest.keyConfig.rows);
+    if (latest.keyConfig?.cols) setConfirmCols(latest.keyConfig.cols);
+    setConfirmBounds(latest.autoData?.bounds ?? null);
 
     // ── 自動モードで autoData（カット一覧）が保存済みの場合 ──────────────────
     // doSplit を再実行せず、保存済みセルを復元して ResultScreen を直接開く。
@@ -818,11 +841,12 @@ export default function App() {
         bgResult={bgResult}
         initialRows={confirmRows}
         initialCols={confirmCols}
+        initialBounds={confirmBounds}
         initialMode={splitMode}
-        onConfirm={(rows, cols, mode, noSplit) => {
+        onConfirm={(rows, cols, mode, noSplit, bounds) => {
           setSplitMode(mode);
           if (mode === 'auto') {
-            doSplit(rows, noSplit, cols);
+            doSplit(rows, noSplit, cols, bounds);
           } else {
             setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
           }

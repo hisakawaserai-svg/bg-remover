@@ -39,7 +39,8 @@ import {
   AlphaType,
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
-import type { RemoveBgResult } from '../imaging';
+import type { RemoveBgResult, BBox } from '../imaging';
+import { splitConnected } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
 // イラスト輪郭切り抜きでは直線スナップの利得が小さく点が飛ぶ副作用が大きいため除去した。
 
@@ -254,6 +255,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const imageWRef     = useRef(bgResult.width);  imageWRef.current  = bgResult.width;
   const imageHRef     = useRef(bgResult.height); imageHRef.current = bgResult.height;
 
+  // 個別スタンプの bbox 一覧（画像px）。四角追加の初期サイズを「タップ位置にある
+  // スタンプ1個のサイズ」にするために使う。splitConnected が連結成分ごとに分離し
+  // （近接塊の結合・ノイズ除外も内部で実施）、スタンプごとの BBox[] を返す。
+  // エディタ入場時に1回だけ計算してキャッシュする（毎タップの再計算は重いので不可）。
+  const stampBboxes = useMemo(
+    () => splitConnected(bgResult.rgba, bgResult.width, bgResult.height),
+    [bgResult],
+  );
+  const stampBboxesRef = useRef(stampBboxes); stampBboxesRef.current = stampBboxes;
+
   /** 次に使うポリゴン ID */
   const nextIdRef = useRef(0);
   nextIdRef.current = polygons.reduce((m, p) => Math.max(m, p.id), -1) + 1;
@@ -353,15 +364,36 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // ── ポリゴン追加 (draw モードでタップ) ───────────────────────────────────
 
   /**
-   * タップ座標(画像px)を中心に初期四角を追加する。
-   * 四角の一辺 = 画像短辺 × RECT_RATIO。
+   * タップ座標(画像px)で初期四角を追加する。
+   * タップ点を含む個別スタンプ1個の bbox が見つかれば、その bbox そのものを四角にする
+   * （位置もサイズも bbox 由来。タップ点はどのスタンプを選ぶかの判定だけに使い、
+   *   タップ点中心には置かない＝スタンプ中心をタップしなくても枠がズレない）。
+   * どのスタンプにも入らない（背景タップ等）場合のみ、従来どおりタップ点中心に
+   * 画像短辺 × RECT_RATIO の正方形を置くフォールバックにする。
    */
   const addRect = useCallback((imgX: number, imgY: number) => {
     const iw = imageWRef.current, ih = imageHRef.current;
-    const half = Math.min(iw, ih) * RECT_RATIO / 2;
-    const x0 = imgX - half, y0 = imgY - half;
-    const x1 = imgX + half, y1 = imgY + half;
-    const points: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+
+    // タップ点を含むスタンプ bbox を探す。複数が重なって該当する場合は
+    // 面積が小さい方（＝より内側の個別スタンプ）を優先し、大きな塊への誤爆を避ける。
+    let hit: BBox | null = null;
+    for (const b of stampBboxesRef.current) {
+      if (imgX >= b.minX && imgX <= b.maxX && imgY >= b.minY && imgY <= b.maxY) {
+        if (!hit || b.area < hit.area) hit = b;
+      }
+    }
+
+    let points: [number, number][];
+    if (hit) {
+      // ヒット時: bbox の4隅をそのまま四角にする（位置もサイズも bbox 由来＝ズレない）。
+      points = [[hit.minX, hit.minY], [hit.maxX, hit.minY], [hit.maxX, hit.maxY], [hit.minX, hit.maxY]];
+    } else {
+      // 非ヒット時: 従来どおりタップ点中心に画像短辺×RECT_RATIO の正方形を置く。
+      const fallbackHalf = Math.min(iw, ih) * RECT_RATIO / 2;
+      const x0 = imgX - fallbackHalf, y0 = imgY - fallbackHalf;
+      const x1 = imgX + fallbackHalf, y1 = imgY + fallbackHalf;
+      points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    }
     const id = nextIdRef.current;
     pushHistory();
     // event handler 内なので polygonsRef は最新確定状態 = prev と等価

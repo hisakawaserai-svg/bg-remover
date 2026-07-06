@@ -80,6 +80,18 @@ export async function deleteSessionFiles(session: StickerSession): Promise<void>
       console.warn('[session/store] deleteSessionFiles failed for', filePath, e);
     }
   }
+
+  // 永続化した元画像（DocumentDirectory/sources 配下）も削除してストレージを解放する。
+  if (session.imageUri.startsWith('file://') && session.imageUri.includes('/sources/')) {
+    const srcPath = session.imageUri.slice(7);
+    try {
+      if (await RNFS.exists(srcPath)) {
+        await RNFS.unlink(srcPath);
+      }
+    } catch (e) {
+      console.warn('[session/store] deleteSessionFiles failed for source', srcPath, e);
+    }
+  }
 }
 
 /**

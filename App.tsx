@@ -40,6 +40,7 @@ import {
   maskOutsidePolygon,
   saveSkImages,
   addMarginToImage,
+  persistSourceImage,
 } from './src/imaging';
 import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
@@ -266,12 +267,16 @@ export default function App() {
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel || !result.assets?.[0]?.uri) return;
 
-    const uri = result.assets[0].uri;
+    const pickedUri = result.assets[0].uri;
 
     // 画像選択直後にセッションを作成（step='picked'）
     // ここで保存しておくことで、アプリを閉じても「選んだ画像」がホーム一覧に残る
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setCurrentSessionId(id);
+
+    // ピッカーの一時ファイル(cache)は OS に消され得るため、永続ディレクトリへコピーして
+    // その URI を保存・処理に使う。これをしないと再開時に元画像が消えて無限ローディングになる。
+    const uri = await persistSourceImage(pickedUri, id);
     await upsertSession({ id, imageUri: uri, step: 'picked', updatedAt: Date.now() });
     void reloadSessions(); // UI を非同期で更新（processImage と並行してよい）
 

@@ -17,6 +17,37 @@ export { maskOutsidePolygon } from './maskPolygon';
 const TARGET_SIZE = 500;
 export const ALBUM_NAME = 'スタンプ抜き';
 
+// 元画像の永続保存先ディレクトリ（DocumentDirectory 配下）。
+export const SOURCE_DIR = `${RNFS.DocumentDirectoryPath}/sources`;
+
+/**
+ * 画像ピッカーが返す一時ファイル（CachesDirectory の rn_image_picker_lib_temp_*）は
+ * OS にいつでも削除され得るため、DocumentDirectory へコピーして永続化する。
+ * これをしないと「続きから」再開時に元画像が消えており、removeBackground が
+ * 無限ローディングになる。返り値は永続パスの file:// URI。
+ * コピーに失敗した場合は元の URI をそのまま返す（新規処理は続行できるため）。
+ */
+export async function persistSourceImage(srcUri: string, id: string): Promise<string> {
+  const srcPath = srcUri.startsWith('file://') ? srcUri.slice('file://'.length) : srcUri;
+  // content:// 等ファイルパスでないものはコピーできないのでそのまま返す。
+  if (!srcUri.startsWith('file://')) return srcUri;
+
+  const rawExt = srcPath.split('/').pop()?.split('.').pop() ?? '';
+  const ext = /^[A-Za-z0-9]{1,5}$/.test(rawExt) ? rawExt.toLowerCase() : 'png';
+  const destPath = `${SOURCE_DIR}/${id}.${ext}`;
+  try {
+    await RNFS.mkdir(SOURCE_DIR);
+    if (await RNFS.exists(destPath)) {
+      await RNFS.unlink(destPath);
+    }
+    await RNFS.copyFile(srcPath, destPath);
+    return `file://${destPath}`;
+  } catch (e) {
+    console.warn('[persistSourceImage] コピー失敗、元URIを使用:', e);
+    return srcUri;
+  }
+}
+
 export interface SaveResult {
   count: number;
   album: string;

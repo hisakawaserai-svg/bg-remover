@@ -1,4 +1,5 @@
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
+import RNFS from 'react-native-fs';
 
 // ── 調整パラメータ ──────────────────────────────────────────────────────────
 export const TOLERANCE = 30;
@@ -22,6 +23,16 @@ export async function removeBackground(
   fileUri: string,
   tolerance: number = TOLERANCE,
 ): Promise<RemoveBgResult> {
+  // file:// のローカルファイルが存在しない場合、Skia.Data.fromURI は reject せず
+  // ハングすることがある（→ 呼び出し側が 'processing' のまま無限ローディング）。
+  // 事前に存在チェックして明示的に throw し、呼び出し側の catch で扱えるようにする。
+  if (fileUri.startsWith('file://')) {
+    const path = fileUri.slice('file://'.length);
+    if (!(await RNFS.exists(path))) {
+      throw new Error('元画像が見つかりません。もう一度画像を選び直してください。');
+    }
+  }
+
   const data = await Skia.Data.fromURI(fileUri);
   const image = Skia.Image.MakeImageFromEncoded(data);
   if (!image) {

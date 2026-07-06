@@ -248,9 +248,9 @@ export default function ResultScreen({
       return { left, top, right, bottom, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
     });
 
-    return rects.map((r, i) => {
+    // 2) 各セルのグリッド区画（隣接との中点でタイル化）= このセルが使える範囲
+    const tiles = rects.map((r, i) => {
       if (!r) return null;
-      // 2) グリッド区画（隣接との中点でタイル化）= このセルが使える範囲
       let L = 0, T = 0, R = layoutW, B = layoutH;
       for (let j = 0; j < rects.length; j++) {
         if (j === i) continue;
@@ -267,15 +267,34 @@ export default function ResultScreen({
           if (o.top    >= r.bottom) B = Math.min(B, (r.bottom + o.top) / 2); // 下隣
         }
       }
-      const tileW = R - L;
-      const tileH = B - T;
-      // 3) 区画内にカット比率を保った最大の札を contain 配置（区画≥実寸なので scale≥1＝拡大）
-      const scale  = Math.min(tileW / r.w, tileH / r.h);
+      return { L, T, tileW: R - L, tileH: B - T };
+    });
+
+    // 3) 拡大率は全セルで統一（各区画にcontainできる率の最小値）。
+    //    セルごとに最大化すると、ポリゴン編集等で歯抜けになった区画へ
+    //    隣のカードが膨張して位置・サイズが崩れるため。
+    const scale = Math.min(
+      ...tiles.map((t, i) => {
+        const r = rects[i];
+        if (!t || !r) return Infinity;
+        return Math.min(t.tileW / r.w, t.tileH / r.h);
+      }),
+    );
+
+    return rects.map((r, i) => {
+      const t = tiles[i];
+      if (!r || !t) return null;
       const width  = Math.max(1, r.w * scale);
       const height = Math.max(1, r.h * scale);
+      // カット自身のシート上の中心に置く（区画中央だと、ポリゴン編集で歯抜けに
+      // なった空き地へ区画が広がった際にカードが引っ張られてずれる）。
+      // はみ出しは区画内にクランプする。
+      const cx = (r.left + r.right) / 2;
+      const cy = (r.top + r.bottom) / 2;
+      const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
       return {
-        left: L + (tileW - width) / 2,  // 区画中央に置いて位置再現を保つ
-        top:  T + (tileH - height) / 2,
+        left: clamp(cx - width / 2, t.L, t.L + t.tileW - width),
+        top:  clamp(cy - height / 2, t.T, t.T + t.tileH - height),
         width,
         height,
       };

@@ -39,11 +39,39 @@ export async function removeBackground(
     throw new Error('画像のデコードに失敗しました');
   }
 
-  const width = image.width();
-  const height = image.height();
+  // OOM対策: 長辺が上限(2500px)を超える場合のみ縮小する。
+  // removeBackground はピクセル数分のバッファ(rgba/visited/queue)を複数確保するため、
+  // 巨大画像だとメモリを圧迫する。通常のイラストシート(~1000px前後)は対象外で
+  // 実質何も変わらない。縦横比は維持し、単純な縮小のみ(パディングや正方化はしない)。
+  const MAX_DIMENSION = 2500;
+  let processedImage = image;
+  const origW = image.width();
+  const origH = image.height();
+  if (origW > MAX_DIMENSION || origH > MAX_DIMENSION) {
+    const scale = MAX_DIMENSION / Math.max(origW, origH);
+    const newW = Math.round(origW * scale);
+    const newH = Math.round(origH * scale);
+    const surface = Skia.Surface.Make(newW, newH)!;
+    const canvas = surface.getCanvas();
+    const paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    canvas.drawImageRect(
+      image,
+      Skia.XYWHRect(0, 0, origW, origH),
+      Skia.XYWHRect(0, 0, newW, newH),
+      paint,
+    );
+    processedImage = surface.makeImageSnapshot();
+    surface.dispose();
+    image.dispose();
+    console.log(`[removeBg] resized ${origW}x${origH} → ${newW}x${newH} (OOM対策)`);
+  }
+
+  const width = processedImage.width();
+  const height = processedImage.height();
   const pixelCount = width * height;
 
-  const rawPixels = image.readPixels(0, 0, {
+  const rawPixels = processedImage.readPixels(0, 0, {
     width,
     height,
     colorType: ColorType.RGBA_8888,

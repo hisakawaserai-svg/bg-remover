@@ -36,6 +36,7 @@ interface Props {
   polygons: Polygon[];
   onBack: () => void;             // 編集に戻る（polygons はApp側で保持済み）
   onSave: (count: number) => void; // 保存完了後に App.tsx の state を 'done' へ
+  onRequestSave: () => Promise<boolean>; // 保存前の権限確認。App.tsx の requestSave をそのまま渡してもらう
 }
 
 // ── サムネイル生成 ────────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function pointInPoly(px: number, py: number, pts: [number, number][]): boolean {
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Props) {
+export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
   const bg = useThumbBg();
   // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
   const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
@@ -145,6 +146,11 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
 
   // ギャラリーへ保存（savePolygons は imaging/index.ts に集約）
   const handleSave = useCallback(async () => {
+    const ok = await onRequestSave();
+    if (!ok) {
+      Alert.alert('権限エラー', '写真への保存が拒否されました。');
+      return;
+    }
     setIsSaving(true);
     try {
       const { rgba, width, height } = bgResult;
@@ -155,7 +161,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave }: Pr
     } finally {
       setIsSaving(false);
     }
-  }, [bgResult, polygons, onSave]);
+  }, [bgResult, polygons, onSave, onRequestSave]);
 
   const header = (
     <AppHeader

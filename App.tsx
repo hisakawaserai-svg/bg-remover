@@ -294,6 +294,7 @@ export default function App() {
     setBgResult(null);
     setCells([]);
     setEditingCellIdx(null);
+    setPolygons([]); // 前画像のポリゴンを消す（手動セッション再開時は後段の resumePolygons で復元される）
     setCurrentImageUri(uri); // done upsert 時に参照する
 
     try {
@@ -636,6 +637,7 @@ export default function App() {
     setBgResult(null);
     setCells([]);
     setEditingCellIdx(null);
+    setPolygons([]);
     setCurrentSessionId(null);
     setCurrentImageUri('');
     setAppState('idle');
@@ -1009,6 +1011,7 @@ export default function App() {
           bgResult={bgResult}
           polygons={polygons}
           onBack={() => setAppState('editing')}
+          onRequestSave={requestSave}
           onSave={async (count: number) => {
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」

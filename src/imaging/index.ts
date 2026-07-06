@@ -318,13 +318,12 @@ export function addMarginToImage(image: SkImage, ratio = OUTPUT_MARGIN_RATIO): S
 function resizeImage(image: SkImage, size: number): SkImage {
   const w = image.width();
   const h = image.height();
-  if (w <= size && h <= size) return image;
 
   const surface = Skia.Surface.Make(size, size)!;
   const canvas = surface.getCanvas();
   canvas.clear(Skia.Color('transparent'));
 
-  const scale = Math.min(size / w, size / h);
+  const scale = Math.min(size / w, size / h, 1); // 拡大はしない。500px超のみ縮小、500px以下は等倍のまま正方キャンバスに配置
   const dstW = w * scale;
   const dstH = h * scale;
   const paint = Skia.Paint();

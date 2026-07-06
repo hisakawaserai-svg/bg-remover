@@ -323,7 +323,7 @@ function resizeImage(image: SkImage, size: number): SkImage {
   const canvas = surface.getCanvas();
   canvas.clear(Skia.Color('transparent'));
 
-  const scale = Math.min(size / w, size / h, 1); // 拡大はしない。500px超のみ縮小、500px以下は等倍のまま正方キャンバスに配置
+  const scale = Math.min(size / w, size / h); // 縮小も拡大も行い、常にキャンバスいっぱいにフィットさせる
   const dstW = w * scale;
   const dstH = h * scale;
   const paint = Skia.Paint();

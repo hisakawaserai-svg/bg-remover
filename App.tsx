@@ -1023,6 +1023,13 @@ export default function App() {
                 polygons: toSessionPolygons(polygons),
                 updatedAt: Date.now(),
               });
+              // autoDeleteOnExport ON: 自動モード(doAutoExport)と同様、手動書き出しも
+              // 完了後にセッション（画像ファイル含む）を削除する。これを入れないと
+              // 設定 ON でも custom セッションだけホームに残り続ける不整合になる。
+              if (appSettings.autoDeleteOnExport) {
+                await deleteSession(currentSessionId);
+                setCurrentSessionId(null);
+              }
               void reloadSessions();
             }
             setSavedCount(count);

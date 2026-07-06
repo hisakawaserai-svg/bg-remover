@@ -371,7 +371,9 @@ export default function App() {
       const multipleObjects = mainBodies.length > 1;
 
       raw.dispose();
-      const thumbUri = await saveThumbToFile(img, currentSessionId ?? undefined, idx);
+      // ファイル名は毎回ユニークにする。決定論的な同名上書きだと URI が変わらず、
+      // RN Image のキャッシュが古いサムネを表示し続ける（再分割が反映されないバグ）。
+      const thumbUri = await saveThumbToFile(img);
       img.dispose();
       return { kind: 'auto' as const, bbox, thumbUri, multipleObjects };
     }));
@@ -382,7 +384,14 @@ export default function App() {
     setConfirmRows(n);
     setConfirmCols(c);
     setConfirmBounds(noSplit ? null : (bounds ?? null));
-    setCells(newCells);
+    setCells(prev => {
+      // 再分割で置き換わる旧セルのサムネを削除（ユニーク名化により上書きされないため、孤児化防止）
+      for (const old of prev) {
+        const filePath = old.thumbUri.startsWith('file://') ? old.thumbUri.slice(7) : old.thumbUri;
+        RNFS.unlink(filePath).catch(() => {}); // 既に無い場合等は無視
+      }
+      return newCells;
+    });
     setAppState('preview');
 
     // 分割完了後にセッションへカット一覧を保存（復元用）
@@ -439,6 +448,18 @@ export default function App() {
       bbox: unionBbox,
       thumbUri,
     };
+
+    // 合体元セルのサムネは不要になるため削除（孤児化防止）
+    for (const c of autoCells) {
+      const filePath = c.thumbUri.startsWith('file://') ? c.thumbUri.slice(7) : c.thumbUri;
+      try {
+        if (await RNFS.exists(filePath)) {
+          await RNFS.unlink(filePath);
+        }
+      } catch (e) {
+        console.warn('[App] old thumb cleanup failed for', filePath, e);
+      }
+    }
 
     // 選択セルを除いた配列を作り、最初の選択位置(remaining 内)に merged を挿入
     const idxSet = new Set(indices);
@@ -521,6 +542,17 @@ export default function App() {
 
     // ポリゴンがなければ元のセルを維持してプレビューに戻る
     const replacement = newCells.length > 0 ? newCells : [editedCell];
+    if (newCells.length > 0) {
+      // 編集元セルのサムネは新セルに置き換わるため削除（孤児化防止）
+      const filePath = editedCell.thumbUri.startsWith('file://') ? editedCell.thumbUri.slice(7) : editedCell.thumbUri;
+      try {
+        if (await RNFS.exists(filePath)) {
+          await RNFS.unlink(filePath);
+        }
+      } catch (e) {
+        console.warn('[App] old thumb cleanup failed for', filePath, e);
+      }
+    }
     const nextCells = [
       ...cells.slice(0, editingCellIdx),
       ...replacement,

@@ -7,6 +7,8 @@
  * 現在の設定項目:
  *   tolerance: flood-fill の許容色差（removeBackground に渡す値）
  *              デフォルト 30 / 範囲 0〜100
+ *   eyedropperTolerance: スポイトの許容色差（removeColorAt に渡す値）
+ *              デフォルト 30 / 範囲 0〜100
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +21,13 @@ export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 
 export interface AppSettings {
   tolerance: number;
+  /**
+   * スポイトの許容色差。tolerance とは別に持つ。
+   * 四隅からの自動背景除去は上げすぎるとキャラ本体を食うので保守的な値が要るのに対し、
+   * スポイトは狙って押す操作でアンチエイリアスやグラデを拾うため高めが欲しく、
+   * 求める値の方向が逆になるため共有しない。
+   */
+  eyedropperTolerance: number;
   gridColumns: 2 | 3 | 4;
   thumbBg: ThumbBg;
   splitLineColor: SplitLineColor;
@@ -35,6 +44,7 @@ export interface AppSettings {
 // App.tsx 側にデフォルト値をコピーしなくてよくなり、追加時の変更箇所が1箇所に絞られる。
 export const DEFAULTS: AppSettings = {
   tolerance:      30,
+  eyedropperTolerance: 30,
   gridColumns:    3,
   thumbBg:        'white',
   splitLineColor: '#007AFF',

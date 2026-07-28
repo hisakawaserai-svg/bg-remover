@@ -29,7 +29,8 @@ export function maskOutsidePolygon(
 // レイキャスティング法による点内判定（偶奇規則）。
 // 点 (px, py) から +x 方向に半直線を伸ばし、ポリゴン辺との交点数が
 // 奇数なら内側、偶数なら外側と判定する。計算量 O(n)。
-function pointInPolygon(px: number, py: number, points: [number, number][]): boolean {
+// 複数ファイルから共通利用するため export する(index.ts, PreviewScreen.tsx から参照)。
+export function pointInPolygon(px: number, py: number, points: [number, number][]): boolean {
   let inside = false;
   const n = points.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {

@@ -3,10 +3,11 @@ import type { SkImage } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import { removeBackground, TOLERANCE } from './removeBackground';
+import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
 import type { BBox } from './splitObjects';
 
-export { removeBackground, TOLERANCE } from './removeBackground';
+export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt } from './removeBackground';
 export { splitRowsThenCols, splitRowsThenColsWithLines, splitByBoundaries, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
 export type { RowColEdges, SplitLines, SplitResult } from './splitObjects';
 export { splitConnected, MIN_AREA, MERGE_GAP } from './splitConnected';
@@ -148,20 +149,6 @@ export function exportCells(
 }
 
 // ── ポリゴンマスク書き出し ────────────────────────────────────────────────────
-
-// レイキャスティング法による点内判定。
-function pointInPolygon(px: number, py: number, pts: [number, number][]): boolean {
-  let inside = false;
-  const n = pts.length;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const [xi, yi] = pts[i];
-    const [xj, yj] = pts[j];
-    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
 
 // 多角形の外接矩形を切り出し、外側ピクセルの alpha を 0 にする。
 function cropAndMask(

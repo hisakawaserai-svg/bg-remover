@@ -34,6 +34,7 @@ import ToleranceSlider from './ui/ToleranceSlider';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
+import { removeColorAt, isTransparentAt, detectRowCount, detectColCount } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 
 function clamp(v: number, lo: number, hi: number) {
@@ -90,6 +91,12 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // スライダー操作中の表示用。確定時に updateSettings へ反映する。
   const [tolerance, setTolerance] = useState(settings.tolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
+  // スポイトモード: ON中は画像タップでその位置の色を消す（線のドラッグは無効化）。
+  // 枠付きシートのように自動透過が内側まで届かない画像で、背景を抜いてから
+  // 行数・列数の再検出に乗せるための下ごしらえ用。
+  const [eyedropperMode, setEyedropperMode] = useState(false);
+  // imageUri の再生成トリガー（bgResult.rgba を直接書き換えるため参照は変わらない）。
+  const [imgVersion, setImgVersion] = useState(0);
   const [noSplit, setNoSplit] = useState(false);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
   // ── グリッド線の選択状態（今回は「タップ選択＋ハイライト表示」まで）─────────────
@@ -97,6 +104,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const [selected, setSelected] = useState<{ axis: 'row' | 'col'; index: number } | null>(null);
   // 行数/列数が変わると線の本数・添字がずれるので選択をリセットする。
   useEffect(() => { setSelected(null); }, [rows, cols]);
+  // モードを切り替えたらスポイトを必ず解除する。ONのまま手動モードへ行って戻ると
+  // ボタンは消えているのに eyedropperModeRef が true のまま残り、
+  // 線のタップ/ドラッグを黙って奪ってしまうため。
+  useEffect(() => { setEyedropperMode(false); }, [mode]);
 
   // ── 簡易トースト（連打防止つき）─────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -131,7 +142,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     const b64 = img.encodeToBase64();
     img.dispose();
     return `data:image/png;base64,${b64}`;
-  }, [bgResult]);
+    // imgVersion: スポイトで rgba を書き換えた後にプレビューを作り直すための依存。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgResult, imgVersion]);
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -220,6 +233,12 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const colRef = useRef(colXsImg); colRef.current = colXsImg;
   const imgWRef = useRef(bgResult.width); imgWRef.current = bgResult.width;
   const imgHRef = useRef(bgResult.height); imgHRef.current = bgResult.height;
+  // スポイト用。rgba/許容値も PanResponder のクロージャからは stale になるため ref 経由で読む
+  // （許容値は設定画面で変わるので直接参照すると初回値のまま固定されてしまう）。
+  const eyedropperModeRef = useRef(eyedropperMode); eyedropperModeRef.current = eyedropperMode;
+  const rgbaRef = useRef(bgResult.rgba); rgbaRef.current = bgResult.rgba;
+  const eyeTolRef = useRef(settings.eyedropperTolerance);
+  eyeTolRef.current = settings.eyedropperTolerance;
   // ジェスチャー中の状態。snapVal = 掴んだ瞬間の線の画像座標（RectEditor の snap と同じ役割）。
   const g = useRef<{ mode: 'idle' | 'drag'; axis: 'row' | 'col'; index: number; snapVal: number }>(
     { mode: 'idle', axis: 'row', index: 0, snapVal: 0 },
@@ -229,7 +248,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => g.current.mode === 'drag',
+      onMoveShouldSetPanResponder: () => !eyedropperModeRef.current && g.current.mode === 'drag',
 
       onPanResponderGrant: (evt) => {
         const fp = fitRef.current;
@@ -237,6 +256,27 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         const { scale, padX, padY } = fp;
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
+
+        // スポイトモード中は線のヒット判定を行わず、タップ位置の色を消して終了する。
+        if (eyedropperModeRef.current) {
+          const imgX = (lx - padX) / scale;
+          const imgY = (ly - padY) / scale;
+          const w = imgWRef.current;
+          const h = imgHRef.current;
+          if (imgX >= 0 && imgX < w && imgY >= 0 && imgY < h
+              // 透過済みの場所は見た目が変わらない（空振り）ので再検出まで走らせない。
+              && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)) {
+            removeColorAt(rgbaRef.current, w, h, imgX, imgY, eyeTolRef.current);
+            setImgVersion(v => v + 1);
+            // 背景が抜けたことで初めて透明な帯ができるので、行数・列数を検出し直す。
+            // 検出は alpha だけを見るため、抜く前は区切りが見つからず 1×1 になっている。
+            const dRows = detectRowCount(rgbaRef.current, w, h);
+            setRows(dRows);
+            setCols(detectColCount(rgbaRef.current, w, h, dRows));
+          }
+          return;
+        }
+
         const rys = rowRef.current;
         const cxs = colRef.current;
         // 最も近い線を探す。横線は y 距離、縦線は x 距離だけで判定（全幅/全高に貫くため）。
@@ -364,6 +404,22 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>手動で囲む</Text>
           </AnimatedPressable>
         </View>
+
+        {/* スポイト: モード切替ではなく独立トグルなので、セグメンテッドコントロールの
+            外に単独の行として置く（中に入れると3等分されて文字が折り返す）。
+            枠付きシートなど自動透過が内側まで届かない画像で、背景を抜いて
+            行数・列数の検出に乗せるための下ごしらえ用。*/}
+        {mode === 'auto' && !noSplit && (
+          <AnimatedPressable
+            style={[styles.eyeBtn, eyedropperMode && styles.eyeBtnOn]}
+            onPress={() => setEyedropperMode(v => !v)}
+            pressedScale={0.98}
+          >
+            <Text style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}>
+              {eyedropperMode ? 'スポイトON: 消したい背景をタップ' : 'スポイトで背景を消す'}
+            </Text>
+          </AnimatedPressable>
+        )}
 
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
         {/* PanResponder で線のタップ選択＋ドラッグ移動を処理（自動モード時のみ意味を持つ）*/}
@@ -603,6 +659,24 @@ const styles = StyleSheet.create({
   modeTxtOn: {
     color: IOS.label,
     fontWeight: '600',
+  },
+  // ── スポイトトグル（セグメンテッドコントロールの外の単独行）─────────────────
+  eyeBtn: {
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: IOS.fill,
+  },
+  eyeBtnOn: {
+    backgroundColor: IOS.blue,
+  },
+  eyeTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: IOS.label,
+  },
+  eyeTxtOn: {
+    color: '#FFF',
   },
   manualDesc: {
     fontSize: 14,

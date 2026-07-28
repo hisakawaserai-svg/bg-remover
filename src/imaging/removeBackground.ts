@@ -6,6 +6,16 @@ export const TOLERANCE = 30;
 export const MAX_BG_COLORS = 2;
 export const EDGE_SAMPLE_STEP = 4;
 
+// ── 皮むきパス（枠付きシート対策）のパラメータ ────────────────────────────────
+/** 追加で剥がす最大回数。入れ子の枠が2重までなら足りる。 */
+export const MAX_PEEL_PASSES = 2;
+/** 内側の境界をこの割合以上、単一の色が占めているときだけ剥がす。 */
+export const PEEL_DOMINANT_RATIO = 0.7;
+/** 画像全体に対してこの割合以上消えるときだけ採用（フチだけ剥ぐ動作を防ぐ）。 */
+export const PEEL_MIN_CLEAR_RATIO = 0.05;
+/** 残っている前景のこの割合を超えて消すなら、背景ではなく被写体とみなして中止。 */
+export const PEEL_MAX_CLEAR_RATIO = 0.9;
+
 export interface RemoveBgResult {
   rgba: Uint8Array;
   width: number;
@@ -100,6 +110,17 @@ export async function removeBackground(
     floodFill(rgba, visited, width, height, seed, bgColors, tolerance);
   }
 
+  // 枠などで堰き止められて内側の背景に届いていない場合に、もう一段剥がす。
+  // 条件を満たさなければ即座に打ち切るので、通常のシートでは何も起きない。
+  for (let pass = 0; pass < MAX_PEEL_PASSES; pass++) {
+    const peeled = peelOnce(rgba, visited, width, height, tolerance);
+    if (peeled === 0) break;
+    console.log(
+      `[removeBg] peel pass ${pass + 1}: +${peeled}px ` +
+      `(${((peeled / pixelCount) * 100).toFixed(1)}%)`,
+    );
+  }
+
   let clearedCount = 0;
   for (let i = 0; i < pixelCount; i++) {
     if (visited[i]) {
@@ -151,13 +172,14 @@ function sampleEdgeColors(
   return colors;
 }
 
-function estimateBgColors(
-  rgba: Uint8Array,
-  w: number,
-  h: number,
+/**
+ * 色のリストを tol 以内の近さでまとめ、多い順に並べて返す。
+ * 端サンプルの背景色推定と、皮むきパスの境界色推定で共用する。
+ */
+function clusterColors(
+  samples: Array<[number, number, number]>,
   tol: number,
 ): BgColor[] {
-  const samples = sampleEdgeColors(rgba, w, h);
   const clusters: BgColor[] = [];
 
   for (const [r, g, b] of samples) {
@@ -182,6 +204,16 @@ function estimateBgColors(
   }
 
   clusters.sort((a, b) => b.count - a.count);
+  return clusters;
+}
+
+function estimateBgColors(
+  rgba: Uint8Array,
+  w: number,
+  h: number,
+  tol: number,
+): BgColor[] {
+  const clusters = clusterColors(sampleEdgeColors(rgba, w, h), tol);
 
   if (clusters.length <= 1) {
     return clusters.slice(0, 1);
@@ -255,4 +287,136 @@ function floodFill(
       }
     }
   }
+}
+
+/**
+ * 「皮むき」1回ぶん。すでに透過した領域の内側に接している色を新しい背景色とみなし、
+ * もう一段フラッドフィルする。
+ *
+ * 枠付きのスタンプシートのように、背景が枠で堰き止められていて四隅からの
+ * フラッドフィルが内側へ入れないケースを救うためのもの。1回目で枠が消えたあと、
+ * 枠の内側に接している色（＝内側の背景）を拾って2回目を走らせる。
+ *
+ * 被写体そのものを消す暴走を防ぐため、次を全部満たしたときだけ適用する:
+ *   - 内側の境界が単一の色でほぼ占められている
+ *     （キャラの輪郭なら色がバラけるので発動しない）
+ *   - 消える量が画像全体から見て十分大きい
+ *     （アンチエイリアスのフチだけを薄く剥ぐような動作を防ぐ）
+ *   - 消える量が残っている前景の大半を占めない
+ *     （占めるなら背景ではなく被写体だと判断して中止）
+ *
+ * 返り値は新たに透過した画素数。0 なら visited は一切変更していない。
+ */
+function peelOnce(
+  rgba: Uint8Array,
+  visited: Uint8Array,
+  w: number,
+  h: number,
+  tol: number,
+): number {
+  const pixelCount = w * h;
+
+  // 透過済み領域に4近傍で接している、まだ残っている画素＝内側の境界。
+  const boundary: number[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (visited[idx]) continue;
+      if (
+        (y > 0 && visited[idx - w]) ||
+        (y < h - 1 && visited[idx + w]) ||
+        (x > 0 && visited[idx - 1]) ||
+        (x < w - 1 && visited[idx + 1])
+      ) {
+        boundary.push(idx);
+      }
+    }
+  }
+  if (boundary.length === 0) return 0;
+
+  const clusters = clusterColors(
+    boundary.map(i => [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]] as [number, number, number]),
+    tol,
+  );
+  const dominant = clusters[0];
+  if (!dominant || dominant.count / boundary.length < PEEL_DOMINANT_RATIO) return 0;
+
+  // いったん複製の上で塗ってみて、量を見てから採用を決める。
+  const temp = visited.slice();
+  for (const idx of boundary) {
+    if (temp[idx]) continue;
+    floodFill(rgba, temp, w, h, idx, [dominant], tol);
+  }
+
+  let newly = 0;
+  let remaining = 0;
+  for (let i = 0; i < pixelCount; i++) {
+    if (!visited[i]) {
+      remaining++;
+      if (temp[i]) newly++;
+    }
+  }
+  if (newly === 0) return 0;
+  if (newly / pixelCount < PEEL_MIN_CLEAR_RATIO) return 0;
+  if (newly / remaining > PEEL_MAX_CLEAR_RATIO) return 0;
+
+  visited.set(temp);
+  return newly;
+}
+
+// タップ位置を画像内にクランプして画素インデックスを返す（スポイト系で共用）。
+function clampedPixelIndex(width: number, height: number, x: number, y: number): number {
+  const px = Math.max(0, Math.min(width - 1, Math.round(x)));
+  const py = Math.max(0, Math.min(height - 1, Math.round(y)));
+  return py * width + px;
+}
+
+/**
+ * (x,y) の画素が既に透明かどうか。
+ * 透過済みの場所は alpha=0 でも RGB は元の背景色のまま残っているため、
+ * スポイトでタップするとフラッドフィル自体は普通に広がってしまう。
+ * ただし alpha を 0 から 0 に書き換えるだけで見た目は一切変わらない＝空振り。
+ * 呼び出し側がこれを検出して undo 履歴を積まないために使う。
+ */
+export function isTransparentAt(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): boolean {
+  return rgba[clampedPixelIndex(width, height, x, y) * 4 + 3] === 0;
+}
+
+// タップした1点の色を基準に、そこから隣接ピクセルへ伝播して同系色を透過する。
+// removeBackground の四隅フラッドフィルと同じアルゴリズムを、任意の起点(x,y)に対して
+// 1回だけ実行する版。スポイト機能(SetupScreen)から呼ばれる。
+// rgba は破壊的に変更する(呼び出し側でコピーが必要ならコピーしてから渡すこと)。
+export function removeColorAt(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  tolerance: number,
+): number {
+  // 既に透明な場所は何をしても見た目が変わらないので即座に打ち切る（空振り）。
+  if (isTransparentAt(rgba, width, height, x, y)) return 0;
+
+  const seedIdx = clampedPixelIndex(width, height, x, y);
+  const off = seedIdx * 4;
+  const bgColor: BgColor = { r: rgba[off], g: rgba[off + 1], b: rgba[off + 2], count: 1 };
+
+  const visited = new Uint8Array(width * height);
+  floodFill(rgba, visited, width, height, seedIdx, [bgColor], tolerance);
+
+  let clearedCount = 0;
+  const pixelCount = width * height;
+  for (let i = 0; i < pixelCount; i++) {
+    if (visited[i]) {
+      rgba[i * 4 + 3] = 0;
+      clearedCount++;
+    }
+  }
+  return clearedCount;
 }

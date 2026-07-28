@@ -53,6 +53,8 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
   // AsyncStorage への書き込み回数を最小化する
   const [tolerance, setTolerance] = useState(settings.tolerance);
+  // スポイトの許容値。背景除去の tolerance とは別のツマミ（store.ts のコメント参照）。
+  const [eyeTolerance, setEyeTolerance] = useState(settings.eyedropperTolerance);
 
   // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -98,6 +100,22 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             value={tolerance}
             onChange={setTolerance}
             onComplete={v => void updateSettings({ tolerance: v })}
+          />
+
+          {/* スポイトの許容値。上の「許容値」とは独立して調整する。 */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>スポイトの許容値</Text>
+              <Text style={styles.rowSub}>タップした色との色差しきい値（大きいほど広く消える）</Text>
+            </View>
+            <Text style={styles.rowValue}>{Math.round(eyeTolerance)}</Text>
+          </View>
+          <ToleranceSlider
+            bare
+            showLabel={false}
+            value={eyeTolerance}
+            onChange={setEyeTolerance}
+            onComplete={v => void updateSettings({ eyedropperTolerance: v })}
           />
         </Card>
 

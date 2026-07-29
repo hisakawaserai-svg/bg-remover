@@ -7,6 +7,9 @@ export const ALPHA_TH = 10;
 // 内部gapの最大がこの値未満なら「実質すき間なし=1列」とみなす（誤分割防止）。
 export const MIN_REAL_GAP = 6;
 export const EMPTY_CELL_RATIO = 0.005;
+// 隙間の相対差(比率)がこの値以上開いた場所を「本物の隙間とノイズの境目」とみなす。
+// 0.3 = 30%。値が近い隙間同士(例: 144と136, 差5.6%)は同じグループとして両方採用する。
+export const RELATIVE_GAP_THRESHOLD = 0.3;
 
 export interface BBox {
   minX: number;
@@ -394,9 +397,11 @@ function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[
   // 画像端のgapは列の切れ目ではないので除外し、内部gapだけで判断する。
   const innerGaps = gaps.filter(g => g.start !== 0 && g.end !== width);
 
-  // しきい値を段ごとに自動決定: 内部gapの太さを降順ソートし、
-  // 隣り合う値の差が最大の所を「スタンプ間」と「文字間/余白」の境目にする。
-  // 例: [40,38,9,7,5] → 38と9の差(29)が最大 → 38以上を採用 → 2本切る → 3列。
+  // しきい値を段ごとに自動決定: 内部gapの太さを降順ソートし、上から順に見て
+  // 相対差(比率)が RELATIVE_GAP_THRESHOLD 以上に開いた最初の場所を
+  // 「スタンプ間」と「文字間/余白」の境目にする。
+  // 例: [40,38,9,7,5] → 40→38 は 5% で素通り、38→9 が 76% で開く
+  //     → 38以上を採用 → 2本切る → 3列。
   let threshold = Infinity;
   if (innerGaps.length > 0) {
     const sorted = innerGaps.map(g => g.width).sort((a, b) => b - a);
@@ -409,13 +414,19 @@ function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[
       // 内部gapが1本だけ → そのまま切る。
       threshold = maxGap;
     } else {
-      let bestDiff = -1;
-      let boundaryLo = maxGap; // 境目より上(太い側)の最小値 = 採用しきい値
+      // 絶対差ではなく相対差(比率)で「本物の隙間 vs ノイズ」を区切る。
+      // 例: [144,136]のように隙間が2個しかない場合、絶対差(8)だけを見ると
+      // 必ず「大きい方だけ採用」になってしまう(比較対象が1組しかないため)。
+      // 相対差(8/144≈5.6%)まで見れば「ほぼ同じ大きさ=どちらも本物」と判定できる。
+      // 上から順に見て、相対差が RELATIVE_GAP_THRESHOLD 以上に開いた最初の場所で区切る。
+      // 最後まで大きく開かなければ、全ての内部gapを本物として扱う(デフォルトで全採用)。
+      let boundaryLo = sorted[sorted.length - 1]; // デフォルト: 相対差が見つからなければ全部採用
       for (let k = 0; k < sorted.length - 1; k++) {
         const diff = sorted[k] - sorted[k + 1];
-        if (diff > bestDiff) {
-          bestDiff = diff;
+        const relDiff = diff / sorted[k]; // 上位側の値に対する相対差
+        if (relDiff >= RELATIVE_GAP_THRESHOLD) {
           boundaryLo = sorted[k];
+          break; // 最初に見つかった大きな相対差の位置で区切る
         }
       }
       threshold = boundaryLo;

@@ -41,8 +41,9 @@ import {
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import type { RemoveBgResult, BBox } from '../imaging';
-import { splitConnected, removeColorAt, isTransparentAt } from '../imaging';
+import { splitConnected, isTransparentAt } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
+import type { ThumbBg } from '../settings/store';
 import { useSettings } from '../settings/SettingsContext';
 // イラスト輪郭切り抜きでは直線スナップの利得が小さく点が飛ぶ副作用が大きいため除去した。
 
@@ -61,13 +62,6 @@ const PAN_THRESHOLD  = 8;          // この距離(表示px)を超えたらパ�
 const VERTEX_HIT_PX  = 20;         // 頂点ヒット判定半径(表示px)
 const EDGE_HIT_PX    = 15;         // 辺ヒット判定距離(表示px)
 const LONG_PRESS_MS  = 500;        // 長押し判定時間(ms)
-/**
- * 履歴に保持する rgba スナップショットの最大数。
- * 1枚が画像まるごと（長辺2500pxなら約25MB）なので無制限には積めない。
- * 超えた分は古いスナップショットから捨てる＝それより前には戻せなくなるだけで、
- * 残りの履歴は繋がったまま。
- */
-const MAX_RGBA_SNAPSHOTS = 3;
 
 // ── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -81,8 +75,11 @@ type AppMode = 'draw' | 'move' | 'eyedropper';
  * （undo ボタンが目の前にあるのにスポイトだけ戻らない、という状態を避けるため）。
  */
 type HistEntry =
+  // 画像編集(スポイト)は親が「元画像 + 操作列」で管理しているので、ここには
+  // 「この位置で画像編集が入った」という印だけを残し、取り消しは親へ委譲する。
+  // こうするとポリゴン操作と画像編集が混ざっても、押した順どおりに戻せる。
   | { kind: 'polygons'; polygons: Polygon[] }
-  | { kind: 'rgba';     rgba: Uint8Array };
+  | { kind: 'edit' };
 /** ジェスチャーの内部フェーズ */
 type GesPhase =
   | 'idle'
@@ -120,6 +117,17 @@ interface Props {
    * 省略した場合は何も呼ばれない（後方互換）。
    */
   onPolygonsChange?: (polys: Polygon[]) => void;
+  /**
+   * 画像編集は「元画像 + 操作列」を呼び出し側が持ち、この画面は操作を通知するだけ。
+   * bgVersion は作り直しの通知（rgba は同一参照のまま中身が変わるため）。
+   */
+  onEyedrop?: (x: number, y: number, tolerance: number, feather: boolean) => void;
+  onUndoEdit?: () => void;
+  onRedoEdit?: () => void;
+  onResetEdits?: () => void;
+  canUndoEdit?: boolean;
+  canRedoEdit?: boolean;
+  bgVersion?: number;
   /** 設定画面へ遷移。省略可（ヘッダーに設定アイコンを出さない）。 */
   onSettings?: () => void;
   /** ホームへ戻る。省略可（ヘッダーにホームアイコンを出さない）。 */
@@ -204,12 +212,10 @@ function distPointToSegment(
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
 
   const { settings } = useSettings();
-  // スポイトで bgResult.rgba を直接書き換えるため参照は変わらない。
-  // SkImage を作り直すトリガーとして使う。
-  const [imgVersion, setImgVersion] = useState(0);
+
 
   // ── SkImage ──────────────────────────────────────────────────────────────
   const skImage = useMemo<SkImage | null>(() => {
@@ -219,9 +225,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       { width, height, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
       data, width * 4,
     );
-    // imgVersion: スポイトで rgba を書き換えた後に作り直すための依存。
+    // bgVersion: 親が rgba の中身を作り直したときに作り直すための依存。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bgResult, imgVersion]);
+  }, [bgResult, bgVersion]);
 
   // スポイトを押すたびに SkImage が作り直されるので、古い方を解放する。
   // cleanup は「新しい skImage で描画がコミットされた後」に走るため、
@@ -248,9 +254,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   //
   // 初期値はアプリ設定（サムネ背景）を既定とする。マウント時に1回だけ読み、
   // 以降は画面内のセグメント切替（setBgMode）でローカルに上書きできる（永続化しない）。
-  // BgMode は ThumbMode('white'|'gray'|'checker') に 'black' を足した上位集合のため、
-  // 設定値をそのまま初期値に使える。
-  type BgMode = 'checker' | 'white' | 'gray' | 'black';
+  // BgMode は設定の ThumbBg と同じ4種なので、設定値をそのまま初期値に使える。
+  type BgMode = ThumbBg;
   const defaultBgMode = useThumbBg();
   const [bgMode, setBgMode] = useState<BgMode>(defaultBgMode);
 
@@ -293,12 +298,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   eyeTolRef.current   = settings.eyedropperTolerance;
   const featherRef    = useRef(settings.featherEdges);
   featherRef.current  = settings.featherEdges;
-  /**
-   * 入場時の画像（リセット用）。スポイトを初めて使った時のスナップショットを
-   * そのまま流用するので、追加のコピーは発生しない。
-   * null = スポイト未使用 = 画像は入場時のまま。
-   */
-  const originalRgbaRef = useRef<Uint8Array | null>(null);
+  // 親のコールバックは PanResponder のクロージャからも呼ぶので ref 経由で読む。
+  const onEyedropRef  = useRef(onEyedrop);  onEyedropRef.current  = onEyedrop;
+  const onUndoEditRef = useRef(onUndoEdit); onUndoEditRef.current = onUndoEdit;
+  const onRedoEditRef = useRef(onRedoEdit); onRedoEditRef.current = onRedoEdit;
+  const onResetEditsRef = useRef(onResetEdits); onResetEditsRef.current = onResetEdits;
 
   // 個別スタンプの bbox 一覧（画像px）。四角追加の初期サイズを「タップ位置にある
   // スタンプ1個のサイズ」にするために使う。splitConnected が連結成分ごとに分離し
@@ -381,50 +385,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     setFuture([]);
   }, []);
 
-  /**
-   * スポイト実行「前」の画像を past に積む。
-   * rgba は重いので MAX_RGBA_SNAPSHOTS を超えたら古い rgba から間引く
-   * （ポリゴンのエントリは軽いのでそのまま残す）。
-   *
-   * NOTE: スナップショットは必ず呼び出し側が「書き換える前」に同期でコピーして渡すこと。
-   * updater 関数の中で rgbaRef から取ると、updater は render フェーズで走るため
-   * その時点では既に removeColorAt が書き換え済み＝変更後の画像を積んでしまい、
-   * undo しても何も戻らなくなる。
-   */
-  const pushRgbaHistory = useCallback((snapshot: Uint8Array) => {
-    setPast(p => {
-      const next: HistEntry[] = [...p, { kind: 'rgba', rgba: snapshot }];
-      let over = next.filter(e => e.kind === 'rgba').length - MAX_RGBA_SNAPSHOTS;
-      if (over <= 0) return next;
-      // 先頭（＝古い方）から over 個だけ rgba エントリを落とす。
-      return next.filter(e => {
-        if (e.kind === 'rgba' && over > 0) { over--; return false; }
-        return true;
-      });
-    });
-    setFuture([]);
-  }, []);
-
-  /**
-   * 画像を巻き戻す/やり直す共通処理。
-   * bgResult.rgba は App 側と共有している同一の配列なので、参照を差し替えず
-   * 中身を書き戻す（差し替えると書き出し側が古い配列を見続けてしまう）。
-   */
-  const applyRgbaSnapshot = useCallback((snapshot: Uint8Array): HistEntry => {
-    const current: HistEntry = { kind: 'rgba', rgba: rgbaRef.current.slice() };
-    rgbaRef.current.set(snapshot);
-    setImgVersion(v => v + 1);
-    return current;
-  }, []);
-
   const handleUndo = () => {
     if (pastRef.current.length === 0) return;
     const prev = [...pastRef.current];
     const snap = prev.pop()!;
     setPast(prev);
-    if (snap.kind === 'rgba') {
-      const current = applyRgbaSnapshot(snap.rgba);
-      setFuture(f => [current, ...f]);
+    if (snap.kind === 'edit') {
+      onUndoEditRef.current?.();          // 画像の巻き戻しは親が行う
+      setFuture(f => [{ kind: 'edit' }, ...f]);
       return;
     }
     setFuture(f => [{ kind: 'polygons', polygons: polygonsRef.current }, ...f]);
@@ -441,9 +409,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     const [snap, ...rest] = future;
     if (!snap) return;
     setFuture(rest);
-    if (snap.kind === 'rgba') {
-      const current = applyRgbaSnapshot(snap.rgba);
-      setPast(p => [...p, current]);
+    if (snap.kind === 'edit') {
+      onRedoEditRef.current?.();
+      setPast(p => [...p, { kind: 'edit' }]);
       return;
     }
     setPast(p => [...p, { kind: 'polygons', polygons: polygonsRef.current }]);
@@ -460,19 +428,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const handleReset = () => {
     Alert.alert(
       '編集をリセット',
-      'ポリゴンとスポイトで消した色を、この画面に入った直後の状態に戻します。\nこの操作は取り消せません。',
+      'ポリゴンを消し、自動の背景除去とスポイトも取り消して元の画像に戻します。\nこの操作は取り消せません。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
           text: 'リセット',
           style: 'destructive',
           onPress: () => {
-            if (originalRgbaRef.current) {
-              // App 側と共有している配列なので中身を書き戻す（参照は差し替えない）。
-              rgbaRef.current.set(originalRgbaRef.current);
-              originalRgbaRef.current = null;
-              setImgVersion(v => v + 1);
-            }
+            onResetEditsRef.current?.(); // 画像の巻き戻しは親が行う
             setPolygons([]);
             setSelectedId(null);
             setSelectedVertexIdx(null);
@@ -985,13 +948,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 // 履歴を積まずに無視する。積むと undo が1回無反応になり、
                 // 重い rgba スナップショットの枠も無駄に消費する。
                 && !isTransparentAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y)) {
-              // 書き換える前に「同期で」コピーする（updater 内で取ると手遅れになる）。
-              const before = rgbaRef.current.slice();
-              // 初回のスポイトのスナップショット = 入場時の画像。リセット用に保持する。
-              if (!originalRgbaRef.current) originalRgbaRef.current = before;
-              pushRgbaHistory(before); // 実行前の画像を undo 用に退避
-              removeColorAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y, eyeTolRef.current, featherRef.current);
-              setImgVersion(v => v + 1);
+              // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
+              setPast(p => [...p, { kind: 'edit' }]);
+              setFuture([]);
+              onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
@@ -1301,14 +1261,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       <View style={styles.bar}>
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={past.length === 0}
+          disabled={past.length === 0 && !canUndoEdit}
           onPress={handleUndo}
         >
           <Icon name="undo" size={24} color={IOS.label} />
         </AnimatedPressable>
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={future.length === 0}
+          disabled={future.length === 0 && !canRedoEdit}
           onPress={handleRedo}
         >
           <Icon name="redo" size={24} color={IOS.label} />

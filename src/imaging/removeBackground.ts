@@ -42,11 +42,28 @@ interface BgColor {
   count: number;
 }
 
+/**
+ * 読み込み＋背景除去をまとめて行う従来の入口。
+ * 編集履歴を持たない経路（合体ブロックの再処理など）から使う。
+ */
 export async function removeBackground(
   fileUri: string,
   tolerance: number = TOLERANCE,
   feather: boolean = true,
 ): Promise<RemoveBgResult> {
+  const img = await loadImagePixels(fileUri);
+  removeBackgroundInPlace(img.rgba, img.width, img.height, tolerance, feather);
+  return img;
+}
+
+/**
+ * 元画像を読み込んでピクセル配列にする（背景除去はしない）。
+ *
+ * 背景除去を「取り消せる1つの操作」として扱えるようにするため、読み込みと
+ * 除去を分けてある。呼び出し側はここで得た素の画素を基準として保持しておき、
+ * 除去やスポイトを掛け直すことで任意の時点へ戻せる。
+ */
+export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> {
   // file:// のローカルファイルが存在しない場合、Skia.Data.fromURI は reject せず
   // ハングすることがある（→ 呼び出し側が 'processing' のまま無限ローディング）。
   // 事前に存在チェックして明示的に throw し、呼び出し側の catch で扱えるようにする。
@@ -109,6 +126,21 @@ export async function removeBackground(
     ? rawPixels
     : new Uint8Array(rawPixels.buffer);
 
+  return { rgba, width, height };
+}
+
+/**
+ * 読み込み済みの画素に対して背景除去を行う（破壊的）。
+ * 四隅からのフラッドフィル → 皮むき → フェザリング → alpha を落とす、の順。
+ */
+export function removeBackgroundInPlace(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  tolerance: number = TOLERANCE,
+  feather: boolean = true,
+): void {
+  const pixelCount = width * height;
   const bgColors = estimateBgColors(rgba, width, height, tolerance);
 
   const visited = new Uint8Array(pixelCount);
@@ -165,7 +197,6 @@ export async function removeBackground(
     );
   }
 
-  return { rgba, width, height };
 }
 
 function sampleEdgeColors(

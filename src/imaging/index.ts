@@ -2,12 +2,35 @@ import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
-import { removeBackground, TOLERANCE } from './removeBackground';
+import { removeBackground, TOLERANCE, removeColorAt, removeBackgroundInPlace } from './removeBackground';
+import type { EditStep } from '../session/types';
 import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
 import type { BBox } from './splitObjects';
 
-export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt } from './removeBackground';
+export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace } from './removeBackground';
+
+/**
+ * 元画像の画素に編集操作を順番に掛け直して、現在の見た目を作る（破壊的）。
+ *
+ * 加工後の画像は保存せず、元画像＋操作列を「正」として毎回ここで再現する。
+ * 取り消しは steps を短くして呼び直すだけでよく、巻き戻し用の画像を
+ * 抱える必要がない。
+ */
+export function applyEditSteps(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  steps: EditStep[],
+): void {
+  for (const s of steps) {
+    if (s.kind === 'autoBg') {
+      removeBackgroundInPlace(rgba, width, height, s.tolerance, s.feather);
+    } else {
+      removeColorAt(rgba, width, height, s.x, s.y, s.tolerance, s.feather);
+    }
+  }
+}
 export { splitRowsThenCols, splitRowsThenColsWithLines, splitByBoundaries, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
 export type { RowColEdges, SplitLines, SplitResult } from './splitObjects';
 export { splitConnected, MIN_AREA, MERGE_GAP } from './splitConnected';

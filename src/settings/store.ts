@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'app_settings';
 
-export type ThumbBg = 'white' | 'gray' | 'checker';
+export type ThumbBg = 'white' | 'gray' | 'checker' | 'black';
 
 export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 

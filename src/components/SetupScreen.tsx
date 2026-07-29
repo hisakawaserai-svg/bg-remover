@@ -9,6 +9,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
+  Alert,
   Image,
   LayoutChangeEvent,
   PanResponder,
@@ -23,6 +24,7 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 
 import Screen from './ui/Screen';
@@ -30,11 +32,13 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import ImageZoomModal from './ui/ImageZoomModal';
 import Card from './ui/Card';
+import CheckerboardBg from './ui/CheckerboardBg';
 import ToleranceSlider from './ui/ToleranceSlider';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
-import { removeColorAt, isTransparentAt, detectRowCount, detectColCount } from '../imaging';
+import { useThumbBg } from '../hooks/useThumbBg';
+import { isTransparentAt, detectRowCount, detectColCount } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 
 function clamp(v: number, lo: number, hi: number) {
@@ -54,24 +58,6 @@ function clampBetween(valImg: number, arr: number[], index: number, dim: number)
 }
 
 type SetupMode = 'auto' | 'manual';
-
-/**
- * スポイト1タップぶんの巻き戻し情報。
- * スポイトは行数・列数の再検出まで走らせるので、画像だけでなくその2つも一緒に戻す。
- */
-interface EyeSnapshot {
-  rgba: Uint8Array;
-  rows: number;
-  cols: number;
-}
-
-/**
- * スポイト履歴に積むスナップショットの合計サイズ上限。
- * 1枚は画像まるごと（長辺2500pxの上限いっぱいなら約25MB、普通のシートなら数MB）。
- * 「何世代」ではなくバイト数で切ることで、小さい画像なら何回でも、
- * 巨大な画像なら1回ぶんだけ、と画像サイズに応じて自動で調整される。
- */
-const EYE_HISTORY_MAX_BYTES = 40 * 1024 * 1024;
 
 interface Props {
   bgResult: RemoveBgResult;
@@ -93,14 +79,27 @@ interface Props {
     bounds?: { rowYsImg: number[]; colXsImg: number[] },
   ) => void;
   onBack: () => void;
+  /**
+   * 画像編集は「元画像 + 操作列」を呼び出し側が持ち、この画面は操作を通知するだけ。
+   * 取り消し・やり直し・リセットも呼び出し側で列を操作して画像を作り直す。
+   * bgVersion は作り直しの通知（rgba は同一参照のまま中身が変わるため）。
+   */
+  onEyedrop?: (x: number, y: number, tolerance: number, feather: boolean) => void;
+  onUndoEdit?: () => void;
+  onRedoEdit?: () => void;
+  onResetEdits?: () => void;
+  canUndoEdit?: boolean;
+  canRedoEdit?: boolean;
+  bgVersion?: number;
   onSettings?: () => void;
   onHome?: () => void;
   /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
   originalImageUri?: string;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onSettings, onHome, originalImageUri }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { settings, updateSettings } = useSettings();
+  const thumbBg = useThumbBg();
   const [rows, setRows] = useState(initialRows);
   // 列数。行数ステッパーと全く同じUI・挙動。初期値は自動推定した列数(initialCols)。
   const [cols, setCols] = useState(initialCols ?? 1);
@@ -113,11 +112,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // 枠付きシートのように自動透過が内側まで届かない画像で、背景を抜いてから
   // 行数・列数の再検出に乗せるための下ごしらえ用。
   const [eyedropperMode, setEyedropperMode] = useState(false);
-  // imageUri の再生成トリガー（bgResult.rgba を直接書き換えるため参照は変わらない）。
-  const [imgVersion, setImgVersion] = useState(0);
-  // スポイトの巻き戻し履歴（新しいものが末尾）。この画面を出ると破棄される。
-  const [eyeHistory, setEyeHistory] = useState<EyeSnapshot[]>([]);
-  const eyeHistoryRef = useRef(eyeHistory); eyeHistoryRef.current = eyeHistory;
   const [noSplit, setNoSplit] = useState(false);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
   // ── グリッド線の選択状態（今回は「タップ選択＋ハイライト表示」まで）─────────────
@@ -129,6 +123,17 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // ボタンは消えているのに eyedropperModeRef が true のまま残り、
   // 線のタップ/ドラッグを黙って奪ってしまうため。
   useEffect(() => { setEyedropperMode(false); }, [mode]);
+  // 画像が作り直されたら行数・列数を検出し直す（スポイト・取り消し・やり直し共通）。
+  // 検出は alpha の帯だけを見るので、背景が抜ける前は区切りが無く 1×1 になる。
+  // 初期表示(bgVersion=0)は親が渡した推定値を尊重するので何もしない。
+  const firstVersionRef = useRef(true);
+  useEffect(() => {
+    if (firstVersionRef.current) { firstVersionRef.current = false; return; }
+    const dRows = detectRowCount(bgResult.rgba, bgResult.width, bgResult.height);
+    setRows(dRows);
+    setCols(detectColCount(bgResult.rgba, bgResult.width, bgResult.height, dRows));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgVersion]);
 
   // ── 簡易トースト（連打防止つき）─────────────────────────────────────────────
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -163,44 +168,22 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     const b64 = img.encodeToBase64();
     img.dispose();
     return `data:image/png;base64,${b64}`;
-    // imgVersion: スポイトで rgba を書き換えた後にプレビューを作り直すための依存。
+    // bgVersion: 親が rgba の中身を作り直したときにプレビューを作り直すための依存。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bgResult, imgVersion]);
+  }, [bgResult, bgVersion]);
 
-  /**
-   * スポイト実行「前」の状態を積む。合計サイズが上限を超えたら古い方から捨てる。
-   * 捨てた分はそこまで戻せなくなるだけで、残りの履歴は繋がったまま。
-   * 直近の1件は必ず残す（1回も戻せないと取り消しが機能しないため）。
-   */
-  const pushEyeHistory = useCallback((snap: EyeSnapshot) => {
-    setEyeHistory(prev => {
-      const next = [...prev, snap];
-      let total = next.reduce((s, e) => s + e.rgba.byteLength, 0);
-      while (next.length > 1 && total > EYE_HISTORY_MAX_BYTES) {
-        total -= next[0].rgba.byteLength;
-        next.shift();
-      }
-      return next;
-    });
+  /** 自動背景除去も含めて全部取り消し、元画像の状態に戻す。取り消せないので確認する。 */
+  const handleResetEdits = useCallback(() => {
+    Alert.alert(
+      '編集をリセット',
+      '自動の背景除去とスポイトを全部取り消して、元の画像に戻します。\nこの操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: 'リセット', style: 'destructive', onPress: () => onResetEditsRef.current?.() },
+      ],
+    );
   }, []);
-
-  /**
-   * スポイトを1回ぶん巻き戻す。画像と、それに連動する行数・列数を戻す。
-   * 画像の書き戻しは updater の外で同期に行う。updater は render フェーズで
-   * 走るうえ複数回呼ばれ得るので、中で副作用を起こしてはいけない。
-   */
-  const undoEyedropper = useCallback(() => {
-    const hist = eyeHistoryRef.current;
-    if (hist.length === 0) return;
-    const snap = hist[hist.length - 1];
-    // bgResult.rgba は App 側と共有している同じ配列なので、
-    // 参照を差し替えず中身を書き戻す（差し替えると書き出し側が古い配列を見続ける）。
-    rgbaRef.current.set(snap.rgba);
-    setRows(snap.rows);
-    setCols(snap.cols);
-    setImgVersion(v => v + 1);
-    setEyeHistory(prev => prev.slice(0, -1));
-  }, []);
+  const onResetEditsRef = useRef(onResetEdits); onResetEditsRef.current = onResetEdits;
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -297,6 +280,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   eyeTolRef.current = settings.eyedropperTolerance;
   const featherRef = useRef(settings.featherEdges);
   featherRef.current = settings.featherEdges;
+  const onEyedropRef = useRef(onEyedrop); onEyedropRef.current = onEyedrop;
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const colsRef = useRef(cols); colsRef.current = cols;
   // ジェスチャー中の状態。snapVal = 掴んだ瞬間の線の画像座標（RectEditor の snap と同じ役割）。
@@ -326,21 +310,8 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           if (imgX >= 0 && imgX < w && imgY >= 0 && imgY < h
               // 透過済みの場所は見た目が変わらない（空振り）ので再検出まで走らせない。
               && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)) {
-            // 書き換える「前」に同期でコピーして履歴へ積む。setState の updater 内で
-            // コピーすると、updater は render フェーズで走るため既に書き換え済みの
-            // 画像を保存してしまい、戻しても何も変わらなくなる。
-            pushEyeHistory({
-              rgba: rgbaRef.current.slice(),
-              rows: rowsRef.current,
-              cols: colsRef.current,
-            });
-            removeColorAt(rgbaRef.current, w, h, imgX, imgY, eyeTolRef.current, featherRef.current);
-            setImgVersion(v => v + 1);
-            // 背景が抜けたことで初めて透明な帯ができるので、行数・列数を検出し直す。
-            // 検出は alpha だけを見るため、抜く前は区切りが見つからず 1×1 になっている。
-            const dRows = detectRowCount(rgbaRef.current, w, h);
-            setRows(dRows);
-            setCols(detectColCount(rgbaRef.current, w, h, dRows));
+            // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
+            onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
           }
           return;
         }
@@ -484,26 +455,63 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               onPress={() => setEyedropperMode(v => !v)}
               pressedScale={0.98}
             >
-              <Text style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}>
-                {eyedropperMode ? 'スポイトON: 消したい背景をタップ' : 'スポイトで背景を消す'}
+              <Icon
+                name="colorize"
+                size={18}
+                color={eyedropperMode ? '#FFF' : IOS.label}
+              />
+              {/* ON/OFF で文字数を揃えてある。長さが変わるとボタン幅が伸縮して
+                  隣のアイコンが動くため。折り返しも1行に固定して防ぐ。*/}
+              <Text
+                style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}
+                numberOfLines={1}
+              >
+                {eyedropperMode ? 'タップで背景を消す' : 'スポイトで背景を消す'}
               </Text>
             </AnimatedPressable>
-            {/* 取り消しは1回でも消した後だけ出す（未使用時は場所を取らない）。*/}
-            {eyeHistory.length > 0 && (
-              <AnimatedPressable
-                style={styles.eyeUndoBtn}
-                onPress={undoEyedropper}
-                pressedScale={0.94}
-              >
-                <Text style={styles.eyeUndoTxt}>↩︎ 戻す</Text>
-              </AnimatedPressable>
-            )}
+            {/* 取り消し / やり直し / リセットは常時表示し、使えない時は非活性にする。
+                アイコンは手動切り抜き画面の下部バーと揃える。
+                取り消しは自動背景除去まで遡れるので、押し続ければ元画像に戻る。*/}
+            <AnimatedPressable
+              style={[styles.eyeIconBtn, !canUndoEdit && styles.eyeIconBtnOff]}
+              disabled={!canUndoEdit}
+              onPress={() => onUndoEdit?.()}
+              pressedScale={0.94}
+            >
+              <Icon name="undo" size={20} color={canUndoEdit ? IOS.label : IOS.secondary} />
+            </AnimatedPressable>
+            <AnimatedPressable
+              style={[styles.eyeIconBtn, !canRedoEdit && styles.eyeIconBtnOff]}
+              disabled={!canRedoEdit}
+              onPress={() => onRedoEdit?.()}
+              pressedScale={0.94}
+            >
+              <Icon name="redo" size={20} color={canRedoEdit ? IOS.label : IOS.secondary} />
+            </AnimatedPressable>
+            <AnimatedPressable
+              style={[styles.eyeIconBtn, !canUndoEdit && styles.eyeIconBtnOff]}
+              disabled={!canUndoEdit}
+              onPress={handleResetEdits}
+              pressedScale={0.94}
+            >
+              <Icon name="refresh" size={20} color={canUndoEdit ? IOS.label : IOS.secondary} />
+            </AnimatedPressable>
           </View>
         )}
 
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
         {/* PanResponder で線のタップ選択＋ドラッグ移動を処理（自動モード時のみ意味を持つ）*/}
         <View style={styles.previewBox} onLayout={handleLayout} {...pan.panHandlers}>
+          {/* 下地は設定「サムネ背景」に準拠する。透過の見え方を確認する場所なので、
+              保存先の一覧や手動切り抜きと同じ下地で見えたほうが判断しやすい。*/}
+          {viewSize && (
+            <CheckerboardBg
+              mode={thumbBg}
+              tile={20}
+              width={viewSize.width}
+              height={viewSize.height}
+            />
+          )}
           {imageUri && (
             <Image
               source={{ uri: imageUri }}
@@ -748,23 +756,26 @@ const styles = StyleSheet.create({
   },
   eyeBtn: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: IOS.fill,
-  },
-  eyeUndoBtn: {
-    paddingVertical: 11,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: IOS.fill,
   },
-  eyeUndoTxt: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: IOS.blue,
+  eyeIconBtn: {
+    minWidth: 44,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: IOS.fill,
+  },
+  eyeIconBtnOff: {
+    opacity: 0.4,
   },
   eyeBtnOn: {
     backgroundColor: IOS.blue,
@@ -789,7 +800,6 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#1C1C1E',
   },
 
   // ── 検出数バッジ ──────────────────────────────────────────────────────────

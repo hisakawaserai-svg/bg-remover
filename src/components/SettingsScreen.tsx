@@ -191,6 +191,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                 { val: 'white',   label: '白'   },
                 { val: 'gray',    label: 'グレー' },
                 { val: 'checker', label: '市松'  },
+                { val: 'black',   label: '黒'   },
               ] as const).map(({ val, label }) => (
                 <AnimatedPressable
                   key={val}

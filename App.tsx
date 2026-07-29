@@ -41,6 +41,8 @@ import {
   saveSkImages,
   addMarginToImage,
   persistSourceImage,
+  applyEditSteps,
+  loadImagePixels,
 } from './src/imaging';
 import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
@@ -102,7 +104,7 @@ import {
   deleteSessionFiles,
   getSession,
 } from './src/session/store';
-import type { StickerSession, SessionPolygon, SavedCell } from './src/session/types';
+import type { StickerSession, SessionPolygon, SavedCell, EditStep } from './src/session/types';
 
 // ── 共通 UI プリミティブ ──────────────────────────────────────────────────────
 import Card           from './src/components/ui/Card';
@@ -192,8 +194,26 @@ export default function App() {
   // editingCellIdx: cell_editing 中に手動分割中のセルのインデックス
   const [editingCellIdx, setEditingCellIdx] = useState<number | null>(null);
 
+  // ── 画像編集の操作列 ───────────────────────────────────────────────────────
+  // 加工後の rgba は保存しない方針なので「元画像 + 操作列」を正とし、表示のたびに
+  // 元画像へ順番に掛け直して現在の見た目を作る。取り消しは列を短くするだけでよく、
+  // 巻き戻し用に画像を何枚も抱えずに済む。自動背景除去も列の1件として扱うので、
+  // 取り消しを続ければ元画像まで戻せる。
+  // upsertSession はレコードを丸ごと置き換えるため、保存箇所すべてでこの値を渡す。
+  const [edits, setEdits] = useState<EditStep[]>([]);
+  const editsRef = useRef<EditStep[]>([]);
+  // やり直し用に取り消した操作を積む。画面内でだけ有効（保存しない）。
+  const [redoSteps, setRedoSteps] = useState<EditStep[]>([]);
+  const redoStepsRef = useRef<EditStep[]>([]);
+  // 元画像（背景除去前）の画素。操作列を掛け直すときの基準。
+  const baseRgbaRef = useRef<Uint8Array | null>(null);
+  // 画像を作り直したことを子へ伝えるカウンタ（rgba は同一参照のまま中身が変わるため）。
+  const [bgVersion, setBgVersion] = useState(0);
+
   // 手動モード用（PolygonEditor / PreviewScreen に渡す）
   const [bgResult,  setBgResult]  = useState<RemoveBgResult | null>(null);
+  const bgResultRef = useRef<RemoveBgResult | null>(null);
+  bgResultRef.current = bgResult;
   const [polygons,  setPolygons]  = useState<Polygon[]>([]);
 
   // ── ポリゴン変換ヘルパー ────────────────────────────────────────────────────
@@ -220,6 +240,62 @@ export default function App() {
   const [sessions,          setSessions]          = useState<StickerSession[]>([]);
   // currentSessionId: 現在作業中のセッション id（画像選択〜完了まで持ち回る）
   const [currentSessionId,  setCurrentSessionId]  = useState<string | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
+  currentSessionIdRef.current = currentSessionId;
+
+  /**
+   * 操作列を差し替えて画像を作り直す。
+   * 元画像へ順番に掛け直すだけなので、追加も取り消しも同じ経路で扱える。
+   * bgResult.rgba は書き出し側と共有している配列なので、参照は替えず中身を書き戻す。
+   */
+  const applyEdits = useCallback((next: EditStep[], nextRedo: EditStep[]) => {
+    const base = baseRgbaRef.current;
+    const bg = bgResultRef.current;
+    if (base && bg) {
+      bg.rgba.set(base);
+      applyEditSteps(bg.rgba, bg.width, bg.height, next);
+      setBgVersion(v => v + 1);
+    }
+    editsRef.current = next;
+    setEdits(next);
+    redoStepsRef.current = nextRedo;
+    setRedoSteps(nextRedo);
+
+    // スポイトだけ操作して離脱する経路があるため、ここで保存する。ポリゴン操作など
+    // 他の保存契機を待つと、画像編集のみの変更が保存されないまま終わってしまう。
+    // 既存レコードを読んで edits だけ差し替える（upsertSession はレコードを丸ごと
+    // 置き換えるので、そのまま組み立て直すとポリゴンを消しかねない）。
+    const id = currentSessionIdRef.current;
+    if (!id) return;
+    void (async () => {
+      const existing = await getSession(id);
+      if (!existing) return;
+      await upsertSession({ ...existing, edits: next, updatedAt: Date.now() });
+    })();
+  }, []);
+
+  /** 操作を1つ追加する（スポイトなど）。追加したらやり直し履歴は捨てる。 */
+  const pushEdit = useCallback((step: EditStep) => {
+    applyEdits([...editsRef.current, step], []);
+  }, [applyEdits]);
+
+  const undoEdit = useCallback(() => {
+    const cur = editsRef.current;
+    if (cur.length === 0) return;
+    applyEdits(cur.slice(0, -1), [cur[cur.length - 1], ...redoStepsRef.current]);
+  }, [applyEdits]);
+
+  const redoEdit = useCallback(() => {
+    const [head, ...rest] = redoStepsRef.current;
+    if (!head) return;
+    applyEdits([...editsRef.current, head], rest);
+  }, [applyEdits]);
+
+  /** 元画像の状態（自動背景除去も含めて全部）まで戻す。 */
+  const resetEdits = useCallback(() => {
+    applyEdits([], []);
+  }, [applyEdits]);
+
 
   // AsyncStorage からセッション一覧と設定を再取得（マウント時に1回）
   const reloadSessions = useCallback(async () => {
@@ -281,6 +357,7 @@ export default function App() {
     void reloadSessions(); // UI を非同期で更新（processImage と並行してよい）
 
     setSplitMode('auto'); // 新規画像は常に自動モードからスタート
+    editsRef.current = []; redoStepsRef.current = []; // 前の画像の編集を持ち越さない
     await processImage(uri);
   };
 
@@ -288,7 +365,7 @@ export default function App() {
   // overrideMode: resumeSession から呼ぶ際に保存済みモードを注入する
   // （setState は非同期のため、splitMode state は即座に反映されない）
 
-  const processImage = async (uri: string, overrideMode?: SplitMode, resumePolygons?: Polygon[]) => {
+  const processImage = async (uri: string, overrideMode?: SplitMode, resumePolygons?: Polygon[], resumeEdits?: EditStep[]) => {
     const effectiveMode = overrideMode ?? splitMode; // ← 追加: overrideMode 優先
     setAppState('processing');
     setBgResult(null);
@@ -300,7 +377,18 @@ export default function App() {
     try {
       // removeBackground は両モード共通。
       // tolerance は設定画面で変更可能: appSettings.tolerance を使う
-      const result = await removeBackground(uri, appSettings.tolerance, appSettings.featherEdges);
+      // 元画像を読み込み、その画素を基準として保持してから操作列を掛ける。
+      // 保存済みの操作列があればそれを、無ければ自動背景除去1件から始める。
+      const result = await loadImagePixels(uri);
+      baseRgbaRef.current = result.rgba.slice();
+      const steps: EditStep[] = resumeEdits?.length
+        ? resumeEdits
+        : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges }];
+      applyEditSteps(result.rgba, result.width, result.height, steps);
+      editsRef.current = steps;
+      setEdits(steps);
+      redoStepsRef.current = [];
+      setRedoSteps([]);
 
       setBgResult(result);
       if (resumePolygons != null) {
@@ -412,6 +500,7 @@ export default function App() {
         autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds: noSplit ? undefined : bounds },
         thumbUri: newCells[0]?.thumbUri,
         updatedAt: Date.now(),
+        edits: editsRef.current,
       });
       void reloadSessions();
     }
@@ -486,6 +575,7 @@ export default function App() {
         keyConfig: { tolerance: appSettings.tolerance, rows },
         autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells },
         updatedAt: Date.now(),
+        edits: editsRef.current,
       });
       void reloadSessions();
     }
@@ -578,6 +668,7 @@ export default function App() {
         keyConfig: { tolerance: appSettings.tolerance, rows },
         autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells },
         updatedAt: Date.now(),
+        edits: editsRef.current,
       });
       void reloadSessions();
     }
@@ -643,6 +734,7 @@ export default function App() {
           autoData: sessionToFinish?.autoData,
           thumbUri: sessionToFinish?.thumbUri,
           updatedAt: Date.now(),
+          edits: editsRef.current,
         });
         void reloadSessions();
       }
@@ -753,7 +845,16 @@ export default function App() {
       setBgResult(null);
       setCurrentImageUri(latest.imageUri);
       try {
-        const result = await removeBackground(latest.imageUri, appSettings.tolerance, appSettings.featherEdges);
+        const result = await loadImagePixels(latest.imageUri);
+        baseRgbaRef.current = result.rgba.slice();
+        const steps: EditStep[] = latest.edits?.length
+          ? latest.edits
+          : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges }];
+        applyEditSteps(result.rgba, result.width, result.height, steps);
+        editsRef.current = steps;
+        setEdits(steps);
+        redoStepsRef.current = [];
+        setRedoSteps([]);
         setBgResult(result);
         // keyConfig に保存済みの行数/列数があれば復元済みの値を優先し、
         // 自動検出で上書きしない。保存値が無い場合のみ自動検出する。
@@ -772,7 +873,7 @@ export default function App() {
     }
 
     // ── 自動モード・autoData なし: processImage 経由で SetupScreen を表示 ──
-    await processImage(latest.imageUri, mode);
+    await processImage(latest.imageUri, mode, undefined, latest.edits);
   };
 
   // ── 派生値: 進捗集計 ─────────────────────────────────────────────────────
@@ -887,6 +988,13 @@ export default function App() {
         initialCols={confirmCols}
         initialBounds={confirmBounds}
         initialMode={splitMode}
+        onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
+        onUndoEdit={undoEdit}
+        onRedoEdit={redoEdit}
+        onResetEdits={resetEdits}
+        canUndoEdit={edits.length > 0}
+        canRedoEdit={redoSteps.length > 0}
+        bgVersion={bgVersion}
         onConfirm={(rows, cols, mode, noSplit, bounds) => {
           setSplitMode(mode);
           if (mode === 'auto') {
@@ -980,6 +1088,13 @@ export default function App() {
           // セッション復元時: polygons が空でなければ initialPolygons として渡す。
           // 座標は画像ピクセル基準なのでそのまま渡せる（変換不要）。
           initialPolygons={polygons.length > 0 ? polygons : undefined}
+          onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
+          onUndoEdit={undoEdit}
+          onRedoEdit={redoEdit}
+          onResetEdits={resetEdits}
+          canUndoEdit={edits.length > 0}
+          canRedoEdit={redoSteps.length > 0}
+          bgVersion={bgVersion}
           // 確定操作ごとにポリゴンをセッションに保存。
           // プレビュー押下を待たず、頂点追加・削除・ドラッグ終了の都度 upsert する。
           // 毎フレームではなく「操作確定時のみ」発火するため頻度は低い（PolygonEditor 側で制御）。
@@ -994,6 +1109,7 @@ export default function App() {
               keyConfig: { tolerance: appSettings.tolerance },
               polygons:  toSessionPolygons(polys),
               updatedAt: Date.now(),
+              edits: editsRef.current,
             });
           }}
           onPreview={polys => {
@@ -1009,6 +1125,7 @@ export default function App() {
                 keyConfig:  { tolerance: appSettings.tolerance },
                 polygons:   toSessionPolygons(polys),
                 updatedAt:  Date.now(),
+                edits:      editsRef.current,
               });
             }
             setAppState('polygon_preview');
@@ -1028,6 +1145,7 @@ export default function App() {
                 keyConfig: { tolerance: appSettings.tolerance },
                 polygons:  toSessionPolygons(currentPolys),
                 updatedAt: Date.now(),
+                edits: editsRef.current,
               });
             }
             // bgResult が残っていれば SetupScreen に戻る。なければホームへ。
@@ -1063,6 +1181,7 @@ export default function App() {
                 keyConfig: { tolerance: DEFAULT_TOLERANCE },
                 polygons: toSessionPolygons(polygons),
                 updatedAt: Date.now(),
+                edits: editsRef.current,
               });
               // autoDeleteOnExport ON: 自動モード(doAutoExport)と同様、手動書き出しも
               // 完了後にセッション（画像ファイル含む）を削除する。これを入れないと

@@ -5,6 +5,14 @@ import type { ThumbBg } from '../../settings/store';
 const LIGHT = '#FFFFFF';
 const DARK  = '#CCCCCC';
 const GRAY  = '#888888';
+const BLACK = '#1C1C1E';
+
+// 市松以外は単色。mode ごとの塗り色をここに集約する。
+const SOLID: Record<Exclude<ThumbBg, 'checker'>, string> = {
+  white: LIGHT,
+  gray:  GRAY,
+  black: BLACK,
+};
 
 interface Props {
   mode: ThumbBg;
@@ -19,7 +27,7 @@ export default function CheckerboardBg({ mode, tile, width, height }: Props) {
       <View
         style={[
           StyleSheet.absoluteFill,
-          { backgroundColor: mode === 'gray' ? GRAY : LIGHT },
+          { backgroundColor: SOLID[mode] },
         ]}
       />
     );

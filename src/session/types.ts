@@ -19,6 +19,22 @@ export interface SessionPolygon {
 }
 
 /**
+ * 画像に対する編集操作を1つずつ表したもの。
+ *
+ * 加工後の rgba は保存しない方針なので、元画像＋この配列を「正」として扱い、
+ * 表示のたびに元画像へ順番に掛け直して現在の見た目を作る。
+ * これにより (1) 再開しても編集が復元でき、(2) 配列を末尾から削るだけで
+ * 取り消しができ、(3) 巻き戻し用に画像を何枚も抱える必要がなくなる。
+ * 1件あたり数十バイト。
+ *
+ * autoBg = 自動背景除去。ユーザー操作ではないが、取り消して元画像まで戻せる
+ * ようにするため、他の操作と同じ列に並べている。
+ */
+export type EditStep =
+  | { kind: 'autoBg'; tolerance: number; feather: boolean }
+  | { kind: 'eyedrop'; x: number; y: number; tolerance: number; feather: boolean };
+
+/**
  * セッションに保存するカット1枚分の情報。
  * thumbPath は DocumentDirectory の永続パス（file:// URI）。
  * rgba 等の大きいバイナリは保存しない。
@@ -40,6 +56,8 @@ export interface StickerSession {
   mode?: 'auto' | 'custom';
   keyConfig?: KeyConfig;
   polygons?: SessionPolygon[];
+  /** 画像編集の操作列。再開時に元画像へ順番に掛け直して見た目を復元する。 */
+  edits?: EditStep[];
   updatedAt: number;
   thumbUri?: string;
 

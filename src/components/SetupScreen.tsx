@@ -55,6 +55,24 @@ function clampBetween(valImg: number, arr: number[], index: number, dim: number)
 
 type SetupMode = 'auto' | 'manual';
 
+/**
+ * スポイト1タップぶんの巻き戻し情報。
+ * スポイトは行数・列数の再検出まで走らせるので、画像だけでなくその2つも一緒に戻す。
+ */
+interface EyeSnapshot {
+  rgba: Uint8Array;
+  rows: number;
+  cols: number;
+}
+
+/**
+ * スポイト履歴に積むスナップショットの合計サイズ上限。
+ * 1枚は画像まるごと（長辺2500pxの上限いっぱいなら約25MB、普通のシートなら数MB）。
+ * 「何世代」ではなくバイト数で切ることで、小さい画像なら何回でも、
+ * 巨大な画像なら1回ぶんだけ、と画像サイズに応じて自動で調整される。
+ */
+const EYE_HISTORY_MAX_BYTES = 40 * 1024 * 1024;
+
 interface Props {
   bgResult: RemoveBgResult;
   initialRows: number;
@@ -97,6 +115,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const [eyedropperMode, setEyedropperMode] = useState(false);
   // imageUri の再生成トリガー（bgResult.rgba を直接書き換えるため参照は変わらない）。
   const [imgVersion, setImgVersion] = useState(0);
+  // スポイトの巻き戻し履歴（新しいものが末尾）。この画面を出ると破棄される。
+  const [eyeHistory, setEyeHistory] = useState<EyeSnapshot[]>([]);
+  const eyeHistoryRef = useRef(eyeHistory); eyeHistoryRef.current = eyeHistory;
   const [noSplit, setNoSplit] = useState(false);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
   // ── グリッド線の選択状態（今回は「タップ選択＋ハイライト表示」まで）─────────────
@@ -145,6 +166,41 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     // imgVersion: スポイトで rgba を書き換えた後にプレビューを作り直すための依存。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgResult, imgVersion]);
+
+  /**
+   * スポイト実行「前」の状態を積む。合計サイズが上限を超えたら古い方から捨てる。
+   * 捨てた分はそこまで戻せなくなるだけで、残りの履歴は繋がったまま。
+   * 直近の1件は必ず残す（1回も戻せないと取り消しが機能しないため）。
+   */
+  const pushEyeHistory = useCallback((snap: EyeSnapshot) => {
+    setEyeHistory(prev => {
+      const next = [...prev, snap];
+      let total = next.reduce((s, e) => s + e.rgba.byteLength, 0);
+      while (next.length > 1 && total > EYE_HISTORY_MAX_BYTES) {
+        total -= next[0].rgba.byteLength;
+        next.shift();
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * スポイトを1回ぶん巻き戻す。画像と、それに連動する行数・列数を戻す。
+   * 画像の書き戻しは updater の外で同期に行う。updater は render フェーズで
+   * 走るうえ複数回呼ばれ得るので、中で副作用を起こしてはいけない。
+   */
+  const undoEyedropper = useCallback(() => {
+    const hist = eyeHistoryRef.current;
+    if (hist.length === 0) return;
+    const snap = hist[hist.length - 1];
+    // bgResult.rgba は App 側と共有している同じ配列なので、
+    // 参照を差し替えず中身を書き戻す（差し替えると書き出し側が古い配列を見続ける）。
+    rgbaRef.current.set(snap.rgba);
+    setRows(snap.rows);
+    setCols(snap.cols);
+    setImgVersion(v => v + 1);
+    setEyeHistory(prev => prev.slice(0, -1));
+  }, []);
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -239,6 +295,8 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const rgbaRef = useRef(bgResult.rgba); rgbaRef.current = bgResult.rgba;
   const eyeTolRef = useRef(settings.eyedropperTolerance);
   eyeTolRef.current = settings.eyedropperTolerance;
+  const rowsRef = useRef(rows); rowsRef.current = rows;
+  const colsRef = useRef(cols); colsRef.current = cols;
   // ジェスチャー中の状態。snapVal = 掴んだ瞬間の線の画像座標（RectEditor の snap と同じ役割）。
   const g = useRef<{ mode: 'idle' | 'drag'; axis: 'row' | 'col'; index: number; snapVal: number }>(
     { mode: 'idle', axis: 'row', index: 0, snapVal: 0 },
@@ -266,6 +324,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           if (imgX >= 0 && imgX < w && imgY >= 0 && imgY < h
               // 透過済みの場所は見た目が変わらない（空振り）ので再検出まで走らせない。
               && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)) {
+            // 書き換える「前」に同期でコピーして履歴へ積む。setState の updater 内で
+            // コピーすると、updater は render フェーズで走るため既に書き換え済みの
+            // 画像を保存してしまい、戻しても何も変わらなくなる。
+            pushEyeHistory({
+              rgba: rgbaRef.current.slice(),
+              rows: rowsRef.current,
+              cols: colsRef.current,
+            });
             removeColorAt(rgbaRef.current, w, h, imgX, imgY, eyeTolRef.current);
             setImgVersion(v => v + 1);
             // 背景が抜けたことで初めて透明な帯ができるので、行数・列数を検出し直す。
@@ -410,15 +476,27 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             枠付きシートなど自動透過が内側まで届かない画像で、背景を抜いて
             行数・列数の検出に乗せるための下ごしらえ用。*/}
         {mode === 'auto' && !noSplit && (
-          <AnimatedPressable
-            style={[styles.eyeBtn, eyedropperMode && styles.eyeBtnOn]}
-            onPress={() => setEyedropperMode(v => !v)}
-            pressedScale={0.98}
-          >
-            <Text style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}>
-              {eyedropperMode ? 'スポイトON: 消したい背景をタップ' : 'スポイトで背景を消す'}
-            </Text>
-          </AnimatedPressable>
+          <View style={styles.eyeRow}>
+            <AnimatedPressable
+              style={[styles.eyeBtn, eyedropperMode && styles.eyeBtnOn]}
+              onPress={() => setEyedropperMode(v => !v)}
+              pressedScale={0.98}
+            >
+              <Text style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}>
+                {eyedropperMode ? 'スポイトON: 消したい背景をタップ' : 'スポイトで背景を消す'}
+              </Text>
+            </AnimatedPressable>
+            {/* 取り消しは1回でも消した後だけ出す（未使用時は場所を取らない）。*/}
+            {eyeHistory.length > 0 && (
+              <AnimatedPressable
+                style={styles.eyeUndoBtn}
+                onPress={undoEyedropper}
+                pressedScale={0.94}
+              >
+                <Text style={styles.eyeUndoTxt}>↩︎ 戻す</Text>
+              </AnimatedPressable>
+            )}
+          </View>
         )}
 
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
@@ -661,11 +739,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // ── スポイトトグル（セグメンテッドコントロールの外の単独行）─────────────────
+  // トグルと「戻す」を横並びにする。戻すはスポイト使用後だけ現れる。
+  eyeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   eyeBtn: {
+    flex: 1,
     paddingVertical: 11,
     borderRadius: 10,
     alignItems: 'center',
     backgroundColor: IOS.fill,
+  },
+  eyeUndoBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: IOS.fill,
+  },
+  eyeUndoTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: IOS.blue,
   },
   eyeBtnOn: {
     backgroundColor: IOS.blue,

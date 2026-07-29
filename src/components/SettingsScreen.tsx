@@ -117,6 +117,20 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             onChange={setEyeTolerance}
             onComplete={v => void updateSettings({ eyedropperTolerance: v })}
           />
+
+          {/* 輪郭のフェザリング */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>輪郭をなじませる</Text>
+              <Text style={styles.rowSub}>境目の1pxを半透明にして白フチを防ぎます</Text>
+            </View>
+            <Switch
+              value={settings.featherEdges}
+              onValueChange={v => void updateSettings({ featherEdges: v })}
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
         </Card>
 
         {/* ════════════════════════════════════════

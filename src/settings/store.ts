@@ -28,6 +28,12 @@ export interface AppSettings {
    * 求める値の方向が逆になるため共有しない。
    */
   eyedropperTolerance: number;
+  /**
+   * 輪郭のフェザリング。透過した領域の境界1pxを、背景の混ざり具合に応じて
+   * 半透明にし、混入した背景色を差し引く。ONだと白フチが出にくくなる。
+   * アンチエイリアスの無い絵では効果が薄いのでOFFにできるようにしてある。
+   */
+  featherEdges: boolean;
   gridColumns: 2 | 3 | 4;
   thumbBg: ThumbBg;
   splitLineColor: SplitLineColor;
@@ -45,6 +51,7 @@ export interface AppSettings {
 export const DEFAULTS: AppSettings = {
   tolerance:      30,
   eyedropperTolerance: 30,
+  featherEdges:   true,
   gridColumns:    3,
   thumbBg:        'white',
   splitLineColor: '#007AFF',

@@ -300,7 +300,7 @@ export default function App() {
     try {
       // removeBackground は両モード共通。
       // tolerance は設定画面で変更可能: appSettings.tolerance を使う
-      const result = await removeBackground(uri, appSettings.tolerance);
+      const result = await removeBackground(uri, appSettings.tolerance, appSettings.featherEdges);
 
       setBgResult(result);
       if (resumePolygons != null) {
@@ -717,6 +717,7 @@ export default function App() {
         const result = await removeBackground(
           latest.imageUri,
           latest.autoData.tolerance ?? appSettings.tolerance,
+          appSettings.featherEdges,
         );
         setBgResult(result);
 
@@ -752,11 +753,15 @@ export default function App() {
       setBgResult(null);
       setCurrentImageUri(latest.imageUri);
       try {
-        const result = await removeBackground(latest.imageUri, appSettings.tolerance);
+        const result = await removeBackground(latest.imageUri, appSettings.tolerance, appSettings.featherEdges);
         setBgResult(result);
-        const dRows = detectRowCount(result.rgba, result.width, result.height);
-        setConfirmRows(dRows);
-        setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
+        // keyConfig に保存済みの行数/列数があれば復元済みの値を優先し、
+        // 自動検出で上書きしない。保存値が無い場合のみ自動検出する。
+        if (latest.keyConfig?.rows == null || latest.keyConfig?.cols == null) {
+          const dRows = detectRowCount(result.rgba, result.width, result.height);
+          setConfirmRows(dRows);
+          setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
+        }
         setPolygons(latest.polygons?.length ? fromSessionPolygons(latest.polygons) : []);
         setAppState('editing');
       } catch (e: unknown) {
@@ -914,7 +919,8 @@ export default function App() {
         onHome={reset}
         onSettings={() => goToSettings()}
         onSave={doAutoExport}
-        onReSplit={() => doSplit(rows, false, cols)}
+        // リセット: 確定時の行数・列数・境界線で分割し直し、合体やカット編集を破棄して初期状態へ戻す
+        onReSplit={() => doSplit(rows, false, cols, confirmBounds ?? undefined)}
         onManualSplit={() => setAppState('editing')}
         onEditCell={(i) => {
           // poly セル（セッション復元 or 編集済み）はセル編集不可
@@ -1215,7 +1221,9 @@ export default function App() {
                     + `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 
                   // カット枚数ラベル
-                  const cellCount = session.autoData?.cells.length;
+                  // autoData.cells (自動分割) → polygons (手動/custom) の順でカット数を拾う。
+                  // どちらも無ければ未処理(cellCount=null)として扱う。
+                  const cellCount = session.autoData?.cells.length ?? session.polygons?.length;
                   const sheetLabel = cellCount != null
                     ? `${cellCount} キャラのシート`
                     : '処理前のシート';

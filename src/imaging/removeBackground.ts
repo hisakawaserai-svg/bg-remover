@@ -16,6 +16,19 @@ export const PEEL_MIN_CLEAR_RATIO = 0.05;
 /** 残っている前景のこの割合を超えて消すなら、背景ではなく被写体とみなして中止。 */
 export const PEEL_MAX_CLEAR_RATIO = 0.9;
 
+// ── 輪郭フェザリングのパラメータ ──────────────────────────────────────────────
+/** 本体色と背景色のチャンネル差がこれ未満だと混合比の推定が不安定なので使わない。 */
+export const FEATHER_MIN_CONTRAST = 20;
+/** 推定 alpha がこれ以上なら元から本体の色とみなして触らない。 */
+export const FEATHER_OPAQUE_TH = 0.92;
+/** 推定 alpha がこれ以下ならほぼ背景とみなして完全に抜く。 */
+export const FEATHER_CLEAR_TH = 0.06;
+/** F（本体色）を探す近傍。斜めも見ることで細い輪郭でも拾えるようにする。 */
+const NEIGHBOR_OFFSETS: Array<[number, number]> = [
+  [-1, 0], [1, 0], [0, -1], [0, 1],
+  [-1, -1], [1, -1], [-1, 1], [1, 1],
+];
+
 export interface RemoveBgResult {
   rgba: Uint8Array;
   width: number;
@@ -32,6 +45,7 @@ interface BgColor {
 export async function removeBackground(
   fileUri: string,
   tolerance: number = TOLERANCE,
+  feather: boolean = true,
 ): Promise<RemoveBgResult> {
   // file:// のローカルファイルが存在しない場合、Skia.Data.fromURI は reject せず
   // ハングすることがある（→ 呼び出し側が 'processing' のまま無限ローディング）。
@@ -119,6 +133,12 @@ export async function removeBackground(
       `[removeBg] peel pass ${pass + 1}: +${peeled}px ` +
       `(${((peeled / pixelCount) * 100).toFixed(1)}%)`,
     );
+  }
+
+  // 輪郭を半透明化するのは alpha を落とす前（境界画素の元の色が必要なため）。
+  if (feather) {
+    const softened = featherEdges(rgba, visited, width, height, bgColors);
+    console.log(`[removeBg] feather: ${softened}px`);
   }
 
   let clearedCount = 0;
@@ -290,6 +310,120 @@ function floodFill(
 }
 
 /**
+ * 輪郭のフェザリング。透過した領域に接している1pxを半透明にして、貼り先の色に馴染ませる。
+ *
+ * アンチエイリアスの効いた絵では、キャラと背景の境目に「両者を混ぜた色」の画素が挟まる。
+ * しきい値判定はこれを0%か100%かに丸めるしかないので、残せば白フチ、消せばギザギザになる。
+ *
+ * この関数は混合比そのものを推定して alpha に入れる。境界画素 P、背景色 B、
+ * 隣接する不透明画素の色 F として α = |P-B| / |F-B|。さらに α が分かれば
+ * 混入前の色は F = B + (P-B)/α で逆算できるので、RGB もそちらへ置き換える
+ * （これをしないと、半透明にしても背景色が混ざったままで暗い背景に置いたとき白っぽく浮く）。
+ *
+ * |F-B| が小さい（背景と似た色の被写体）と割り算が不安定になるため、その画素は触らない。
+ * 返り値は半透明化した画素数。
+ */
+function featherEdges(
+  rgba: Uint8Array,
+  visited: Uint8Array,
+  w: number,
+  h: number,
+  bgColors: BgColor[],
+): number {
+  // 境界画素は「透過済みに接している、まだ残っている画素」。
+  const isBoundary = new Uint8Array(w * h);
+  const boundary: number[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (visited[idx]) continue;
+      if (
+        (y > 0 && visited[idx - w]) ||
+        (y < h - 1 && visited[idx + w]) ||
+        (x > 0 && visited[idx - 1]) ||
+        (x < w - 1 && visited[idx + 1])
+      ) {
+        isBoundary[idx] = 1;
+        boundary.push(idx);
+      }
+    }
+  }
+  if (boundary.length === 0) return 0;
+
+  // 書き換えは最後にまとめて行う。途中で書き換えると、隣の境界画素が
+  // 「補正後の色」を F として読んでしまい誤差が連鎖する。
+  const writes: Array<[number, number, number, number, number]> = []; // idx,r,g,b,a
+
+  for (const idx of boundary) {
+    const off = idx * 4;
+    const pr = rgba[off], pg = rgba[off + 1], pb = rgba[off + 2];
+
+    // 一番近い背景色を B とする。
+    let bg = bgColors[0];
+    let bestD = Infinity;
+    for (const c of bgColors) {
+      const d = Math.max(Math.abs(pr - c.r), Math.abs(pg - c.g), Math.abs(pb - c.b));
+      if (d < bestD) { bestD = d; bg = c; }
+    }
+
+    // F は「透過済みでも境界でもない」隣接画素＝背景が混ざっていない本体の色。
+    const y = (idx / w) | 0;
+    const x = idx - y * w;
+    let fOff = -1;
+    for (const [dx, dy] of NEIGHBOR_OFFSETS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (visited[ni] || isBoundary[ni]) continue;
+      fOff = ni * 4;
+      break;
+    }
+    if (fOff < 0) continue;
+
+    const fr = rgba[fOff], fg = rgba[fOff + 1], fb = rgba[fOff + 2];
+
+    // |F-B| が十分あるチャンネルだけで混合比を平均する。
+    let sum = 0;
+    let n = 0;
+    const chans: Array<[number, number, number]> = [
+      [pr, fr, bg.r], [pg, fg, bg.g], [pb, fb, bg.b],
+    ];
+    for (const [p, f, b] of chans) {
+      const denom = f - b;
+      if (Math.abs(denom) < FEATHER_MIN_CONTRAST) continue;
+      sum += (p - b) / denom;
+      n++;
+    }
+    if (n === 0) continue;
+
+    const alpha = Math.min(1, Math.max(0, sum / n));
+    // ほぼ不透明なら触らない（元から本体の色。誤差で薄くしてしまうのを防ぐ）。
+    if (alpha >= FEATHER_OPAQUE_TH) continue;
+    // ほぼ透明なら完全に抜く。
+    if (alpha <= FEATHER_CLEAR_TH) {
+      writes.push([idx, pr, pg, pb, 0]);
+      continue;
+    }
+
+    // 混入前の色を逆算して置き換える。
+    const clamp255 = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+    writes.push([
+      idx,
+      clamp255(bg.r + (pr - bg.r) / alpha),
+      clamp255(bg.g + (pg - bg.g) / alpha),
+      clamp255(bg.b + (pb - bg.b) / alpha),
+      Math.round(alpha * rgba[off + 3]),
+    ]);
+  }
+
+  for (const [idx, r, g, b, a] of writes) {
+    const off = idx * 4;
+    rgba[off] = r; rgba[off + 1] = g; rgba[off + 2] = b; rgba[off + 3] = a;
+  }
+  return writes.length;
+}
+
+/**
  * 「皮むき」1回ぶん。すでに透過した領域の内側に接している色を新しい背景色とみなし、
  * もう一段フラッドフィルする。
  *
@@ -399,6 +533,7 @@ export function removeColorAt(
   x: number,
   y: number,
   tolerance: number,
+  feather: boolean = true,
 ): number {
   // 既に透明な場所は何をしても見た目が変わらないので即座に打ち切る（空振り）。
   if (isTransparentAt(rgba, width, height, x, y)) return 0;
@@ -409,6 +544,8 @@ export function removeColorAt(
 
   const visited = new Uint8Array(width * height);
   floodFill(rgba, visited, width, height, seedIdx, [bgColor], tolerance);
+
+  if (feather) featherEdges(rgba, visited, width, height, [bgColor]);
 
   let clearedCount = 0;
   const pixelCount = width * height;

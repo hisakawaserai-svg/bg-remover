@@ -295,6 +295,8 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const rgbaRef = useRef(bgResult.rgba); rgbaRef.current = bgResult.rgba;
   const eyeTolRef = useRef(settings.eyedropperTolerance);
   eyeTolRef.current = settings.eyedropperTolerance;
+  const featherRef = useRef(settings.featherEdges);
+  featherRef.current = settings.featherEdges;
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const colsRef = useRef(cols); colsRef.current = cols;
   // ジェスチャー中の状態。snapVal = 掴んだ瞬間の線の画像座標（RectEditor の snap と同じ役割）。
@@ -332,7 +334,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               rows: rowsRef.current,
               cols: colsRef.current,
             });
-            removeColorAt(rgbaRef.current, w, h, imgX, imgY, eyeTolRef.current);
+            removeColorAt(rgbaRef.current, w, h, imgX, imgY, eyeTolRef.current, featherRef.current);
             setImgVersion(v => v + 1);
             // 背景が抜けたことで初めて透明な帯ができるので、行数・列数を検出し直す。
             // 検出は alpha だけを見るため、抜く前は区切りが見つからず 1×1 になっている。

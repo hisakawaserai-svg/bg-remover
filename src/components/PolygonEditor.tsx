@@ -291,6 +291,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const rgbaRef       = useRef(bgResult.rgba);   rgbaRef.current   = bgResult.rgba;
   const eyeTolRef     = useRef(settings.eyedropperTolerance);
   eyeTolRef.current   = settings.eyedropperTolerance;
+  const featherRef    = useRef(settings.featherEdges);
+  featherRef.current  = settings.featherEdges;
   /**
    * 入場時の画像（リセット用）。スポイトを初めて使った時のスナップショットを
    * そのまま流用するので、追加のコピーは発生しない。
@@ -988,7 +990,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // 初回のスポイトのスナップショット = 入場時の画像。リセット用に保持する。
               if (!originalRgbaRef.current) originalRgbaRef.current = before;
               pushRgbaHistory(before); // 実行前の画像を undo 用に退避
-              removeColorAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y, eyeTolRef.current);
+              removeColorAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y, eyeTolRef.current, featherRef.current);
               setImgVersion(v => v + 1);
             }
           } else {

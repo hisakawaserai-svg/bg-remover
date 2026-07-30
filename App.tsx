@@ -53,6 +53,7 @@ import type { Cell } from './src/cellTypes';
 // ── 手動モードのコンポーネント ────────────────────────────────────────────────
 import PolygonEditor from './src/components/PolygonEditor';
 import PreviewScreen from './src/components/PreviewScreen';
+import ComplexStickerTutorialScreen from './src/components/ComplexStickerTutorialScreen';
 import type { Polygon } from './src/components/PolygonEditor';
 
 // ── サムネイル一時ファイル書き出し ────────────────────────────────────────────
@@ -137,7 +138,7 @@ type SplitMode = 'auto' | 'manual';
 // polygon_preview: 手動モードの切り取りプレビュー（PreviewScreen を表示）
 // settings:        設定画面
 // done:            書き出し完了
-type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'polygon_tutorial' | 'polygon_tutorial_help' | 'settings' | 'saved' | 'howto' | 'done';
+type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'polygon_tutorial' | 'complex_tutorial_help' | 'polygon_tutorial_help' | 'settings' | 'saved' | 'howto' | 'done';
 
 
 // DEFAULT_TOLERANCE は設定ロード前の初期値としてのみ使用。
@@ -947,6 +948,7 @@ export default function App() {
       <HowToScreen
         onClose={() => setAppState(howtoReturnRef.current)}
         onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
+        onComplexTutorial={() => setAppState('complex_tutorial_help')}
       />
     );
   }
@@ -975,6 +977,14 @@ export default function App() {
         // 書き換えると howto の「戻る」が tutorial へループしてしまう。
         onStart={() => setAppState('howto')}
         onBack={() => setAppState('howto')}
+      />
+    );
+  }
+
+  if (appState === 'complex_tutorial_help') {
+    return (
+      <ComplexStickerTutorialScreen
+        onClose={() => setAppState('howto')}
       />
     );
   }

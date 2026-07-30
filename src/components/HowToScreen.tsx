@@ -56,6 +56,7 @@ const STEPS = [
 interface Props {
   onClose: () => void;
   onPolygonTutorial?: () => void;
+  onComplexTutorial?: () => void;
   /**
    * 'help'(既定):      設定>使い方からの閲覧。右上「完了」でいつでも閉じる。
    * 'onboarding':      初回フロー。末尾CTA「はじめる」で前進。
@@ -68,7 +69,7 @@ interface Props {
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help', onStart }: Props) {
+export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutorial, mode = 'help', onStart }: Props) {
   const isOnboarding = mode === 'onboarding';
 
   // stagger の起点delay。各ステップは STAGGER_INTERVAL ずつずれて登場する。
@@ -122,6 +123,24 @@ export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help',
           </Card>
         </FadeInView>
       ))}
+
+      {!isOnboarding && onComplexTutorial && (
+        <AnimatedPressable
+          style={styles.tutorialRow}
+          onPress={onComplexTutorial}
+        >
+          <Icon name="grid-view" size={20} color={colors.accent}/>
+          <View style={styles.tutorialText}>
+            <Text style={styles.tutorialLabel}>
+              複雑な画像を分割する方法
+            </Text>
+            <Text style={styles.tutorialSub}>
+              合体したキャラクターを分ける手順
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={20}/>
+        </AnimatedPressable>
+      )}
 
       {/*
        * ── 以下は画面下部（スクロールして見える）────────────────────────────

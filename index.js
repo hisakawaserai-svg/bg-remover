@@ -12,6 +12,10 @@ import { name as appName } from './app.json';
 // SettingsProvider: アプリ全体で設定を共有するコンテキスト。
 // SafeAreaProvider と同じくルートに一度だけ置く。
 import { SettingsProvider } from './src/settings/SettingsContext';
+// 広告SDKの初期化。描画開始より前に一度だけ走らせる（await 不要）。
+import { initAds } from './src/ads/init';
+
+initAds();
 
 function Root() {
   return (

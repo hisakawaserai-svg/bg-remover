@@ -1,4 +1,8 @@
 {
   "name": "BgRemover",
-  "displayName": "スタンプ抜き"
+  "displayName": "スタンプ抜き",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3194046005390900~3949868734",
+    "ios_app_id": "ca-app-pub-3194046005390900~8575629594"
+  }
 }

@@ -127,6 +127,11 @@ import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
 import { useSettings } from './src/settings/SettingsContext';
 import { APP_NAME } from './src/constants';
 
+// ── 広告 ──────────────────────────────────────────────────────────────────────
+// 置くのはホーム・保存完了・保存先の3画面だけ。SetupScreen / PolygonEditor などの
+// 編集画面には置かない（キャンバスをタッチ操作するため誤タップの温床になる）。
+import AdBanner from './src/ads/AdBanner';
+
 // ── 型 ────────────────────────────────────────────────────────────────────────
 type SplitMode = 'auto' | 'manual';
 // idle:            初期状態（ホーム画面）
@@ -1252,19 +1257,29 @@ export default function App() {
     <Screen
       style={styles.container}
       header={appState === 'idle' ? homeHeader : undefined}
-      footer={appState === 'idle' ? (
-        <AnimatedPressable
-          style={styles.startBtn}
-          onPress={pickImage}
-          disabled={isBusy}
-          pressedScale={0.97}
-        >
-          <Icon name="add-photo-alternate" size={22} color="#FFF" />
-          <Text style={styles.startBtnTxt}>
-            {sessions.length === 0 ? '画像を選んで始める' : '新しい画像を選ぶ'}
-          </Text>
-        </AnimatedPressable>
-      ) : undefined}
+      footer={
+        <>
+          {appState === 'idle' && (
+            // 主ボタンを上、広告を最下部に置く。逆にすると広告が本来の
+            // アンカー位置（画面最下部）から外れ、CTA も遠くなる。
+            <AnimatedPressable
+              style={styles.startBtn}
+              onPress={pickImage}
+              disabled={isBusy}
+              pressedScale={0.97}
+            >
+              <Icon name="add-photo-alternate" size={22} color="#FFF" />
+              <Text style={styles.startBtnTxt}>
+                {sessions.length === 0 ? '画像を選んで始める' : '新しい画像を選ぶ'}
+              </Text>
+            </AnimatedPressable>
+          )}
+
+          {/* 高さを外から固定しないこと。ホームだけ小さくなり他画面と不揃いになる。
+              区切り線は AdBanner 自身が持っているので Divider も重ねない。 */}
+          <AdBanner />
+        </>
+      }
     >
 
         {/* ════════════════════════════════════════════════
@@ -1272,7 +1287,6 @@ export default function App() {
         ════════════════════════════════════════════════ */}
         {appState === 'idle' && (
           <>
-
             {/* ── 進捗サマリーカード: セッションがあるときだけ表示 ── */}
             {sessions.length > 0 && (
               <Card style={styles.progressCard}>

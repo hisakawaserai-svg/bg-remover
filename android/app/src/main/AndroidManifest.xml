@@ -1,6 +1,4 @@
-<manifest
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -19,11 +17,9 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
-      <meta-data
-        android:name="com.google.android.gms.ads.APPLICATION_ID"
-        android:value="ca-app-pub-3194046005390900~3949868734"
-        tools:replace="android:value"
-      />
+      <!-- AdMob の APPLICATION_ID はここに直書きしない。
+           react-native-google-mobile-ads が app.json の android_app_id を読んで
+           ライブラリ側マニフェストのプレースホルダに埋める（単一の出所に保つ）。 -->
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

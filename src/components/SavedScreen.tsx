@@ -28,6 +28,7 @@ import { ALBUM_NAME } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { APP_NAME } from '../constants';
+import AdBanner from '../ads/AdBanner';
 
 // ── 市松模様コンポーネント ────────────────────────────────────────────────────
 const TILE = 40;
@@ -231,7 +232,7 @@ export default function SavedScreen({ onClose }: Props) {
 
   // ── 本体 ──────────────────────────────────────────────────────────────────
   return (
-    <Screen header={header} scrollable={false} bg={IOS.bg}>
+    <Screen header={header} scrollable={false} bg={IOS.bg} footer={<AdBanner />}>
 
       {loading ? (
         <View style={styles.center}>

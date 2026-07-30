@@ -25,6 +25,7 @@ import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import { ALBUM_NAME } from '../imaging';
+import AdBanner from '../ads/AdBanner';
 
 // グリッドの最大表示枚数
 const MAX_GRID = 9;
@@ -96,7 +97,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
   );
 
   return (
-    <Screen header={header} bg={IOS.bg}>
+    <Screen header={header} bg={IOS.bg} footer={<AdBanner />}>
 
       {/* ── 完了サマリ ────────────────────────────────────────────────── */}
       <View style={styles.summary}>

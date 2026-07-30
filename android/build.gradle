@@ -5,7 +5,11 @@ buildscript {
         compileSdkVersion = 36
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
-        kotlinVersion = "2.1.20"
+        kotlinVersion = "2.3.0"
+        // async-storage は kotlinVersion から KSP 版を表引きするが、2.3 系の対応表を
+        // 持っていないため Kotlin 2.1.0 用にフォールバックして KGP と非互換になる。
+        // KSP は 2.3.0 以降 Kotlin と同じバージョン体系なので明示的に合わせる。
+        kspVersion = "2.3.0"
     }
     repositories {
         google()
@@ -14,7 +18,7 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
     }
 }
 

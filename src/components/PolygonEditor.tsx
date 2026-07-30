@@ -41,7 +41,8 @@ import {
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import type { RemoveBgResult, BBox } from '../imaging';
-import { splitConnected, isTransparentAt } from '../imaging';
+import { splitConnected, isTransparentAt, findUncoveredRegions } from '../imaging';
+import type { UncoveredRegion } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
 import type { ThumbBg } from '../settings/store';
 import { useSettings } from '../settings/SettingsContext';
@@ -425,6 +426,33 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * ポリゴン・履歴をクリアし、スポイトで消した色も復元する。
    * 履歴ごと消えて取り消せないので、必ず確認ダイアログを挟む。
    */
+  // 囲い漏れのハイライト。プレビューを押した時だけ入り、ダイアログを閉じると空に戻す。
+  // 空の間は何も描かないので通常時のキャンバスの見た目は変わらない。
+  const [uncoveredRegions, setUncoveredRegions] = useState<UncoveredRegion[]>([]);
+
+  /**
+   * プレビューへ進む。どのポリゴンにも囲まれていない絵柄が残っていれば、
+   * 黙って消えてしまう前に確認する（囲い漏れは保存結果から抜け落ちるため）。
+   */
+  const handlePreview = () => {
+    const regions = findUncoveredRegions(
+      bgResult.rgba, bgResult.width, bgResult.height, polygons,
+    );
+    if (regions.length === 0) {
+      onPreview(polygons); // 囲い漏れなし＝従来どおりワンタップで進む
+      return;
+    }
+    setUncoveredRegions(regions); // 該当箇所を赤く見せた状態で聞く
+    Alert.alert(
+      '囲まれていない部分があります',
+      '塗りつぶされていない部分は保存されません。このまま進めますか？',
+      [
+        { text: '戻って直す', style: 'cancel', onPress: () => setUncoveredRegions([]) },
+        { text: 'このまま進める', onPress: () => { onPreview(polygons); setUncoveredRegions([]); } },
+      ],
+    );
+  };
+
   const handleReset = () => {
     Alert.alert(
       '編集をリセット',
@@ -1060,7 +1088,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const header = (
     <AppHeader
-      title="手動切り抜き"
+      title="範囲を調整"
       onBack={() => onBack(polygons)}
       backLabel="戻る"
       right={
@@ -1145,6 +1173,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 </React.Fragment>
               );
             })}
+
+            {/* 囲い漏れのハイライト。polyPaths と同じく画像座標に ds を掛けて配置する。
+                空配列の間は何も描かない（＝通常時の見た目は不変）。*/}
+            {uncoveredRegions.map((r, i) => (
+              <Rect
+                key={`uncovered-${i}`}
+                x={r.x * ds} y={r.y * ds}
+                width={r.w * ds} height={r.h * ds}
+                color="rgba(255, 59, 48, 0.32)"
+              />
+            ))}
           </Group>
 
           {/* 選択中ポリゴンの頂点ハンドル (Group 外: 常に固定サイズ) */}
@@ -1294,7 +1333,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         <AnimatedPressable
           style={styles.exportBtn}
           disabled={!canPreview}
-          onPress={() => onPreview(polygons)}
+          onPress={handlePreview}
           pressedScale={0.96}
         >
           <Icon name="preview" size={20} color="#FFF" />

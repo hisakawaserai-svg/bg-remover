@@ -10,6 +10,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Alert,
+  Dimensions,
   Image,
   LayoutChangeEvent,
   PanResponder,
@@ -34,11 +35,12 @@ import ImageZoomModal from './ui/ImageZoomModal';
 import Card from './ui/Card';
 import CheckerboardBg from './ui/CheckerboardBg';
 import ToleranceSlider from './ui/ToleranceSlider';
+import Divider from './ui/Divider';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
-import { isTransparentAt, detectRowCount, detectColCount } from '../imaging';
+import { isTransparentAt, detectRowCount, detectColCount, toleranceToGapParams } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 
 function clamp(v: number, lo: number, hi: number) {
@@ -106,7 +108,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
   const [zoomVisible, setZoomVisible] = useState(false);
   // スライダー操作中の表示用。確定時に updateSettings へ反映する。
-  const [tolerance, setTolerance] = useState(settings.tolerance);
+  // 背景除去の settings.tolerance とは別キー（splitTolerance）を使う。
+  // 共有していた頃は、分割の細かさを動かすと以後の背景除去の強さまで変わってしまった。
+  const [splitTolerance, setSplitTolerance] = useState(settings.splitTolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
   // スポイトモード: ON中は画像タップでその位置の色を消す（線のドラッグは無効化）。
   // 枠付きシートのように自動透過が内側まで届かない画像で、背景を抜いてから
@@ -126,12 +130,33 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // 画像が作り直されたら行数・列数を検出し直す（スポイト・取り消し・やり直し共通）。
   // 検出は alpha の帯だけを見るので、背景が抜ける前は区切りが無く 1×1 になる。
   // 初期表示(bgVersion=0)は親が渡した推定値を尊重するので何もしない。
+  // 列数の自動推定は「まだステッパーを手動で触っていない時だけ」効かせるためのフラグ。
+  // 手動で決めた列数を、スライダー操作の再推定で勝手に上書きしないための歯止め。
+  const colsManualRef = useRef(false);
+  /**
+   * 「分割の細かさ」(splitTolerance) を列検出のしきい値に変換して、列数を推定し直す。
+   * この値をここで使うのは、スライダーが動かしている対象が
+   * 「どれくらいの隙間を列の切れ目とみなすか」＝列検出のしきい値そのものだから。
+   * 既定値 30 では従来の定数(MIN_REAL_GAP=6 / RELATIVE_GAP_THRESHOLD=0.3)と
+   * 完全に一致するので、スライダーを触らない限り従来と同じ推定結果になる。
+   */
+  const recalcCols = useCallback((nextRows: number, tol: number) => {
+    const { minRealGap, relativeGapThreshold } = toleranceToGapParams(tol);
+    setCols(detectColCount(
+      bgResult.rgba, bgResult.width, bgResult.height, nextRows,
+      minRealGap, relativeGapThreshold,
+    ));
+  }, [bgResult]);
+
   const firstVersionRef = useRef(true);
   useEffect(() => {
     if (firstVersionRef.current) { firstVersionRef.current = false; return; }
     const dRows = detectRowCount(bgResult.rgba, bgResult.width, bgResult.height);
     setRows(dRows);
-    setCols(detectColCount(bgResult.rgba, bgResult.width, bgResult.height, dRows));
+    // 画像そのものが作り直された場合は手動指定の前提が崩れるので、手動フラグを
+    // 解除して行数・列数とも推定し直す（従来どおりの挙動）。
+    colsManualRef.current = false;
+    recalcCols(dRows, splitTolerance);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgVersion]);
 
@@ -189,6 +214,29 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     const { width, height } = e.nativeEvent.layout;
     setViewSize({ width, height });
   }, []);
+
+  // ── プレビュー枠の高さを画像のアスペクト比から決める ──────────────────────────
+  // 高さを 280px 固定にしていた頃は、縦長のスタンプシートが contain フィットで
+  // 細く縮小され、左右にチェッカー柄の余白が大きく出ていた。枠自体を画像の形に
+  // 寄せることでその余白を無くす。
+  //
+  // 高さは画像から決めたいので、先に「枠の幅」だけを外側の View で測る
+  // （previewBox 自身の onLayout は高さが決まった後の実測値で、
+  //   fitParams/線の位置/CheckerboardBg に使う既存の測定なのでそのまま残す）。
+  const [containerWidth, setContainerWidth] = useState(0);
+  const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
+    setContainerWidth(e.nativeEvent.layout.width);
+  }, []);
+
+  const dynamicPreviewHeight = useMemo(() => {
+    if (!containerWidth) return 280; // 初回計測前のフォールバック（従来の固定値）
+    const aspect = bgResult.width / bgResult.height; // 幅/高さ
+    const idealHeight = containerWidth / aspect;
+    const screenH = Dimensions.get('window').height;
+    const maxHeight = screenH * 0.65; // 上限: 下のステッパー等を隠さないため
+    const minHeight = 200; // 下限: 横長シート(1段だけ等)で潰れすぎないため
+    return Math.min(Math.max(idealHeight, minHeight), maxHeight);
+  }, [containerWidth, bgResult.width, bgResult.height]);
 
   // contain フィット変換パラメータ（横・縦両線で共用）
   const fitParams = useMemo(() => {
@@ -440,7 +488,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             onPress={() => setMode('manual')}
             pressedScale={0.96}
           >
-            <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>手動で囲む</Text>
+            <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>範囲を調整</Text>
           </AnimatedPressable>
         </View>
 
@@ -470,7 +518,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               </Text>
             </AnimatedPressable>
             {/* 取り消し / やり直し / リセットは常時表示し、使えない時は非活性にする。
-                アイコンは手動切り抜き画面の下部バーと揃える。
+                アイコンは範囲を調整画面の下部バーと揃える。
                 取り消しは自動背景除去まで遡れるので、押し続ければ元画像に戻る。*/}
             <AnimatedPressable
               style={[styles.eyeIconBtn, !canUndoEdit && styles.eyeIconBtnOff]}
@@ -501,9 +549,12 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
 
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
         {/* PanResponder で線のタップ選択＋ドラッグ移動を処理（自動モード時のみ意味を持つ）*/}
-        <View style={styles.previewBox} onLayout={handleLayout} {...pan.panHandlers}>
-          {/* 下地は設定「サムネ背景」に準拠する。透過の見え方を確認する場所なので、
-              保存先の一覧や手動切り抜きと同じ下地で見えたほうが判断しやすい。*/}
+        {/* 外側の View は「枠の幅」を測るためだけの器。高さは中の previewBox が
+            画像のアスペクト比から決めるので、ここでは高さを指定しない。*/}
+        <View onLayout={handleContainerLayout}>
+        <View style={[styles.previewBox, { height: dynamicPreviewHeight }]} onLayout={handleLayout} {...pan.panHandlers}>
+          {/* 下地は設定「背景色」に準拠する。透過の見え方を確認する場所なので、
+              保存先の一覧や範囲を調整と同じ下地で見えたほうが判断しやすい。*/}
           {viewSize && (
             <CheckerboardBg
               mode={thumbBg}
@@ -558,6 +609,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             </>
           )}
         </View>
+        </View>
 
         {/* 自動モード: 行数ステッパー + 許容値スライダー */}
         {mode === 'auto' && (
@@ -594,20 +646,21 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               </View>
 
               {/* 列数ステッパー（行数と同じUI・初期値は自動推定値）: noSplit 時は無効化 */}
-              <View style={styles.separator} />
+              <Divider />
               <View style={styles.rowInput}>
                 <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>列数</Text>
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setCols(v => clamp(v - 1, 1, 20))}
+                    // 直接操作したら以後は自動推定を止める（スライダーで上書きしない）
+                    onPress={() => { colsManualRef.current = true; setCols(v => clamp(v - 1, 1, 20)); }}
                   >
                     <Text style={styles.stepTxt}>−</Text>
                   </AnimatedPressable>
                   <Text style={styles.stepVal}>{cols}</Text>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setCols(v => clamp(v + 1, 1, 20))}
+                    onPress={() => { colsManualRef.current = true; setCols(v => clamp(v + 1, 1, 20)); }}
                   >
                     <Text style={styles.stepTxt}>+</Text>
                   </AnimatedPressable>
@@ -621,7 +674,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               </View>
 
               {/* 分割しないチェックボックス */}
-              <View style={styles.separator} />
+              <Divider />
               <AnimatedPressable
                 style={styles.checkRow}
                 onPress={() => setNoSplit(v => !v)}
@@ -655,9 +708,16 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             )}
             </View>
             <ToleranceSlider
-              value={tolerance}
-              onChange={setTolerance}
-              onComplete={final => void updateSettings({ tolerance: final })}
+              value={splitTolerance}
+              onChange={setSplitTolerance}
+              onComplete={final => {
+                // 書き込むのは splitTolerance だけ。背景除去用の tolerance には触らない。
+                void updateSettings({ splitTolerance: final });
+                // 確定時にだけ列数を推定し直す。detectColCount は全画素走査なので、
+                // ドラッグ中(onChange)の毎フレーム実行はコストが高すぎる。
+                // 手動でステッパーを触った後(colsManualRef)は上書きしない。
+                if (!colsManualRef.current) recalcCols(rows, final);
+              }}
             />
           </>
         )}
@@ -797,7 +857,8 @@ const styles = StyleSheet.create({
   },
   previewBox: {
     width: '100%',
-    height: 280,
+    // height は指定しない。画像のアスペクト比から求めた値をインラインで渡す
+    // （縦長シートで左右に余白が出るのを防ぐため）。
     borderRadius: 12,
     overflow: 'hidden',
   },

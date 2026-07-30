@@ -1,7 +1,7 @@
 /**
- * PolygonTutorialScreen — 手動切り抜きの操作手順チュートリアル
+ * PolygonTutorialScreen — 範囲を調整の操作手順チュートリアル
  *
- * 「手動で囲む」を選択したとき、PolygonEditor に入る前に表示する。
+ * 「範囲を調整」を選択したとき、PolygonEditor に入る前に表示する。
  * 「次回から表示しない」チェックをONにして「はじめる」を押すと
  * settings.skipPolygonTutorial = true が保存され、次回以降スキップされる。
  *
@@ -70,11 +70,12 @@ const TAP_X = CX;
 const TAP_Y = 108;
 
 // 初期(小さい)ボックス角
-const INIT_HALF = 16;
-const INIT_TL = { x: TAP_X - INIT_HALF, y: TAP_Y - INIT_HALF };
-const INIT_TR = { x: TAP_X + INIT_HALF, y: TAP_Y - INIT_HALF };
-const INIT_BL = { x: TAP_X - INIT_HALF, y: TAP_Y + INIT_HALF };
-const INIT_BR = { x: TAP_X + INIT_HALF, y: TAP_Y + INIT_HALF };
+const AUTO_HALF = 56;
+
+const INIT_TL = { x: TAP_X - AUTO_HALF, y: TAP_Y - AUTO_HALF };
+const INIT_TR = { x: TAP_X + AUTO_HALF, y: TAP_Y - AUTO_HALF };
+const INIT_BL = { x: TAP_X - AUTO_HALF, y: TAP_Y + AUTO_HALF };
+const INIT_BR = { x: TAP_X + AUTO_HALF, y: TAP_Y + AUTO_HALF };
 
 // 最終(キャラを囲む)ボックス角。
 // day の BirdMascot(後述: left50/top50/size100 → 円の外接は x50..150 / y50..150、
@@ -567,7 +568,7 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
 
   const header = (
     <AppHeader
-      title="手動で囲む"
+      title="範囲を調整"
       onBack={onBack}
       backLabel="戻る"
     />

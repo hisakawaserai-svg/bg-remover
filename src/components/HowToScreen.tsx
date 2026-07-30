@@ -40,14 +40,14 @@ const STEPS = [
   {
     icon:  'tune',
     title: 'STEP 2  分割モードを選ぶ',
-    body:  'セットアップ画面でモードを選びます。\n\n【自動分割】行数を確認・調整して「この行数で分割」。プレビューに分割線が表示されます。\n\n【手動で囲む】ポリゴンで各キャラを直接囲んで切り出します。自動がうまくいかないときに使います。',
+    body:  'セットアップ画面でモードを選びます。\n\n【自動分割】行数を確認・調整して「この行数で分割」。プレビューに分割線が表示されます。\n\n【範囲を調整】ポリゴンで各キャラを直接囲んで切り出します。自動がうまくいかないときに使います。',
     note:  'まず自動を試してみてください。自動で大半は揃います。',
   },
   {
     icon:  'check-circle-outline',
     title: 'STEP 3  結果を確認・調整する',
-    body:  '分割結果を確認し、ズレや合体があれば調整します。\n\n• 合体している → フッターの「分割の細かさ」を上げて「再分割」\n• 隣のカットとまとめたい → カットを長押しして選択し「合体する」\n• 1枚だけ直したい → カットをタップしてポリゴン編集\n• 全部やり直したい → 「手動分割」でポリゴンモードへ',
-    note:  `完璧でなくても「保存する」で透過PNGとして「${ALBUM_NAME}」アルバムに保存されます。`,
+    body:  '分割結果を確認し、ズレや合体があれば調整します。\n\n• 合体している → 「戻る」で分割の細かさを上げて分割し直す\n• 隣のカットとまとめたい → カットを長押しして選択し「合体する」\n• 1枚だけ直したい → カットをタップしてポリゴン編集\n• 編集をやり直したい → 「リセット」で最初の分割結果に戻す\n• 全部やり直したい → 「手動分割」でポリゴンモードへ',
+    note:  `完璧でなくても「保存する」で透過PNGとして「${ALBUM_NAME}」アルバムに保存されます。\n段ごとに数が違う画像（例: 最後の段だけ列数が多い）は、自動分割が全段共通の線を使う都合で一部の段だけズレることがあります。その段のセルだけ「合体する」または「ポリゴン編集」で直してください。`,
   },
 ] as const;
 
@@ -130,7 +130,7 @@ export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help',
        * スクロール前から非表示・スクロール後に表示、という動きは未対応。
        */}
 
-      {/* 手動切り抜きチュートリアルへのリンク。
+      {/* 範囲を調整チュートリアルへのリンク。
           初回オンボ中は踏むと help 版に化けて初回フローが分断するため非表示にする。 */}
       {!isOnboarding && onPolygonTutorial && (
         <FadeInView delay={STAGGER_INTERVAL * 5}>
@@ -143,7 +143,7 @@ export default function HowToScreen({ onClose, onPolygonTutorial, mode = 'help',
               <Icon name="gesture" size={20} color={colors.accent} />
             </View>
             <View style={styles.tutorialText}>
-              <Text style={styles.tutorialLabel}>手動切り抜きの使い方</Text>
+              <Text style={styles.tutorialLabel}>範囲を調整の使い方</Text>
               <Text style={styles.tutorialSub}>四角で囲む操作のアニメーション説明</Text>
             </View>
             <Icon name="chevron-right" size={20} color={colors.secondary} />

@@ -164,11 +164,11 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
             </Animated.View>
           </View>
 
-          {/* 再分割 / 手動分割 */}
+          {/* リセット / 手動分割 */}
           <View style={s.actionRow}>
             <View style={s.actionBtn}>
               <Icon name="refresh" size={16} color="#007AFF" />
-              <Text style={s.actionTxt}>再分割</Text>
+              <Text style={s.actionTxt}>リセット</Text>
             </View>
             <View style={s.actionDivider} />
             <View style={s.actionBtn}>

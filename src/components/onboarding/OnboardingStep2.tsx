@@ -161,7 +161,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
         </View>
 
         <View style={s.body}>
-          {/* タブ(自動分割[選択] / 手動で囲む) */}
+          {/* タブ(自動分割[選択] / 範囲を調整) */}
           <View style={s.tabRow}>
             <View style={[s.tab, s.tabOn]}>
               {/* 自動分割タブのハイライト枠(opacityで脈打つ・transform不使用) */}
@@ -171,7 +171,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
               <TouchIndicator progress={phase} window={[0.36, 0.48]} />
             </View>
             <View style={s.tab}>
-              <Text style={s.tabTxt}>手動で囲む</Text>
+              <Text style={s.tabTxt}>範囲を調整</Text>
             </View>
           </View>
 

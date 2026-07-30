@@ -31,12 +31,13 @@ export function applyEditSteps(
     }
   }
 }
-export { splitRowsThenCols, splitRowsThenColsWithLines, splitByBoundaries, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
+export { splitRowsThenCols, splitRowsThenColsWithLines, splitByBoundaries, splitNone, cropToImage, trimToForeground, detectRowCount, detectColCount, calcRowBoundaries, calcColEdgesPerRow, toleranceToGapParams, ALPHA_TH, MIN_REAL_GAP, EMPTY_CELL_RATIO } from './splitObjects';
 export type { RowColEdges, SplitLines, SplitResult } from './splitObjects';
 export { splitConnected, MIN_AREA, MERGE_GAP } from './splitConnected';
 export type { BBox } from './splitObjects';
 export type { RemoveBgResult } from './removeBackground';
-export { maskOutsidePolygon } from './maskPolygon';
+export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
+export type { UncoveredRegion } from './maskPolygon';
 
 const TARGET_SIZE = 500;
 export const ALBUM_NAME = 'スタンプ抜き';

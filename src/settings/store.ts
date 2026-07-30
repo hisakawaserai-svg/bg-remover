@@ -9,6 +9,8 @@
  *              デフォルト 30 / 範囲 0〜100
  *   eyedropperTolerance: スポイトの許容色差（removeColorAt に渡す値）
  *              デフォルト 30 / 範囲 0〜100
+ *   splitTolerance: 「分割の細かさ」（列検出のしきい値に変換して使う値）
+ *              デフォルト 30 / 範囲 0〜100
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,6 +31,15 @@ export interface AppSettings {
    */
   eyedropperTolerance: number;
   /**
+   * 「分割の細かさ」スライダー専用の値。tolerance とは別に持つ。
+   * eyedropperTolerance を分けているのと同じ理由で、tolerance が「色をどこまで
+   * 背景とみなすか」なのに対し、こちらは「どれくらいの隙間を列の切れ目とみなすか」で
+   * 対象そのものが別物のため。以前は tolerance を共有していたので、分割の細かさを
+   * 動かすと以後に読み込む画像の背景除去の強さまで変わる副作用があった
+   * （0付近にすると背景が抜けきらず 1×1 に潰れた）。
+   */
+  splitTolerance: number;
+  /**
    * 輪郭のフェザリング。透過した領域の境界1pxを、背景の混ざり具合に応じて
    * 半透明にし、混入した背景色を差し引く。ONだと白フチが出にくくなる。
    * アンチエイリアスの無い絵では効果が薄いのでOFFにできるようにしてある。
@@ -39,7 +50,7 @@ export interface AppSettings {
   splitLineColor: SplitLineColor;
   /** エクスポート完了後にセッション（画像ファイル含む）を自動削除するか */
   autoDeleteOnExport: boolean;
-  /** 手動切り抜きのチュートリアルをスキップするか */
+  /** 範囲を調整のチュートリアルをスキップするか */
   skipPolygonTutorial: boolean;
   /** 全体オンボーディングを表示済みか（false = 未表示 = 初回） */
   hasSeenOnboarding: boolean;
@@ -51,6 +62,8 @@ export interface AppSettings {
 export const DEFAULTS: AppSettings = {
   tolerance:      30,
   eyedropperTolerance: 30,
+  // tolerance の現行デフォルトと同じ値。分離しても既存ユーザーの体感が変わらないようにする。
+  splitTolerance: 30,
   featherEdges:   true,
   gridColumns:    3,
   thumbBg:        'white',

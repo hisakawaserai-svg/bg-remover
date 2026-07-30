@@ -12,6 +12,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Image,
   Modal,
@@ -494,11 +495,23 @@ export default function ResultScreen({
           ) : (
             /* ── 通常モード: スライダー + アクション + 保存 ── */
             <>
-              {/* 再分割 / 手動分割 */}
+              {/* リセット / 手動分割 */}
               <View style={styles.actionRow}>
-                <AnimatedPressable style={styles.actionBtn} onPress={onReSplit}>
+                <AnimatedPressable
+                  style={styles.actionBtn}
+                  onPress={() => {
+                    Alert.alert(
+                      'リセット',
+                      '分割結果を最初の状態に戻します。合体やカットの編集はすべて破棄されます。',
+                      [
+                        { text: 'キャンセル', style: 'cancel' },
+                        { text: 'リセット', style: 'destructive', onPress: onReSplit },
+                      ],
+                    );
+                  }}
+                >
                   <Icon name="refresh" size={18} color={colors.accent} />
-                  <Text style={styles.actionBtnTxt}>再分割</Text>
+                  <Text style={styles.actionBtnTxt}>リセット</Text>
                 </AnimatedPressable>
                 <View style={styles.actionDivider} />
                 <AnimatedPressable style={styles.actionBtn} onPress={onManualSplit}>
@@ -599,6 +612,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.card,
+    // セルの境目を示すごく薄い枠。キャラ同士が接して見えるとどこで分かれているか
+    // 判別できないため常時出す。【重要】この値は固定のまま動的に変えないこと。
+    // borderWidth を選択状態などで切り替えると overflow:'hidden' + Android で
+    // レイアウト再計算が走って Image が一瞬白くなる（cellWrapSelected のコメント参照）。
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.12)',
     ...shadow.xs,
   },
   cellWrapSelected: {

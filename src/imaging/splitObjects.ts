@@ -11,6 +11,49 @@ export const EMPTY_CELL_RATIO = 0.005;
 // 0.3 = 30%。値が近い隙間同士(例: 144と136, 差5.6%)は同じグループとして両方採用する。
 export const RELATIVE_GAP_THRESHOLD = 0.3;
 
+/**
+ * 「分割の細かさ」スライダー(tolerance 0〜100)を列検出のしきい値へ変換する。
+ *
+ * 列検出は MIN_REAL_GAP（これ未満の隙間は無視＝1列扱い）と
+ * RELATIVE_GAP_THRESHOLD（本物の隙間とノイズを分ける相対差）で粗さが決まるので、
+ * スライダーはこの2値を動かす形で効かせる。粗い側ほど「大きな隙間しか切らない」、
+ * 細かい側ほど「小さな隙間でも切る」。
+ *
+ * スライダーの目盛り(粗い15 / 中30 / 細かい50)を通る折れ線で線形補間し、
+ * 目盛りの外は同じ傾きのまま延長してからクランプする。
+ * 【重要】tolerance=30（既定値・目盛り「中」）で既存定数と完全に一致させてある
+ * （MIN_REAL_GAP=6, RELATIVE_GAP_THRESHOLD=0.3）。既定のままなら従来と同じ結果になる。
+ */
+export function toleranceToGapParams(
+  tolerance: number,
+): { minRealGap: number; relativeGapThreshold: number } {
+  // 折れ線補間の共通処理。2値で増減の向きが逆なので、向きは各制御点側で表現する。
+  const lerpFromPoints = (t: number, x0: number, y0: number, x1: number, y1: number, x2: number, y2: number) => {
+    // 中点(x1)はそのまま返す。ここを補間式に通すと浮動小数の誤差で 6 が 5.999... に
+    // なり得るため、既定値(tolerance=30)で既存定数と完全一致させる保証を優先する。
+    if (t === x1) return y1;
+    // t < x1 側は (x0,y0)-(x1,y1) の傾き、t > x1 側は (x1,y1)-(x2,y2) の傾きを
+    // そのまま外側にも延長する（範囲外でも段差なく繋がる）。
+    return t < x1
+      ? y1 + ((y1 - y0) / (x1 - x0)) * (t - x1)
+      : y1 + ((y2 - y1) / (x2 - x1)) * (t - x1);
+  };
+  const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+  // 粗い15→10px, 中30→6px(=MIN_REAL_GAP), 細かい50→3px
+  const minRealGap = clampNum(lerpFromPoints(tolerance, 15, 10, 30, 6, 50, 3), 2, 14);
+  // 粗い15→0.15, 中30→0.30(=RELATIVE_GAP_THRESHOLD), 細かい50→0.45
+  //
+  // 【向きに注意】minRealGap とは増減が逆になる。relativeGapThreshold は
+  // 「隙間の大小差がこの値以上開いた所を本物とノイズの境目にする」しきい値なので、
+  // 値を上げるほど境目が見つからず、結果として全ての隙間が採用されて列が増える。
+  // つまり「粗い＝列を減らす」に揃えるには、粗い側で値を下げる必要がある。
+  // (実測: 隙間20pxと12pxが混在する画像で 0.45→3列 / 0.30→2列 / 0.15→2列)
+  const relativeGapThreshold = clampNum(lerpFromPoints(tolerance, 15, 0.15, 30, 0.3, 50, 0.45), 0.1, 0.6);
+
+  return { minRealGap, relativeGapThreshold };
+}
+
 export interface BBox {
   minX: number;
   minY: number;
@@ -102,9 +145,13 @@ export function detectColCount(
   width: number,
   height: number,
   rows: number,
+  // 「分割の細かさ」スライダー由来のしきい値（toleranceToGapParams の返り値）。
+  // 省略時は既存定数＝従来の挙動そのまま。
+  minRealGap: number = MIN_REAL_GAP,
+  relativeGapThreshold: number = RELATIVE_GAP_THRESHOLD,
 ): number {
   // cols を渡さない＝従来の自動検出。ここで等分してしまうと推定にならない。
-  const perRow = calcColEdgesPerRow(rgba, width, height, rows);
+  const perRow = calcColEdgesPerRow(rgba, width, height, rows, undefined, minRealGap, relativeGapThreshold);
   const counts = perRow.map(({ edges }) => edges.length - 1);
   if (counts.length === 0) return 1;
 
@@ -139,6 +186,9 @@ export function calcColEdgesPerRow(
   height: number,
   rows: number,
   cols?: number, // 列数の手動指定。正の整数なら自動検出せず段の横幅を等分する
+  // 列検出のしきい値（「分割の細かさ」スライダー由来）。省略時は既存定数＝従来の挙動。
+  minRealGap: number = MIN_REAL_GAP,
+  relativeGapThreshold: number = RELATIVE_GAP_THRESHOLD,
 ): RowColEdges[] {
   const bandH = height / rows;
   const result: RowColEdges[] = [];
@@ -178,7 +228,7 @@ export function calcColEdgesPerRow(
           }
         }
       }
-      return findColEdges(colFg, width, r);
+      return findColEdges(colFg, width, r, minRealGap, relativeGapThreshold);
     });
     commonEdges = aggregateColEdges(perBandEdges, width);
   }
@@ -374,7 +424,15 @@ export function splitByBoundaries(
   return bboxes;
 }
 
-function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[] {
+function findColEdges(
+  colFg: Uint8Array,
+  width: number,
+  rowIdx: number,
+  // しきい値は「分割の細かさ」スライダーから可変にできるようにした。
+  // 省略時は既存定数のままなので、呼び出し元を変えない限り従来と完全に同じ結果になる。
+  minRealGap: number = MIN_REAL_GAP,
+  relativeGapThreshold: number = RELATIVE_GAP_THRESHOLD,
+): number[] {
   const gaps: Array<{ start: number; end: number; width: number }> = [];
   let i = 0;
 
@@ -407,7 +465,7 @@ function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[
     const sorted = innerGaps.map(g => g.width).sort((a, b) => b - a);
     const maxGap = sorted[0];
 
-    if (maxGap < MIN_REAL_GAP) {
+    if (maxGap < minRealGap) {
       // 内部gapが全てごく小さい → 実質すき間なし=1列扱い（誤分割防止）。
       threshold = Infinity;
     } else if (sorted.length === 1) {
@@ -424,7 +482,7 @@ function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[
       for (let k = 0; k < sorted.length - 1; k++) {
         const diff = sorted[k] - sorted[k + 1];
         const relDiff = diff / sorted[k]; // 上位側の値に対する相対差
-        if (relDiff >= RELATIVE_GAP_THRESHOLD) {
+        if (relDiff >= relativeGapThreshold) {
           boundaryLo = sorted[k];
           break; // 最初に見つかった大きな相対差の位置で区切る
         }
@@ -433,7 +491,7 @@ function findColEdges(colFg: Uint8Array, width: number, rowIdx: number): number[
     }
   }
 
-  console.log(`[split] row${rowIdx} auto threshold=${threshold}px (MIN_REAL_GAP=${MIN_REAL_GAP})`);
+  console.log(`[split] row${rowIdx} auto threshold=${threshold}px (minRealGap=${minRealGap}, relGapTh=${relativeGapThreshold})`);
 
   const cutGaps = innerGaps.filter(g => g.width >= threshold);
 

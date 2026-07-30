@@ -15,16 +15,18 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import CheckerboardBg from './ui/CheckerboardBg';
+import ImageZoomModal from './ui/ImageZoomModal';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 import { savePolygons } from '../imaging';
+import { pointInPolygon } from '../imaging/maskPolygon';
 import type { RemoveBgResult } from '../imaging';
 import type { Polygon } from './PolygonEditor';
 
@@ -82,7 +84,7 @@ function buildThumbnail(
       bytes[di + 1] = rgba[si + 1];
       bytes[di + 2] = rgba[si + 2];
       // ピクセル中心(+0.5)で判定して端部誤差を最小化
-      bytes[di + 3] = pointInPoly(imgX + 0.5, imgY + 0.5, points) ? rgba[si + 3] : 0;
+      bytes[di + 3] = pointInPolygon(imgX + 0.5, imgY + 0.5, points) ? rgba[si + 3] : 0;
     }
   }
 
@@ -114,19 +116,6 @@ function buildThumbnail(
   return `data:image/png;base64,${b64}`;
 }
 
-// レイキャスティング法による点内判定
-function pointInPoly(px: number, py: number, pts: [number, number][]): boolean {
-  let inside = false;
-  const n = pts.length;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const [xi, yi] = pts[i];
-    const [xj, yj] = pts[j];
-    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi)
-      inside = !inside;
-  }
-  return inside;
-}
-
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
 export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
@@ -134,6 +123,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
   // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
   const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  // タップしたサムネイルの拡大表示用。null なら非表示。
+  const [zoomUri, setZoomUri] = useState<string | null>(null);
 
   // マウント時にサムネイルを一括生成
   useEffect(() => {
@@ -168,31 +159,38 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
       title="プレビュー"
       onBack={isSaving ? undefined : onBack}
       backLabel="編集に戻る"
-      right={
-        <AnimatedPressable
-          style={styles.saveBtn}
-          disabled={isSaving || polygons.length === 0}
-          onPress={handleSave}
-          pressedScale={0.96}
-        >
-          {isSaving
-            ? <ActivityIndicator size="small" color="#FFF" />
-            : <>
-                <Icon name="save-alt" size={18} color="#FFF" />
-                <Text style={styles.saveBtnTxt}>保存（{polygons.length}枚）</Text>
-              </>
-          }
-        </AnimatedPressable>
-      }
     />
+  );
+
+  // 保存ボタンは自動分割(ResultScreen)と同じく画面下部に固定する
+  const footer = (
+    <View style={styles.footer}>
+      <AnimatedPressable
+        style={[styles.saveBtn, (isSaving || polygons.length === 0) && styles.saveBtnDisabled]}
+        disabled={isSaving || polygons.length === 0}
+        onPress={handleSave}
+        pressedScale={0.97}
+      >
+        <Text style={styles.saveBtnTxt}>
+          {isSaving ? '保存中...' : `保存する（${polygons.length}枚）`}
+        </Text>
+      </AnimatedPressable>
+    </View>
   );
 
   return (
     // scrollable={false}: サムネイル有無で内部レイアウトが切り替わるため
     // ScrollView は内側で制御し、Screen は非スクロールの固定レイアウトとして使う。
-    <Screen header={header} scrollable={false} bg={IOS.bg}>
+    <Screen header={header} footer={footer} scrollable={false} bg={IOS.bg}>
       {/* ── サムネイル一覧 または ローディング ── */}
-      {thumbs.length === 0
+      {polygons.length === 0
+        ? (
+          // ポリゴンが1件も無い場合: 生成中ではなく「対象なし」を明示
+          <View style={styles.loading}>
+            <Text style={styles.loadingTxt}>書き出す対象がありません</Text>
+          </View>
+        )
+        : thumbs.length === 0
         ? (
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={IOS.blue} />
@@ -205,7 +203,11 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
               <View key={polygons[idx]?.id ?? idx} style={styles.cell}>
                 <CheckerboardBg mode={bg} tile={14} width={THUMB_SIZE} height={THUMB_SIZE} />
                 {uri
-                  ? <Image source={{ uri }} style={styles.thumb} resizeMode="contain" />
+                  ? (
+                    <TouchableOpacity onPress={() => setZoomUri(uri)} activeOpacity={0.8}>
+                      <Image source={{ uri }} style={styles.thumb} resizeMode="contain" />
+                    </TouchableOpacity>
+                  )
                   : <Text style={styles.errorTxt}>×</Text>
                 }
                 {/* 通し番号バッジ */}
@@ -217,6 +219,13 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
           </ScrollView>
         )
       }
+
+      {/* サムネイルタップ拡大用モーダル(SetupScreen/PolygonEditorと同じ共通部品を再利用) */}
+      <ImageZoomModal
+        visible={zoomUri != null}
+        uri={zoomUri ?? ''}
+        onClose={() => setZoomUri(null)}
+      />
     </Screen>
   );
 }
@@ -232,14 +241,17 @@ const IOS = {
 } as const;
 
 const styles = StyleSheet.create({
+  // 下部固定フッター（ResultScreen の保存ボタンと同じ見た目）
+  footer: { paddingHorizontal: 16, paddingTop: 12 },
   saveBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: IOS.blue,
-    paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 10, marginRight: 8,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnTxt: { fontSize: 15, fontWeight: '600', color: '#FFF' },
+  saveBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
 
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingTxt: { fontSize: 14, color: IOS.secondary },

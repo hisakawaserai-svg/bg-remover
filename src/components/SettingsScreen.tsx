@@ -33,6 +33,7 @@ import OnboardingScreen from './OnboardingScreen';
 import { ALBUM_NAME } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
+import Divider from './ui/Divider';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
 // require は TS の moduleResolution によっては型エラーになる場合がある。
@@ -86,7 +87,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>許容値</Text>
+              <Text style={styles.rowLabel}>自動除去の許容値</Text>
               <Text style={styles.rowSub}>背景色との色差しきい値（大きいほど広く抜ける）</Text>
             </View>
             {/* 現在値を数値でリアルタイム表示 */}
@@ -101,7 +102,8 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             onChange={setTolerance}
             onComplete={v => void updateSettings({ tolerance: v })}
           />
-
+          <Divider />
+          
           {/* スポイトの許容値。上の「許容値」とは独立して調整する。 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
@@ -145,7 +147,7 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
               <Icon name="lock" size={14} color={IOS.secondary} style={{ marginLeft: 4 }} />
             </View>
           </View>
-          <View style={styles.separator} />
+          <Divider />
           <View style={styles.row}>
             <View style={styles.rowLeft}>
               <Text style={styles.rowLabel}>保存後に作業データを自動削除</Text>
@@ -182,14 +184,17 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
               ))}
             </View>
           </View>
-          <View style={styles.separator} />
+          <Divider />
           {/* サムネの下地色: 透過PNGの見た目確認用。画像自体は加工しない。 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>サムネ背景</Text>
+            <Text style={styles.rowLabel}>背景色</Text>
             <View style={styles.presets}>
+              {/* 'gray' は選択肢から外した（白と市松があれば足りるため）。
+                  ThumbBg 型自体には残してあるので、PolygonEditor の作業用背景
+                  「灰」は引き続き使える。保存済みの 'gray' は下の useThumbBg で
+                  白に寄せるので、この3択のどれも選択中に見えない状態にはならない。*/}
               {([
                 { val: 'white',   label: '白'   },
-                { val: 'gray',    label: 'グレー' },
                 { val: 'checker', label: '市松'  },
                 { val: 'black',   label: '黒'   },
               ] as const).map(({ val, label }) => (
@@ -247,18 +252,18 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
             <Text style={styles.rowLabel}>バージョン</Text>
             <Text style={styles.rowValueMuted}>{APP_VERSION}</Text>
           </View>
-          <View style={styles.separator} />
+          <Divider />
           <View style={styles.row}>
             <Text style={styles.rowLabel}>アルバム名（内部）</Text>
             <Text style={styles.rowValueMuted}>{ALBUM_NAME}</Text>
           </View>
-          <View style={styles.separator} />
+          <Divider />
           {/* 使い方: ホームから移動。既存の row スタイルをそのまま流用 */}
           <AnimatedPressable style={styles.row} onPress={onHowTo} pressedScale={0.98}>
             <Text style={styles.rowLabel}>使い方</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
-          <View style={styles.separator} />
+          <Divider />
           {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
             <Text style={styles.rowLabel}>チュートリアルをもう一度見る</Text>

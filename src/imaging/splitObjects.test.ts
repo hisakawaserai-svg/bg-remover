@@ -21,6 +21,9 @@ import {
   detectColCount,
   trimToForeground,
   EMPTY_CELL_RATIO,
+  toleranceToGapParams,
+  MIN_REAL_GAP,
+  RELATIVE_GAP_THRESHOLD,
 } from './splitObjects';
 
 const fillRect = (
@@ -217,4 +220,61 @@ test('段ごとに水平ズレのある3×4シートでも列1に縮退しない
   // 共通縦線は3本（=4列）。列1への縮退が起きていないこと。
   expect(first.length - 1).toBe(4);
   expect(detectColCount(rgba, width, height, rows)).toBe(4);
+});
+
+// ── 「分割の細かさ」(tolerance) と列検出しきい値の連動 ────────────────────────
+// 実際のシート画像は列間の隙間が広く、しきい値を変えても結果が変わらないため、
+// 隙間幅を制御した合成画像で「向き」と「既定値の据え置き」を固定する。
+
+/** 指定した x 区間のブロックを横一列に並べた1段シート（隙間幅を直接指定できる）。*/
+function makeRowOfBlocks(blocks: Array<[number, number]>, width: number) {
+  const height = 40;
+  const rgba = new Uint8Array(width * height * 4);
+  for (const [x0, x1] of blocks) fillRect(rgba, width, x0, 4, x1, 36);
+  return { rgba, width, height };
+}
+
+test('toleranceToGapParams: 中(30)は既存定数と完全一致する', () => {
+  const p = toleranceToGapParams(30);
+  expect(p.minRealGap).toBe(MIN_REAL_GAP);
+  expect(p.relativeGapThreshold).toBe(RELATIVE_GAP_THRESHOLD);
+});
+
+test('toleranceToGapParams: 範囲外はクランプされる', () => {
+  expect(toleranceToGapParams(0).minRealGap).toBe(14);
+  expect(toleranceToGapParams(100).minRealGap).toBe(2);
+  expect(toleranceToGapParams(0).relativeGapThreshold).toBeCloseTo(0.1);
+  expect(toleranceToGapParams(100).relativeGapThreshold).toBeCloseTo(0.6);
+});
+
+test('細い隙間(5px)は「細かい」でだけ切れる（minRealGap の連動）', () => {
+  // ブロック3個・隙間はどちらも5px。minRealGap を跨ぐかどうかだけで結果が変わる。
+  const { rgba, width, height } = makeRowOfBlocks([[2, 18], [23, 39], [44, 58]], 60);
+  const cols = (tol: number) => {
+    const p = toleranceToGapParams(tol);
+    return detectColCount(rgba, width, height, 1, p.minRealGap, p.relativeGapThreshold);
+  };
+  expect(cols(15)).toBe(1); // 粗い: 5px < minRealGap(10) → すき間なし扱い
+  expect(cols(30)).toBe(1); // 中  : 5px < minRealGap(6)
+  expect(cols(50)).toBe(3); // 細かい: 5px >= minRealGap(3) → 2本切って3列
+  // 既定(引数省略)は tolerance=30 と一致する＝スライダー未操作なら従来どおり。
+  expect(detectColCount(rgba, width, height, 1)).toBe(cols(30));
+});
+
+test('大小混在の隙間では「粗い」ほど列が減る（relativeGapThreshold の向き）', () => {
+  // 隙間 [18,38)=20px と [54,66)=12px。相対差 (20-12)/20 = 0.40。
+  // しきい値がこれを下回ると「12pxはノイズ」と判定され、切るのは20pxの1本だけになる。
+  const { rgba, width, height } = makeRowOfBlocks([[2, 18], [38, 54], [66, 82]], 84);
+  const cols = (tol: number) => {
+    const p = toleranceToGapParams(tol);
+    return detectColCount(rgba, width, height, 1, p.minRealGap, p.relativeGapThreshold);
+  };
+  // 粗い(0.15) ≦ 中(0.30) ≦ 細かい(0.45) の単調性を固定する。
+  // relativeGapThreshold は「上げるほど境目が見つからず全採用＝列が増える」ため、
+  // 粗い側で値を下げている（minRealGap とは増減が逆）。ここが逆転すると
+  // 「粗いのに列が増える」という直感に反する挙動に戻るので、向きごと固定する。
+  expect(cols(15)).toBe(2);
+  expect(cols(30)).toBe(2);
+  expect(cols(50)).toBe(3);
+  expect(detectColCount(rgba, width, height, 1)).toBe(cols(30));
 });

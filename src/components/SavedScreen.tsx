@@ -3,7 +3,7 @@
  *
  * フロー:
  *   1) マウント時に CameraRoll からアルバム画像を取得し、日付セクション別グリッドで表示
- *   2) サムネ背景は設定値（白/グレー/市松）。透過PNGの下に色を敷くだけで画像は加工しない。
+ *   2) 下地は設定「背景色」（白/市松/黒）。透過PNGの下に色を敷くだけで画像は加工しない。
  *   3) サムネをタップすると全画面モーダルで拡大プレビュー（左右矢印で前後移動）
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -26,6 +26,7 @@ import AppHeader from './ui/AppHeader';
 import EmptyState from './ui/EmptyState';
 import { ALBUM_NAME } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
+import { useThumbBg } from '../hooks/useThumbBg';
 import { APP_NAME } from '../constants';
 
 // ── 市松模様コンポーネント ────────────────────────────────────────────────────
@@ -128,6 +129,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 export default function SavedScreen({ onClose }: Props) {
   const { settings } = useSettings();
+  const thumbBg = useThumbBg();
 
   const [photos,  setPhotos]  = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +191,7 @@ export default function SavedScreen({ onClose }: Props) {
 
   // ── グリッド行のレンダー ────────────────────────────────────────────────
   const renderRow = useCallback(({ item: row }: { item: Row }) => {
-    const bg = settings.thumbBg;
+    const bg = thumbBg;
     return (
       <View style={[styles.row, { gap: GRID_GAP }]}>
         {row.map(photo => (
@@ -201,7 +203,9 @@ export default function SavedScreen({ onClose }: Props) {
           >
             {bg === 'checker'
               ? <Checkerboard size={cellSize} />
-              : <View style={[StyleSheet.absoluteFill, { backgroundColor: bg === 'gray' ? '#888888' : '#FFFFFF' }]} />
+              // 単色時の下地。黒を白で塗ってしまっていたので CheckerboardBg と同じ色に揃えた。
+              // 'gray' は設定の選択肢から外し、useThumbBg が白へ寄せるのでここでは扱わない。
+              : <View style={[StyleSheet.absoluteFill, { backgroundColor: bg === 'black' ? '#1C1C1E' : '#FFFFFF' }]} />
             }
             <Image
               source={{ uri: photo.uri }}
@@ -216,7 +220,7 @@ export default function SavedScreen({ onClose }: Props) {
         ))}
       </View>
     );
-  }, [cellSize, cols, settings.thumbBg]);
+  }, [cellSize, cols, thumbBg]);
 
   // ── セクションヘッダーのレンダー ──────────────────────────────────────────
   const renderSectionHeader = useCallback(({ section }: { section: DateSection }) => (

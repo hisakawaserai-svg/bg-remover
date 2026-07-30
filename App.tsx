@@ -3,7 +3,7 @@
  *
  * 2 つの分割モードを持つ。
  *   モード A「自動分割」: removeBackground → splitRowsThenCols → saveCells
- *   モード B「手動で囲む」: removeBackground → PolygonEditor（多角形描画・書き出し）
+ *   モード B「範囲を調整」: removeBackground → PolygonEditor（多角形描画・書き出し）
  *
  * セッション管理:
  *   各作業は StickerSession として AsyncStorage に保存し、ホームで再開できる。

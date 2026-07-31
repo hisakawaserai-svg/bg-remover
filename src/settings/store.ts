@@ -67,6 +67,18 @@ export interface AppSettings {
    */
   albumName: string | null;
   /**
+   * これまでに使ったアルバム名の履歴（albumName も含む、古い順）。
+   *
+   * 「保存先」画面はこの全部から画像を集める。保存先は常に albumName の1つだけ。
+   *
+   * 何のためか:
+   *   - ユーザーが写真アプリ側でアルバムを手で改名すると、保存済みの名前では
+   *     引けなくなり「保存先」が空になる。次の保存で同名アルバムが作り直され、
+   *     古い画像だけ取り残される。履歴を全部引けば両方見える。
+   *   - 将来アルバム名を変える必要が出ても、過去の画像を見失わずに済む。
+   */
+  albumNameHistory: string[];
+  /**
    * 表示言語。'auto' は端末の言語に追従する。
    * 既定を 'auto' にしているので、既存ユーザーの保存済み設定にこのキーが
    * 無くても（下の loadSettings のマージで）端末の言語で表示される。
@@ -90,6 +102,7 @@ export const DEFAULTS: AppSettings = {
   skipPolygonTutorial: false,
   hasSeenOnboarding: false,
   albumName: null,
+  albumNameHistory: [],
   language: 'auto',
 };
 

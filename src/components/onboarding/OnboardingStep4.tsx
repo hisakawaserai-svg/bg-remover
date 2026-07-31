@@ -181,8 +181,10 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
           <Animated.View style={[s.primaryBtn, btn0Style]}>
             <Text style={s.primaryTxt}>{t('saveComplete.another')}</Text>
           </Animated.View>
+          {/* 実画面(SaveCompleteScreen)の再現なので、アイコンもそちらに合わせる。
+              ここだけ違う絵だと、チュートリアルと本番で別物に見える。 */}
           <Animated.View style={[s.subBtn, btn1Style]}>
-            <Icon name="photo-library" size={16} color="#007AFF" />
+            <Icon name="photo-album" size={16} color="#007AFF" />
             <Text style={s.subTxt}>{t('saveComplete.checkDestination')}</Text>
           </Animated.View>
           <Animated.View style={[s.lineBtn, btn2Style]}>

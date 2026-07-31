@@ -67,7 +67,9 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
   const [loading,    setLoading]    = useState(true);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
-  // 保存直後なので最新 savedCount 枚が目的の画像
+  // 保存直後なので最新 savedCount 枚が目的の画像。
+  // ここは「今保存した先」だけを見ればよいので現在名で引く（履歴は使わない）。
+  // 履歴をまたいで集めるのは「保存先」画面（SavedScreen）の役目。
   useEffect(() => {
     (async () => {
       try {
@@ -162,9 +164,10 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
           <Text style={styles.primaryBtnTxt}>{t('saveComplete.another')}</Text>
         </AnimatedPressable>
 
-        {/* 保存先 */}
+        {/* 保存先。アイコンはホームのヘッダーにある保存先ボタンと同じ photo-album。
+            同じ画面へ行く導線なので、別の絵にすると同じ場所だと分からなくなる。 */}
         <AnimatedPressable style={styles.subBtn} onPress={onSaved} pressedScale={0.97}>
-          <Icon name="photo-library" size={16} color={IOS.blue} />
+          <Icon name="photo-album" size={16} color={IOS.blue} />
           <Text style={styles.subBtnTxt}>{t('saveComplete.checkDestination')}</Text>
         </AnimatedPressable>
 

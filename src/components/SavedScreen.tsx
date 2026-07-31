@@ -19,6 +19,7 @@ import { AnimatedPressable } from './ui/AnimatedPressable';
 import ImagePreviewModal from './ui/ImagePreviewModal';
 import { useGridMetrics } from '../hooks/useGridMetrics';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import type { PhotoIdentifier } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Screen from './ui/Screen';
@@ -132,7 +133,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 export default function SavedScreen({ onClose }: Props) {
   const { t } = useT();
-  const { albumName } = useAlbumName();
+  const { albumNamesToQuery: albumNames } = useAlbumName();
   const { settings } = useSettings();
   const thumbBg = useThumbBg();
 
@@ -147,18 +148,40 @@ export default function SavedScreen({ onClose }: Props) {
     fetchingRef.current = true;
     setLoading(true);
     try {
-      const result = await CameraRoll.getPhotos({
-        first: 200,
-        // 【必須】groupTypes を省くと iOS では 'All' が既定で入り、
-        // ネイティブ側が groupName を無視してライブラリ全体を返す
-        // （RNCCameraRoll.mm の "all" 分岐は fetchAssetsWithOptions を直接呼ぶ）。
-        // 'Album' にして初めて localizedTitle = groupName の絞り込みが効く。
-        groupTypes: 'Album',
-        groupName: albumName,
-        assetType: 'Photos',
-      });
+      // 使ったことのあるアルバム名を全部引いてまとめる。
+      // 写真アプリ側で手で改名された場合など、現在名だけでは古い画像が
+      // 引けなくなるため（詳細は useAlbumName のコメント）。
+      const pages = await Promise.all(
+        albumNames.map(name =>
+          CameraRoll.getPhotos({
+            first: 200,
+            // 【必須】groupTypes を省くと iOS では 'All' が既定で入り、
+            // ネイティブ側が groupName を無視してライブラリ全体を返す
+            // （RNCCameraRoll.mm の "all" 分岐は fetchAssetsWithOptions を直接呼ぶ）。
+            // 'Album' にして初めて localizedTitle = groupName の絞り込みが効く。
+            groupTypes: 'Album',
+            groupName: name,
+            assetType: 'Photos',
+          // 存在しないアルバム名は空として扱い、他の名前の取得は続ける。
+          }).catch(() => ({ edges: [] as PhotoIdentifier[] })),
+        ),
+      );
+
+      // 同じ画像が複数アルバムに入っていることもあるので uri で重複を除く。
+      const seen = new Set<string>();
+      const merged = pages
+        .flatMap(page => page.edges)
+        .filter(e => {
+          const uri = e.node.image.uri;
+          if (seen.has(uri)) return false;
+          seen.add(uri);
+          return true;
+        })
+        // アルバムをまたぐと並びが崩れるので、撮影日時で全体を並べ直す。
+        .sort((a, b) => b.node.timestamp - a.node.timestamp);
+
       // timestamp も一緒に取得する。通し番号は取得順(新しい順)で付与。
-      const loaded: Photo[] = result.edges.map((e, i) => ({
+      const loaded: Photo[] = merged.map((e, i) => ({
         uri:       e.node.image.uri,
         timestamp: e.node.timestamp,
         globalIdx: i,
@@ -171,7 +194,7 @@ export default function SavedScreen({ onClose }: Props) {
       fetchingRef.current = false;
       setLoading(false);
     }
-  }, [albumName]);
+  }, [albumNames]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 

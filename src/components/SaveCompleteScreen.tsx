@@ -24,8 +24,8 @@ import { useThumbBg } from '../hooks/useThumbBg';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
-import { ALBUM_ID } from '../imaging';
 import { useT } from '../i18n';
+import { useAlbumName } from '../settings/useAlbumName';
 import AdBanner from '../ads/AdBanner';
 
 // グリッドの最大表示枚数
@@ -58,6 +58,7 @@ interface Props {
 
 export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, onHome, onSettings }: Props) {
   const { t } = useT();
+  const { albumName } = useAlbumName();
   const bg = useThumbBg();
   /** グリッド表示用: 最大 MAX_GRID 枚 */
   const [thumbUris, setThumbUris] = useState<string[]>([]);
@@ -72,7 +73,11 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
       try {
         const result = await CameraRoll.getPhotos({
           first: Math.max(savedCount, 1),
-          groupName: ALBUM_ID,
+          // groupTypes を省くと iOS は 'All' 扱いになり groupName が無視される。
+          // 保存直後は「最新 N 枚 = 保存した画像」でたまたま合っていたが、
+          // 間に他アプリが写真を保存すると無関係な画像が出る。SavedScreen と同じ対処。
+          groupTypes: 'Album',
+          groupName: albumName,
           assetType: 'Photos',
         });
         const uris = result.edges.map(e => e.node.image.uri);
@@ -108,7 +113,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
         </View>
         <View style={styles.summaryText}>
           <Text style={styles.summaryTitle}>{t('saveComplete.savedCount', { count: savedCount })}</Text>
-          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: t('app.albumName') })}</Text>
+          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: albumName })}</Text>
         </View>
       </View>
 

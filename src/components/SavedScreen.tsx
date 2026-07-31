@@ -24,10 +24,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import EmptyState from './ui/EmptyState';
-import { ALBUM_ID } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { t, useT } from '../i18n';
+import { useAlbumName } from '../settings/useAlbumName';
 import AdBanner from '../ads/AdBanner';
 
 // ── 市松模様コンポーネント ────────────────────────────────────────────────────
@@ -132,6 +132,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 export default function SavedScreen({ onClose }: Props) {
   const { t } = useT();
+  const { albumName } = useAlbumName();
   const { settings } = useSettings();
   const thumbBg = useThumbBg();
 
@@ -148,7 +149,12 @@ export default function SavedScreen({ onClose }: Props) {
     try {
       const result = await CameraRoll.getPhotos({
         first: 200,
-        groupName: ALBUM_ID,
+        // 【必須】groupTypes を省くと iOS では 'All' が既定で入り、
+        // ネイティブ側が groupName を無視してライブラリ全体を返す
+        // （RNCCameraRoll.mm の "all" 分岐は fetchAssetsWithOptions を直接呼ぶ）。
+        // 'Album' にして初めて localizedTitle = groupName の絞り込みが効く。
+        groupTypes: 'Album',
+        groupName: albumName,
         assetType: 'Photos',
       });
       // timestamp も一緒に取得する。通し番号は取得順(新しい順)で付与。
@@ -165,7 +171,7 @@ export default function SavedScreen({ onClose }: Props) {
       fetchingRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [albumName]);
 
   useEffect(() => { void fetchPhotos(); }, [fetchPhotos]);
 

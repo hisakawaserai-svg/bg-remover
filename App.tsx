@@ -128,6 +128,7 @@ import LoadingView from './src/components/ui/LoadingView';
 import { describeSaveError } from './src/imaging/saveErrors';
 import { t, useT } from './src/i18n';
 import { useSettings } from './src/settings/SettingsContext';
+import { useAlbumName } from './src/settings/useAlbumName';
 
 // ── 広告 ──────────────────────────────────────────────────────────────────────
 // 置くのはホーム・保存完了・保存先の3画面だけ。SetupScreen / PolygonEditor などの
@@ -180,6 +181,8 @@ export default function App() {
   // 言語が切り替わったらこの画面ツリー全体を描き直す。
   // 下位の画面もそれぞれ useT() を呼んでいるので、個別にも更新される。
   const { t } = useT();
+  // 初回保存でアルバム名を確定させる（以後は言語を変えても固定）。
+  const { ensureAlbumName } = useAlbumName();
   const { width: winW, height: winH } = useWindowDimensions();
   const [splitMode, setSplitMode] = useState<SplitMode>('auto');
   const [appState,  setAppState]  = useState<AppState>('idle');
@@ -754,7 +757,7 @@ export default function App() {
         return Skia.Image.MakeImageFromEncoded(data)!;
       }));
 
-      const { count, album } = await saveSkImages(skImages);
+      const { count, album } = await saveSkImages(skImages, await ensureAlbumName());
       skImages.forEach(img => img.dispose());
 
       // 書き出し完了 → step を 'done' に更新
@@ -791,7 +794,7 @@ export default function App() {
       Alert.alert(t('errors.exportTitle'), describeSaveError(e));
       setAppState('preview');
     }
-  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, t]);
+  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, ensureAlbumName, t]);
 
   // ── リセット ──────────────────────────────────────────────────────────────
 

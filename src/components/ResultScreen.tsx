@@ -616,6 +616,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
+    // 英語は「AFTER CUTTING (1 IMAGE)」＋「Long-press to select and merge」で
+    // 1行に収まらず、見出しとヒントが隙間なくくっついていた。
+    // 入らない時はヒントを次の行へ落とし、最低限の間隔も確保する。
+    flexWrap: 'wrap',
+    columnGap: spacing.sm,
+    rowGap: 2,
   },
   sectionLabel: {
     ...typography.callout,
@@ -623,10 +629,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+    flexShrink: 1,
   },
   sectionHint: {
     ...typography.caption,
     color: colors.accent,
+    flexShrink: 1,
   },
 
   // ── 位置ベースレイアウトコンテナ ─────────────────────────────────────────

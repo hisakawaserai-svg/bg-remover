@@ -56,6 +56,17 @@ export interface AppSettings {
   /** 全体オンボーディングを表示済みか（false = 未表示 = 初回） */
   hasSeenOnboarding: boolean;
   /**
+   * 写真アルバムの名前。**初回保存時に決まり、以後変わらない。**
+   *
+   * null = まだ一度も保存していない（＝アルバム未作成）。
+   * 初回保存の直前に、その時の表示言語の名前（t('app.albumName')）を焼き付ける。
+   *
+   * 言語設定に追従させない理由: アルバム名を変えると写真アプリ側に別アルバムが
+   * でき、それまでに保存した画像がアプリの「保存先」から見えなくなる。
+   * 一度決めたら固定することで、アプリの表示と写真アプリの実体が常に一致する。
+   */
+  albumName: string | null;
+  /**
    * 表示言語。'auto' は端末の言語に追従する。
    * 既定を 'auto' にしているので、既存ユーザーの保存済み設定にこのキーが
    * 無くても（下の loadSettings のマージで）端末の言語で表示される。
@@ -78,6 +89,7 @@ export const DEFAULTS: AppSettings = {
   autoDeleteOnExport: true,
   skipPolygonTutorial: false,
   hasSeenOnboarding: false,
+  albumName: null,
   language: 'auto',
 };
 

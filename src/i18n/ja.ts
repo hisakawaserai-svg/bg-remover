@@ -252,7 +252,6 @@ const ja = {
     languageAuto: '端末に合わせる',
     sectionAbout: 'このアプリについて',
     version: 'バージョン',
-    albumInternal: 'アルバム名（内部）',
     howTo: '使い方',
     replayTutorial: 'チュートリアルをもう一度見る',
     deleteAllData: '作業データをすべて削除',

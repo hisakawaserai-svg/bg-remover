@@ -31,11 +31,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Card from './ui/Card';
 import OnboardingScreen from './OnboardingScreen';
-import { ALBUM_ID } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
 import Divider from './ui/Divider';
 import { useT } from '../i18n';
+import { useAlbumName } from '../settings/useAlbumName';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
 // require は TS の moduleResolution によっては型エラーになる場合がある。
@@ -58,6 +58,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // Context から設定を取得。props 経由の受け渡しは不要になった。
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
+  const { albumName } = useAlbumName();
 
   // スライダーの操作中の値を local state で持ち、
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
@@ -154,7 +155,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('settings.album')}</Text>
             <View style={styles.rowRight}>
-              <Text style={styles.rowValueMuted}>{t('app.albumName')}</Text>
+              <Text style={styles.rowValueMuted}>{albumName}</Text>
               <Icon name="lock" size={14} color={IOS.secondary} style={{ marginLeft: 4 }} />
             </View>
           </View>
@@ -183,7 +184,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 onPress={() => {
                   Alert.alert(
                     t('settings.deleteAllData'),
-                    t('settings.deleteAllDataMessage', { album: t('app.albumName') }),
+                    t('settings.deleteAllDataMessage', { album: albumName }),
                     [
                       { text: t('common.cancel'), style: 'cancel' },
                       { text: t('common.deleteAll'), style: 'destructive', onPress: () => void onDeleteAllData() },
@@ -316,13 +317,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             <Text style={styles.rowValueMuted}>{APP_VERSION}</Text>
           </View>
           <Divider />
-          <View style={styles.row}>
-            {/* ここだけは翻訳しない。写真アプリに実在するアルバム名そのもので、
-                英語表示のユーザーが保存先を探す時の手がかりになる。 */}
-            <Text style={styles.rowLabel}>{t('settings.albumInternal')}</Text>
-            <Text style={styles.rowValueMuted}>{ALBUM_ID}</Text>
-          </View>
-          <Divider />
+          {/* 「アルバム名（内部）」の行は廃止した。
+              アルバム名は初回保存時に確定して以後動かさない方式にしたので、
+              上の「保存先アルバム」に出している名前が写真アプリの実体名と
+              常に一致する。同じ値を2行に出す意味がなくなった。 */}
           {/* 使い方: ホームから移動。既存の row スタイルをそのまま流用 */}
           <AnimatedPressable style={styles.row} onPress={onHowTo} pressedScale={0.98}>
             <Text style={styles.rowLabel}>{t('settings.howTo')}</Text>

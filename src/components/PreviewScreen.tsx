@@ -28,6 +28,7 @@ import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import { savePolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
 import { useT } from '../i18n';
+import { useAlbumName } from '../settings/useAlbumName';
 import { pointInPolygon } from '../imaging/maskPolygon';
 import type { RemoveBgResult } from '../imaging';
 import type { Polygon } from './PolygonEditor';
@@ -122,6 +123,7 @@ function buildThumbnail(
 
 export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
   const { t } = useT();
+  const { ensureAlbumName } = useAlbumName();
   const bg = useThumbBg();
   // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
   const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
@@ -148,7 +150,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
     setIsSaving(true);
     try {
       const { rgba, width, height } = bgResult;
-      const { count } = await savePolygons(rgba, width, height, polygons);
+      const { count } = await savePolygons(rgba, width, height, polygons, await ensureAlbumName());
       onSave(count);
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
@@ -156,7 +158,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
     } finally {
       setIsSaving(false);
     }
-  }, [bgResult, polygons, onSave, onRequestSave, t]);
+  }, [bgResult, polygons, onSave, onRequestSave, ensureAlbumName, t]);
 
   const header = (
     <AppHeader

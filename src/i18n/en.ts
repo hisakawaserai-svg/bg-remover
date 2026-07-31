@@ -224,7 +224,6 @@ const en: typeof ja = {
     languageAuto: 'Match device',
     sectionAbout: 'About',
     version: 'Version',
-    albumInternal: 'Album name (internal)',
     howTo: 'How to use',
     replayTutorial: 'Watch the tutorial again',
     deleteAllData: 'Delete all work data',

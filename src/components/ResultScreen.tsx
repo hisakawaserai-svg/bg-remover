@@ -304,8 +304,41 @@ export default function ResultScreen({
 
   // ── 保存 ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    const warningIndexes = cells
+      .map((cell, index) => 
+        cell.kind === 'auto' && cell.multipleObjects ? index + 1 : null
+      )
+      .filter((index): index is number => index !== null);
+
+    if (warningIndexes.length > 0) {
+      Alert.alert(
+        '確認',
+        `うまく分割できていないスタンプがあります。\n\n対象: ${warningIndexes.join('、')}番`,
+        [
+          {
+            text: 'キャンセル',
+            style: 'cancel',
+          },
+          {
+            text: '保存する',
+            onPress: () => void executeSave(),
+          },
+        ],
+      );
+      return;
+    }
+
+    await executeSave();
+  };
+
+  // 実際の保存処理
+  const executeSave = async () => {
     setSaving(true);
-    try { await onSave(); } finally { setSaving(false); }
+    try {
+      await onSave();
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── 選択 state 操作 ──────────────────────────────────────────────────────
@@ -513,22 +546,17 @@ export default function ResultScreen({
                   <Icon name="refresh" size={18} color={colors.accent} />
                   <Text style={styles.actionBtnTxt}>リセット</Text>
                 </AnimatedPressable>
-                <View style={styles.actionDivider} />
-                <AnimatedPressable style={styles.actionBtn} onPress={onManualSplit}>
-                  <Icon name="edit" size={18} color={colors.accent} />
-                  <Text style={styles.actionBtnTxt}>手動分割</Text>
+
+                {/* 保存する */}
+                <AnimatedPressable
+                  style={styles.saveBtn}
+                  onPress={() => void handleSave()}
+                  disabled={saving}
+                  pressedScale={0.97}
+                >
+                  <Text style={styles.saveBtnTxt}>{saving ? '保存中...' : '保存する'}</Text>
                 </AnimatedPressable>
               </View>
-
-              {/* 保存する */}
-              <AnimatedPressable
-                style={styles.saveBtn}
-                onPress={() => void handleSave()}
-                disabled={saving}
-                pressedScale={0.97}
-              >
-                <Text style={styles.saveBtnTxt}>{saving ? '保存中...' : '保存する'}</Text>
-              </AnimatedPressable>
             </>
           )}
         </View>
@@ -689,20 +717,19 @@ const styles = StyleSheet.create({
   },
   // ── アクションボタン行 ───────────────────────────────────────────────────
   actionRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    ...shadow.xs,
+    flexDirection:'row',
+    gap: spacing.md,
   },
-  actionBtn: {
-    flex: 1,
+  actionBtn:{
+    flex:1,
+    borderRadius:radius.md,
+    backgroundColor:colors.card,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.lg,
     gap: spacing.xs,
-  },
+  },  
   actionDivider: {
     width: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
@@ -716,6 +743,7 @@ const styles = StyleSheet.create({
 
   // ── 保存 / 合体ボタン ─────────────────────────────────────────────────────
   saveBtn: {
+    flex: 2,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: spacing.lg,

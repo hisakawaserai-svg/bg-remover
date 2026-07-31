@@ -35,6 +35,7 @@ import ImageZoomModal from './ui/ImageZoomModal';
 import Card from './ui/Card';
 import CheckerboardBg from './ui/CheckerboardBg';
 import ToleranceSlider from './ui/ToleranceSlider';
+import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
@@ -323,6 +324,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // スポイト用。rgba/許容値も PanResponder のクロージャからは stale になるため ref 経由で読む
   // （許容値は設定画面で変わるので直接参照すると初回値のまま固定されてしまう）。
   const eyedropperModeRef = useRef(eyedropperMode); eyedropperModeRef.current = eyedropperMode;
+  // 連打対策。スポイト1回の再計算は重いので、反映が終わるまで次のタップは捨てる。
+  // 受け付けて積むと処理が直列に溜まって固まり続ける（範囲調整側と同じ方針）。
+  const eyeBusyRef = useRef(false);
   const rgbaRef = useRef(bgResult.rgba); rgbaRef.current = bgResult.rgba;
   const eyeTolRef = useRef(settings.eyedropperTolerance);
   eyeTolRef.current = settings.eyedropperTolerance;
@@ -357,9 +361,17 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           const h = imgHRef.current;
           if (imgX >= 0 && imgX < w && imgY >= 0 && imgY < h
               // 透過済みの場所は見た目が変わらない（空振り）ので再検出まで走らせない。
-              && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)) {
+              && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)
+              // 前のスポイトが反映され終わるまでは受け付けない（連打対策）。
+              && !eyeBusyRef.current) {
             // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
-            onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
+            eyeBusyRef.current = true;
+            try {
+              onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
+            } finally {
+              // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
+              eyeBusyRef.current = false;
+            }
           }
           return;
         }
@@ -571,15 +583,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             />
           )}
 
-          {/* 検出数バッジ（自動モードかつ splitCount >= 1 のみ）*/}
-          {mode === 'auto' && !noSplit && splitCount != null && splitCount >= 1 && (
-            <View style={styles.badge} pointerEvents="none">
-              <Text style={styles.badgeTxt}>
-                {splitCount >= 2 ? `${splitCount}個に分かれます` : '分割なし'}
-              </Text>
-            </View>
-          )}
-
           {mode === 'auto' && !noSplit && (
             <>
               {/* 横線（行境界）: 左から右へ伸びる（scaleX のみ・原点 left）*/}
@@ -726,8 +729,27 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         {mode === 'manual' && (
           <Card style={styles.card}>
             <Text style={styles.manualDesc}>
-              背景除去済みの画像に自由にポリゴンを描いてカットします。
+              背景除去済みの画像を、四角で囲んで1枚ずつ切り出します。
             </Text>
+            {/* 次の画面で使うツールの予告。アイコンは範囲を調整画面と共通
+                （TOOL_ICONS）なので、進んだ先で迷わない。 */}
+            <View style={styles.toolList}>
+              <ToolRow
+                icon={TOOL_ICONS.draw}
+                title="四角を追加"
+                desc="囲みたいキャラの上をタップ"
+              />
+              <ToolRow
+                icon={TOOL_ICONS.move}
+                title="移動・調整"
+                desc="四角をドラッグ／角をつまんで形を合わせる"
+              />
+              <ToolRow
+                icon={TOOL_ICONS.eyedropper}
+                title="スポイト"
+                desc="消したい色をタップして透過"
+              />
+            </View>
           </Card>
         )}
 
@@ -753,6 +775,21 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         <ImageZoomModal visible={zoomVisible} uri={originalImageUri} onClose={() => setZoomVisible(false)} />
       ) : null}
     </Screen>
+  );
+}
+
+/** 「範囲を調整」タブで出すツールの一覧行。次の画面で使う道具の予告。 */
+function ToolRow({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+  return (
+    <View style={styles.toolRow}>
+      <View style={styles.toolIcon}>
+        <Icon name={icon} size={18} color={IOS.blue} />
+      </View>
+      <View style={styles.toolTexts}>
+        <Text style={styles.toolTitle}>{title}</Text>
+        <Text style={styles.toolDesc}>{desc}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -848,6 +885,30 @@ const styles = StyleSheet.create({
   eyeTxtOn: {
     color: '#FFF',
   },
+  // ── 「範囲を調整」タブのツール一覧 ────────────────────────────────────────
+  toolList: {
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  toolIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#EAF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolTexts: { flex: 1 },
+  toolTitle: { fontSize: 14, fontWeight: '600', color: IOS.label },
+  toolDesc: { fontSize: 12, color: IOS.secondary, marginTop: 1 },
+
   manualDesc: {
     fontSize: 14,
     color: IOS.secondary,

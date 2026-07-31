@@ -35,7 +35,7 @@ const STEPS = [
     icon:  'add-photo-alternate',
     title: 'STEP 1  画像を選ぶ',
     body:  'ホーム画面の「画像を選択」からイラストシートを選びます。\n複数キャラが並んだ1枚の画像でOKです。',
-    note:  'PNG・JPEG どちらも対応。',
+    note:  '対応形式：PNG・JPEG（JPG）・HEIC\n※その他の画像形式は正常に読み込めない場合があります。',
   },
   {
     icon:  'tune',
@@ -190,7 +190,9 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
             <Icon name="info-outline" size={16} color={colors.secondary} />
             <Text style={[styles.tipsTitle, { color: colors.secondary }]}>ご注意</Text>
           </View>
-          <TipRow text="写真アプリへのアクセス許可が必要です" />
+          {/* 「選択した写真のみ」だとアルバムへの保存が Photos 側で拒否され、
+              書き出し時に PHPhotosErrorDomain エラーになる。実際に踏んだので明記する。 */}
+          <TipRow text="保存には写真への「フルアクセス」が必要です。「選択した写真のみ」だとアルバムに保存できません（設定 → プライバシーとセキュリティ → 写真）" />
           <TipRow text="出力は透過PNGのみ（JPEG は透過を保持できないため）" />
           <TipRow text="背景除去・分割の処理中はアプリを閉じないでください" />
         </Card>

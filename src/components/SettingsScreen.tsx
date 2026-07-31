@@ -17,6 +17,7 @@
 
 import React, { useState } from 'react';
 import {
+  Alert,
   StyleSheet,
   Switch,
   Text,
@@ -44,9 +45,15 @@ const APP_VERSION: string = (require('../../package.json') as { version: string 
 interface Props {
   onClose: () => void;
   onHowTo: () => void;
+  /**
+   * 「作業データをすべて削除」。セッション削除は currentSessionId 等の状態にも
+   * 関わるので、実処理は App 側に持たせる（この画面は確認ダイアログまで）。
+   * 省略すると行自体を出さない。
+   */
+  onDeleteAllData?: () => void | Promise<void>;
 }
 
-export default function SettingsScreen({ onClose, onHowTo }: Props) {
+export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Props) {
   // Context から設定を取得。props 経由の受け渡しは不要になった。
   const { settings, updateSettings } = useSettings();
 
@@ -160,6 +167,34 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
               thumbColor="#FFF"
             />
           </View>
+
+          {/* 作業データの一括削除。自動削除OFFのまま使い続けると「最近の作業」が
+              溜まり続け、元画像とサムネのファイルも残る。1件ずつ消すのは現実的で
+              ないので逃げ道をここに置く（破壊的なのでホームには置かない）。*/}
+          {onDeleteAllData && (
+            <>
+              <Divider />
+              <AnimatedPressable
+                style={styles.row}
+                onPress={() => {
+                  Alert.alert(
+                    '作業データをすべて削除',
+                    '「最近の作業」をすべて削除し、保存されている元画像とサムネイルも消します。\n編集中の作業も対象です。\nこの操作は取り消せません。\n\n※「スタンプ抜き」アルバムに保存済みの画像は消えません。',
+                    [
+                      { text: 'キャンセル', style: 'cancel' },
+                      { text: 'すべて削除', style: 'destructive', onPress: () => void onDeleteAllData() },
+                    ],
+                  );
+                }}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={[styles.rowLabel, styles.dangerLabel]}>作業データをすべて削除</Text>
+                  <Text style={styles.rowSub}>「最近の作業」と元画像を全部消します（保存済みの画像は残ります）</Text>
+                </View>
+                <Icon name="delete-outline" size={20} color={IOS.danger} />
+              </AnimatedPressable>
+            </>
+          )}
         </Card>
 
         {/* ════════════════════════════════════════
@@ -194,8 +229,8 @@ export default function SettingsScreen({ onClose, onHowTo }: Props) {
                   「灰」は引き続き使える。保存済みの 'gray' は下の useThumbBg で
                   白に寄せるので、この3択のどれも選択中に見えない状態にはならない。*/}
               {([
-                { val: 'white',   label: '白'   },
                 { val: 'checker', label: '市松'  },
+                { val: 'white',   label: '白'   },
                 { val: 'black',   label: '黒'   },
               ] as const).map(({ val, label }) => (
                 <AnimatedPressable
@@ -285,6 +320,7 @@ const IOS = {
   secondary: '#8E8E93',
   separator: '#C6C6C8',
   fill:      '#E5E5EA',
+  danger:    '#FF3B30',  // 破壊的アクション（theme.ts の danger と同値）
 } as const;
 
 const styles = StyleSheet.create({
@@ -334,6 +370,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowLabel:     { fontSize: 16, color: IOS.label },
+  dangerLabel:  { color: IOS.danger },
   rowSub:       { fontSize: 12, color: IOS.secondary, marginTop: 2 },
   rowValue:     { fontSize: 22, fontWeight: '600', color: IOS.blue, minWidth: 36, textAlign: 'right' },
   rowValueMuted:{ fontSize: 16, color: IOS.secondary },

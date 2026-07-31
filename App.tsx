@@ -124,6 +124,8 @@ import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
 import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
+import LoadingView from './src/components/ui/LoadingView';
+import { describeSaveError } from './src/imaging/saveErrors';
 import { useSettings } from './src/settings/SettingsContext';
 import { APP_NAME } from './src/constants';
 
@@ -253,13 +255,35 @@ export default function App() {
    * 操作列を差し替えて画像を作り直す。
    * 元画像へ順番に掛け直すだけなので、追加も取り消しも同じ経路で扱える。
    * bgResult.rgba は書き出し側と共有している配列なので、参照は替えず中身を書き戻す。
+   *
+   * 【前提】bgResult.rgba は常に「baseRgba に editsRef.current を順に掛けた状態」。
+   * 画像を読み込む経路でも applyEditSteps の直後に editsRef を更新しており、
+   * この不変条件は保たれている。
+   *
+   * 【最適化】next が現在の操作列の「続き」なら、増えた分だけ掛ける。
+   * 毎回 base に戻して全部掛け直すと、操作列の1手目が autoBg（背景除去そのもの）
+   * なので、スポイトを1回押すたびに背景除去からやり直すことになり、
+   * 押すほど遅くなっていた。追加は末尾に積むだけなので差分で正しく同じ結果になる。
    */
   const applyEdits = useCallback((next: EditStep[], nextRedo: EditStep[]) => {
     const base = baseRgbaRef.current;
     const bg = bgResultRef.current;
     if (base && bg) {
-      bg.rgba.set(base);
-      applyEditSteps(bg.rgba, bg.width, bg.height, next);
+      const cur = editsRef.current;
+      // 追加は [...cur, step] で作るので、先頭は同じ参照のまま並ぶ。
+      // 参照比較で「続きかどうか」を安く判定できる。
+      const isAppend = next.length >= cur.length && cur.every((s, i) => s === next[i]);
+
+      if (isAppend) {
+        // 増えた分だけ掛ける（0件なら何もしない）。
+        if (next.length > cur.length) {
+          applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length));
+        }
+      } else {
+        // 取り消し・リセットなど。操作は巻き戻せないので元画像から作り直す。
+        bg.rgba.set(base);
+        applyEditSteps(bg.rgba, bg.width, bg.height, next);
+      }
       setBgVersion(v => v + 1);
     }
     editsRef.current = next;
@@ -405,7 +429,7 @@ export default function App() {
         setConfirmRows(dRows);
         // 列数の初期値も推定値にセット（行数と同じく、ユーザーが確認・修正する）
         setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
-        setAppState('editing');
+        goToEditor('editing');
       } else {
         // 新規選択 / 自動再開: SetupScreen を経由してモードと行数を確認する。
         const dRows = detectRowCount(result.rgba, result.width, result.height);
@@ -756,7 +780,8 @@ export default function App() {
       setSavedCount(count);
       setAppState('done');
     } catch (e: unknown) {
-      Alert.alert('書き出しエラー', e instanceof Error ? e.message : '不明なエラー');
+      // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
+      Alert.alert('書き出しエラー', describeSaveError(e));
       setAppState('preview');
     }
   }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, appSettings.tolerance, appSettings.autoDeleteOnExport]);
@@ -788,6 +813,49 @@ export default function App() {
         },
       },
     ]);
+  };
+
+  /**
+   * 作業データの一括削除（設定画面から呼ばれる）。確認ダイアログは呼び出し側で出す。
+   *
+   * 元画像・サムネのファイルも消すので、編集中のセッションが対象に入っていると
+   * そのまま作業を続けられない（「元画像が見つかりません」になる）。
+   * なので削除後はホームまで戻して状態を作り直す。
+   * 「スタンプ抜き」アルバムに保存済みの画像は写真アプリ側なので影響しない。
+   */
+  const handleDeleteAllSessions = async () => {
+    try {
+      const all = await listSessions();
+
+      // 消すものが無い時に「0件削除しました」と出すのは不親切なので分ける。
+      if (all.length === 0) {
+        Alert.alert('作業データ', '削除する作業データはありませんでした。');
+        return;
+      }
+
+      // 「一覧から消せた件数」を成功数として数える（ユーザーに見える結果と一致するため）。
+      let deleted = 0;
+      for (const s of all) {
+        // 1件失敗しても残りの削除は続ける（途中で止めると中途半端に残る）。
+        await deleteSessionFiles(s).catch(() => {});
+        try {
+          await deleteSession(s.id);
+          deleted++;
+        } catch { /* この1件は残る。件数に数えない。 */ }
+      }
+      await reloadSessions();
+      reset(); // 編集中の状態も破棄してホームへ
+
+      const failed = all.length - deleted;
+      Alert.alert(
+        '削除しました',
+        failed === 0
+          ? `${deleted}件の作業データを削除しました。`
+          : `${deleted}件を削除しました。\n${failed}件は削除できませんでした。`,
+      );
+    } catch (e: unknown) {
+      Alert.alert('削除エラー', e instanceof Error ? e.message : '不明なエラー');
+    }
   };
 
   // セッションの設定を復元して再処理開始
@@ -870,7 +938,7 @@ export default function App() {
           setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
         }
         setPolygons(latest.polygons?.length ? fromSessionPolygons(latest.polygons) : []);
-        setAppState('editing');
+        goToEditor('editing');
       } catch (e: unknown) {
         Alert.alert('復元エラー', e instanceof Error ? e.message : '不明なエラー');
         setAppState('idle');
@@ -902,6 +970,52 @@ export default function App() {
 
   const isBusy = appState === 'processing';
 
+  // ── ポリゴン編集への遷移: 先にローディングを出してからマウントする ──────────
+  //
+  // PolygonEditor はマウント時に SkImage の生成と splitConnected(全画素の連結成分
+  // 走査)を同期で回すため、画像が大きいと JS スレッドが数百ms〜数秒止まる。
+  // setAppState('editing') を直に呼ぶと、その重い処理が終わるまで前の画面が
+  // 表示されたまま固まって見える（タップが効いていないように見える）。
+  //
+  // そこで「ローディング画面を描く」→「1〜2フレーム待つ」→「エディタをマウント」
+  // の順にする。待たずにマウントすると、ローディングの描画がコミットされる前に
+  // 重い処理が始まってしまい、結局ローディングが見えないまま固まる。
+  const [pendingEditor, setPendingEditor] =
+    useState<{ target: 'editing' | 'cell_editing'; cellIdx?: number } | null>(null);
+
+  /** ポリゴン編集へ移る唯一の入口。直接 setAppState('editing') は使わない。 */
+  const goToEditor = useCallback((target: 'editing' | 'cell_editing', cellIdx?: number) => {
+    setPendingEditor({ target, cellIdx });
+  }, []);
+
+  /**
+   * 設定・保存先・使い方など「かぶせた画面」から元の画面へ戻る。
+   * 戻り先がポリゴン編集だと PolygonEditor が作り直されて同じように固まるので、
+   * その場合だけ goToEditor を通してローディングを挟む。
+   * (cell_editing の場合 editingCellIdx は state に残っているので渡し直さなくてよい)
+   */
+  const backToPrev = useCallback((prev: AppState) => {
+    if (prev === 'editing' || prev === 'cell_editing') goToEditor(prev);
+    else setAppState(prev);
+  }, [goToEditor]);
+
+  useEffect(() => {
+    if (!pendingEditor) return;
+    let cancelled = false;
+    // 2フレーム待つ: 1フレームだと端末によってはローディングが出る前に
+    // 重い処理へ入ってしまうため、確実に描画をコミットさせる。
+    const outer = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        if (pendingEditor.cellIdx != null) setEditingCellIdx(pendingEditor.cellIdx);
+        setAppState(pendingEditor.target);
+        setPendingEditor(null);
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(outer); };
+  }, [pendingEditor]);
+
   // 現在の state を退避してから設定画面へ遷移するヘルパー。
   // 設定を閉じた時に prevStateRef.current へ戻すことで、どの画面からでも元に戻れる。
   const goToSettings = useCallback(() => {
@@ -915,11 +1029,24 @@ export default function App() {
     setAppState('saved');
   }, [appState]);
 
+  // ── ポリゴン編集の準備中 ────────────────────────────────────────────────
+  // 他のどの画面より先に判定する。ここで返さないと前の画面が描かれ続けて、
+  // ローディングを挟んだ意味がなくなる。
+  if (pendingEditor) {
+    return (
+      <>
+        <StatusBar hidden />
+        <LoadingView message="ポリゴン編集を準備しています" sub="少々お待ちください" />
+      </>
+    );
+  }
+
   // ── 設定画面: 全画面で SettingsScreen を表示 ────────────────────────────
   if (appState === 'settings') {
     return (
       <SettingsScreen
-        onClose={() => setAppState(prevStateRef.current)}
+        onClose={() => backToPrev(prevStateRef.current)}
+        onDeleteAllData={handleDeleteAllSessions}
         onHowTo={() => {
           // 設定→使い方→戻るで設定に戻れるよう、howto 専用 ref に戻り先を保存。
           // prevStateRef は設定自身の戻り先なので上書きしない。
@@ -934,7 +1061,7 @@ export default function App() {
   if (appState === 'saved') {
     return (
       <SavedScreen
-        onClose={() => setAppState(prevStateRef.current)}
+        onClose={() => backToPrev(prevStateRef.current)}
       />
     );
   }
@@ -942,7 +1069,7 @@ export default function App() {
   if (appState === 'polygon_tutorial') {
     return (
       <PolygonTutorialScreen
-        onStart={() => setAppState('editing')}
+        onStart={() => goToEditor('editing')}
         onBack={() => setAppState('row_confirm')}
       />
     );
@@ -951,7 +1078,7 @@ export default function App() {
   if (appState === 'howto') {
     return (
       <HowToScreen
-        onClose={() => setAppState(howtoReturnRef.current)}
+        onClose={() => backToPrev(howtoReturnRef.current)}
         onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
         onComplexTutorial={() => setAppState('complex_tutorial_help')}
       />
@@ -1015,7 +1142,8 @@ export default function App() {
           if (mode === 'auto') {
             doSplit(rows, noSplit, cols, bounds);
           } else {
-            setAppState(appSettings.skipPolygonTutorial ? 'editing' : 'polygon_tutorial');
+            if (appSettings.skipPolygonTutorial) goToEditor('editing');
+            else setAppState('polygon_tutorial');
           }
         }}
         // ホームへ戻る際は reset() を使う。setAppState('idle') 直行だと
@@ -1044,12 +1172,12 @@ export default function App() {
         onSave={doAutoExport}
         // リセット: 確定時の行数・列数・境界線で分割し直し、合体やカット編集を破棄して初期状態へ戻す
         onReSplit={() => doSplit(rows, false, cols, confirmBounds ?? undefined)}
-        onManualSplit={() => setAppState('editing')}
+        // どちらも PolygonEditor へ入るので goToEditor 経由（ローディングを挟む）
+        onManualSplit={() => goToEditor('editing')}
         onEditCell={(i) => {
           // poly セル（セッション復元 or 編集済み）はセル編集不可
           if (cells[i]?.kind !== 'auto') return;
-          setEditingCellIdx(i);
-          setAppState('cell_editing');
+          goToEditor('cell_editing', i);
         }}
         onMerge={handleMerge}
       />
@@ -1181,7 +1309,7 @@ export default function App() {
         <PreviewScreen
           bgResult={bgResult}
           polygons={polygons}
-          onBack={() => setAppState('editing')}
+          onBack={() => goToEditor('editing')}
           onRequestSave={requestSave}
           onSave={async (count: number) => {
             // 手動書き出し完了 → step を 'done' に更新。
@@ -1311,7 +1439,31 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* 3段階ゲージ: 常に3本表示。塗りは gaugeLevel (0=全空) で決まる */}
+                {/* ── 最新の作業 ─────────────────────────────────────────
+                    下のゲージは「全件の集計」ではなく最新の未完了セッション1件の
+                    進み具合を示す。上の「作業中 N / 完了 M」と母数が違って
+                    紛らわしいので、どの作業のことなのか見出しとサムネで示す。*/}
+                {latestInProgress && (
+                  <View style={styles.latestRow}>
+                    <View style={styles.latestThumb}>
+                      <CheckerboardBg mode={thumbBg} tile={8} width={40} height={40} />
+                      <Image
+                        source={{ uri: latestInProgress.thumbUri ?? latestInProgress.imageUri }}
+                        style={StyleSheet.absoluteFill}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={styles.latestTexts}>
+                      <Text style={styles.latestCaption}>最新の作業</Text>
+                      <Text style={styles.latestStep} numberOfLines={1}>
+                        {stepLabel(latestInProgress.step, latestInProgress.mode)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* 3段階ゲージ: 常に3本表示。塗りは gaugeLevel (0=全空) で決まる。
+                    見ているのは上の「最新の作業」1件ぶん。 */}
                 <View style={styles.gaugeRow}>
                   <View style={[styles.gaugeBar, gaugeLevel >= 1 && styles.gaugeBarFilled]} />
                   <View style={[styles.gaugeBar, gaugeLevel >= 2 && styles.gaugeBarFilled]} />
@@ -1341,7 +1493,7 @@ export default function App() {
                 <View style={styles.emptyHints}>
                   <View style={styles.emptyHintRow}>
                     <Icon name="check-circle" size={16} color={IOS.blue} />
-                    <Text style={styles.emptyHintTxt}>PNG・JPEG どちらも対応</Text>
+                    <Text style={styles.emptyHintTxt}>PNG・JPEG・HEIC に対応</Text>
                   </View>
                   <View style={styles.emptyHintRow}>
                     <Icon name="check-circle" size={16} color={IOS.blue} />
@@ -1517,6 +1669,34 @@ const styles = StyleSheet.create({
 
   // 3段階ゲージ: 最新の作業中セッションの step を3本バーで可視化
   // バー間に2pxの隙間を gap で入れ、角丸で柔らかく見せる
+  // ── 最新の作業（ゲージの対象を示す行）──────────────────────────────────────
+  latestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+  },
+  latestThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: IOS.card,
+  },
+  latestTexts: { flex: 1 },
+  latestCaption: {
+    fontSize: 11,
+    color: IOS.secondary,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  latestStep: {
+    fontSize: 14,
+    color: IOS.label,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+
   gaugeRow: {
     flexDirection: 'row',
     gap: 4,

@@ -38,7 +38,9 @@ import {
   Oval,
   Line,
   Group,
+  Path,
   RoundedRect,
+  Skia,
 } from '@shopify/react-native-skia';
 import type { AnimatedProp } from '@shopify/react-native-skia';
 import type { Vector } from '@shopify/react-native-skia';
@@ -97,8 +99,23 @@ const TOOL_R  = 6;             // 角丸半径
 const TOOL_CX = TOOL_X + TOOL_W / 2; // = 179 ボタン中心 X
 const TOOL_EY = 8;             // edit ボタン上端 Y (キャラ頭部 y≈47 より上)
 
+// ペンの字形。TOOL ボタンの中心を基準に、左下が芯・右上が軸の端になる鉛筆型。
+// 小さいので線ではなく塗りで描く（線だと細部が潰れて何の形か分からなくなる）。
+const PEN_PATH = (() => {
+  const cx = TOOL_CX;
+  const cy = TOOL_EY + TOOL_W / 2;
+  const path = Skia.Path.Make();
+  path.moveTo(cx - 5.5, cy + 5.5);  // 芯の先端(左下)
+  path.lineTo(cx - 3.6, cy + 1.2);  // 軸の下辺へ
+  path.lineTo(cx + 2.6, cy - 5.0);  // 軸の上端(左側)
+  path.lineTo(cx + 5.0, cy - 2.6);  // 軸の上端(右側)
+  path.lineTo(cx - 1.2, cy + 3.6);  // 軸の右辺を戻る
+  path.close();
+  return path;
+})();
+
 // サイクル全体の長さ(ms)
-const CYCLE_MS = 5500;
+const CYCLE_MS = 7500;
 
 // ── ワークレットユーティリティ ────────────────────────────────────────────────
 
@@ -145,16 +162,24 @@ function stepLevels(p: number, aStart: number, aEnd: number, dEnd: number): [num
 /**
  * タイムライン (phase: 0→1 = 5500ms)
  *
- * [0.00, 0.07]  シーン全体フェードイン                     (385ms)
- * [0.03, 0.13]  タップリップル                             (550ms)
- * [0.10, 0.18]  ボックス出現                               (440ms)
- * [0.18, 0.28]  ★ポーズ: 小さい四角を静止表示             (550ms)
- * [0.28, 0.39]  TL コーナー → 最終位置 + 指が追従          (605ms)
- * [0.39, 0.50]  TR コーナー → 最終位置 + 指が追従          (605ms)
- * [0.50, 0.60]  BL コーナー → 最終位置                    (550ms)
- * [0.60, 0.70]  BR コーナー → 最終位置 + 指が追従          (550ms)
- * [0.70, 0.83]  完成形を保持                               (715ms)
- * [0.83, 1.00]  フェードアウト                             (935ms)
+ * タイムライン (phase: 0→1 = 7500ms)
+ *
+ * 「ペンを押す」と「キャラをタップ」が重なって見えて何をしたのか分からなかったため、
+ * 1動作ずつ間を空けて順番に見せる。ペンを押す → 間 → キャラをタップ → 四角が出る、
+ * という3拍がはっきり分かるのが狙い。
+ *
+ * [0.00, 0.05]  シーン全体フェードイン
+ * [0.10, 0.16]  ★ペンボタンを押す（青くなる）
+ * [0.16, 0.22]  ★間（押したことを見せる）
+ * [0.22, 0.32]  ★キャラをタップ（リップル）
+ * [0.30, 0.38]  ★四角が出る
+ * [0.38, 0.46]  ★ポーズ: 小さい四角を静止表示
+ * [0.46, 0.55]  TL コーナー → 最終位置 + 指が追従
+ * [0.55, 0.63]  TR コーナー → 最終位置 + 指が追従
+ * [0.63, 0.71]  BL コーナー → 最終位置
+ * [0.71, 0.79]  BR コーナー → 最終位置 + 指が追従
+ * [0.79, 0.90]  完成形を保持（プレビュー押下）
+ * [0.90, 1.00]  フェードアウト
  */
 function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
 
@@ -163,8 +188,8 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
   const sceneOp = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.07) return p / 0.07;
-    if (p > 0.83) return 1 - (p - 0.83) / 0.17;
+    if (p < 0.05) return p / 0.05;
+    if (p > 0.90) return 1 - (p - 0.90) / 0.10;
     return 1;
   });
 
@@ -173,8 +198,8 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
   const penGlow = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.08) return 1;
-    if (p < 0.18) return 1 - norm(p, 0.08, 0.18);
+    if (p < 0.10) return 1;
+    if (p < 0.16) return 1 - norm(p, 0.10, 0.16);
     return 0;
   });
   // 外側のハロー: glow の 0.3 倍で柔らかく光らせる
@@ -186,60 +211,60 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
   const penActive = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.08) return 0;
-    if (p < 0.18) return norm(p, 0.08, 0.18);
+    if (p < 0.10) return 0;
+    if (p < 0.16) return norm(p, 0.10, 0.16);
     return 1;
   });
 
   // ── Tap ripple ──────────────────────────────────────────────────────────
   const tapR = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.03, 0.13)), 6, 22);
+    return lerp(easeIO(norm(phase.value, 0.22, 0.32)), 6, 22);
   });
   const tapOp = useDerivedValue(() => {
     'worklet';
-    return 1 - norm(phase.value, 0.03, 0.13);
+    return 1 - norm(phase.value, 0.22, 0.32);
   });
 
   // ── Box opacity ─────────────────────────────────────────────────────────
   const boxOp = useDerivedValue(() => {
     'worklet';
-    return norm(phase.value, 0.10, 0.18);
+    return norm(phase.value, 0.30, 0.38);
   });
 
   // ── Corner X / Y ────────────────────────────────────────────────────────
   // [0.18, 0.28] はポーズ区間 → 各頂点は INIT 位置で静止
   const tlX = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.28, 0.39)), INIT_TL.x, FINAL_TL.x);
+    return lerp(easeIO(norm(phase.value, 0.46, 0.55)), INIT_TL.x, FINAL_TL.x);
   });
   const tlY = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.28, 0.39)), INIT_TL.y, FINAL_TL.y);
+    return lerp(easeIO(norm(phase.value, 0.46, 0.55)), INIT_TL.y, FINAL_TL.y);
   });
   const trX = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.39, 0.50)), INIT_TR.x, FINAL_TR.x);
+    return lerp(easeIO(norm(phase.value, 0.55, 0.63)), INIT_TR.x, FINAL_TR.x);
   });
   const trY = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.39, 0.50)), INIT_TR.y, FINAL_TR.y);
+    return lerp(easeIO(norm(phase.value, 0.55, 0.63)), INIT_TR.y, FINAL_TR.y);
   });
   const blX = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.50, 0.60)), INIT_BL.x, FINAL_BL.x);
+    return lerp(easeIO(norm(phase.value, 0.63, 0.71)), INIT_BL.x, FINAL_BL.x);
   });
   const blY = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.50, 0.60)), INIT_BL.y, FINAL_BL.y);
+    return lerp(easeIO(norm(phase.value, 0.63, 0.71)), INIT_BL.y, FINAL_BL.y);
   });
   const brX = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.60, 0.70)), INIT_BR.x, FINAL_BR.x);
+    return lerp(easeIO(norm(phase.value, 0.71, 0.79)), INIT_BR.x, FINAL_BR.x);
   });
   const brY = useDerivedValue(() => {
     'worklet';
-    return lerp(easeIO(norm(phase.value, 0.60, 0.70)), INIT_BR.y, FINAL_BR.y);
+    return lerp(easeIO(norm(phase.value, 0.71, 0.79)), INIT_BR.y, FINAL_BR.y);
   });
 
   // ── Finger position + opacity ───────────────────────────────────────────
@@ -248,35 +273,43 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
   const fingerX = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.11)         return TAP_X;
-    if (p < 0.19)         return lerp(norm(p, 0.11, 0.19), TAP_X, INIT_TL.x); // 中央→TL init
-    if (p < 0.28)         return INIT_TL.x;                                    // ポーズ中: TL init で待機
-    if (p <= 0.39)        return tlX.value;                                    // TL 追従
-    if (p < 0.42)         return lerp(norm(p, 0.39, 0.42), FINAL_TL.x, INIT_TR.x); // TL→TR
-    if (p <= 0.50)        return trX.value;                                    // TR 追従
-    if (p < 0.62)         return FINAL_TR.x;                                   // 待機
-    if (p <= 0.70)        return brX.value;                                    // BR 追従
+    if (p < 0.16)         return TOOL_CX;                                      // ペンボタンを押している
+    if (p < 0.22)         return lerp(norm(p, 0.16, 0.22), TOOL_CX, TAP_X);    // ペン→キャラへ移動
+    if (p < 0.36)         return TAP_X;                                        // タップ位置で待機
+    if (p < 0.42)         return lerp(norm(p, 0.36, 0.42), TAP_X, INIT_TL.x);  // 中央→TL init
+    if (p < 0.46)         return INIT_TL.x;                                    // ポーズ中: TL init で待機
+    if (p <= 0.55)        return tlX.value;                                    // TL 追従
+    if (p < 0.58)         return lerp(norm(p, 0.55, 0.58), FINAL_TL.x, INIT_TR.x); // TL→TR
+    if (p <= 0.63)        return trX.value;                                    // TR 追従
+    if (p < 0.65)         return lerp(norm(p, 0.63, 0.65), FINAL_TR.x, INIT_BL.x); // TR→BL
+    if (p <= 0.71)        return blX.value;                                    // BL 追従(左下の丸)
+    if (p < 0.73)         return lerp(norm(p, 0.71, 0.73), FINAL_BL.x, INIT_BR.x); // BL→BR
+    if (p <= 0.79)        return brX.value;                                    // BR 追従
     return FINAL_BR.x;
   });
   const fingerY = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.11)         return TAP_Y;
-    if (p < 0.19)         return lerp(norm(p, 0.11, 0.19), TAP_Y, INIT_TL.y);
-    if (p < 0.28)         return INIT_TL.y;
-    if (p <= 0.39)        return tlY.value;
-    if (p < 0.42)         return lerp(norm(p, 0.39, 0.42), FINAL_TL.y, INIT_TR.y);
-    if (p <= 0.50)        return trY.value;
-    if (p < 0.62)         return FINAL_TR.y;
-    if (p <= 0.70)        return brY.value;
+    if (p < 0.16)         return TOOL_EY + TOOL_W / 2;
+    if (p < 0.22)         return lerp(norm(p, 0.16, 0.22), TOOL_EY + TOOL_W / 2, TAP_Y);
+    if (p < 0.36)         return TAP_Y;
+    if (p < 0.42)         return lerp(norm(p, 0.36, 0.42), TAP_Y, INIT_TL.y);
+    if (p < 0.46)         return INIT_TL.y;
+    if (p <= 0.55)        return tlY.value;
+    if (p < 0.58)         return lerp(norm(p, 0.55, 0.58), FINAL_TL.y, INIT_TR.y);
+    if (p <= 0.63)        return trY.value;
+    if (p < 0.65)         return lerp(norm(p, 0.63, 0.65), FINAL_TR.y, INIT_BL.y);
+    if (p <= 0.71)        return blY.value;
+    if (p < 0.73)         return lerp(norm(p, 0.71, 0.73), FINAL_BL.y, INIT_BR.y);
+    if (p <= 0.79)        return brY.value;
     return FINAL_BR.y;
   });
   const fingerOp = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.10) return 0;
-    if (p < 0.14) return norm(p, 0.10, 0.14);
-    if (p > 0.72) return 1 - norm(p, 0.72, 0.80);
+    if (p < 0.07) return 0;
+    if (p < 0.10) return norm(p, 0.07, 0.10);   // ペンを押す直前に出す
+    if (p > 0.81) return 1 - norm(p, 0.81, 0.88);
     return 1;
   });
 
@@ -340,20 +373,11 @@ function AnimatedFigure({ phase }: { phase: SharedValue<number> }) {
             color="rgba(255,255,255,0.25)"
             opacity={penGlow as unknown as AnimatedProp<number>}
           />
-          {/* edit アイコン: 斜め線(ペン軸) */}
-          <Line
-            p1={{ x: TOOL_CX - 5, y: TOOL_EY + TOOL_W / 2 + 5 }}
-            p2={{ x: TOOL_CX + 5, y: TOOL_EY + TOOL_W / 2 - 5 }}
-            color="rgba(255,255,255,0.92)"
-            strokeWidth={1.5}
-          />
-          {/* edit アイコン: 短い横線(ペン先端のフラット部) */}
-          <Line
-            p1={{ x: TOOL_CX + 3, y: TOOL_EY + TOOL_W / 2 - 5 }}
-            p2={{ x: TOOL_CX + 6, y: TOOL_EY + TOOL_W / 2 - 2 }}
-            color="rgba(255,255,255,0.92)"
-            strokeWidth={1.5}
-          />
+          {/* edit アイコン(鉛筆)。
+              以前は「斜め線＋先端の短い線」の2本で描いていたが、短い線が軸から
+              斜めに飛び出してフォーク(クワ)のように見えていた。軸と先端を1つの
+              塗りパスにして、鉛筆の輪郭そのものを描くようにした。 */}
+          <Path path={PEN_PATH} color="rgba(255,255,255,0.92)" style="fill" />
 
           {/* ─ タップリップル ─ */}
           <Circle
@@ -525,10 +549,18 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
   // アニメーション phase を最上位で管理し、図・ステップカード・プレビューボタン全体に共有
   const phase = useSharedValue(0);
   useEffect(() => {
+    // 再入時に確実に頭から。前回の値が残っていると途中から始まって見える。
+    cancelAnimation(phase);
+    phase.value = 0;
     phase.value = withRepeat(
       withTiming(1, { duration: CYCLE_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
+      undefined,
+      // 【重要】withRepeat 自身にも指定が要る。withTiming 側だけだと
+      // OSの「視差効果を減らす/アニメーションを減らす」でループが無効化され、
+      // 1周しただけで止まる（説明用のアニメなので必ず動かす）。
+      ReduceMotion.Never,
     );
     return () => cancelAnimation(phase);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -538,20 +570,20 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
   const previewGlow = useDerivedValue(() => {
     'worklet';
     const p = phase.value;
-    if (p < 0.68) return 0;
-    if (p < 0.72) return norm(p, 0.68, 0.72);
-    if (p < 0.81) return 1;
-    if (p < 0.85) return 1 - norm(p, 0.81, 0.85);
+    if (p < 0.79) return 0;
+    if (p < 0.82) return norm(p, 0.79, 0.82);
+    if (p < 0.90) return 1;
+    if (p < 0.94) return 1 - norm(p, 0.90, 0.94);
     return 0;
   });
   const previewBtnStyle = useAnimatedStyle(() => {
     const p = phase.value;
     // 押し込み: [0.72, 0.74] で 1.0 → 0.93, リリース: [0.74, 0.78] で 0.93 → 1.0
     let scale = 1.0;
-    if (p >= 0.72 && p < 0.74) {
-      scale = 1.0 - norm(p, 0.72, 0.74) * 0.07;
-    } else if (p >= 0.74 && p < 0.78) {
-      scale = 0.93 + norm(p, 0.74, 0.78) * 0.07;
+    if (p >= 0.83 && p < 0.855) {
+      scale = 1.0 - norm(p, 0.83, 0.855) * 0.07;
+    } else if (p >= 0.855 && p < 0.885) {
+      scale = 0.93 + norm(p, 0.855, 0.885) * 0.07;
     }
     return {
       opacity: 0.28 + previewGlow.value * 0.72,
@@ -619,21 +651,23 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
         <View style={s.stepsWrap}>
           <AnimatedStepCard
             phase={phase}
-            aStart={0.10} aEnd={0.28} dEnd={1.05}
+            aStart={0.08} aEnd={0.38} dEnd={1.05}
             num={1} icon="edit"
             title="ペンを押して、キャラをタップ"
             sub="四角が出る"
           />
           <AnimatedStepCard
             phase={phase}
-            aStart={0.28} aEnd={0.70} dEnd={1.05}
+            aStart={0.38} aEnd={0.79} dEnd={1.05}
             num={2} icon="open-with"
             title="白い点を外側へ広げてキャラを囲む"
             sub="辺をタップで点を追加・長押しで削除"
           />
           <AnimatedStepCard
             phase={phase}
-            aStart={0.70} aEnd={0.83} dEnd={1.00}
+            // dEnd はループ末尾まで伸ばす。1.00 だと done 区間が一瞬で終わり、
+            // チェックマークが出ないまま次の周に入ってしまう。
+            aStart={0.79} aEnd={0.90} dEnd={1.05}
             num={3} icon="photo-camera"
             title="「プレビュー」で切り出して確認"
           />

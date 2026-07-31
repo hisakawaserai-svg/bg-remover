@@ -63,6 +63,11 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
       withTiming(1, { duration: CYCLE_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
       -1,
       false,
+      undefined,
+      // 【重要】withRepeat 自身にも指定が要る。withTiming 側だけだと
+      // OSの「視差効果を減らす/アニメーションを減らす」でループが無効化され、
+      // 1周しただけで止まる（説明用のアニメなので必ず動かす）。
+      ReduceMotion.Never,
     );
     return () => cancelAnimation(phase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,7 +157,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
           <Text style={s.emptyDesc}>1枚選ぶだけで自動で透過。</Text>
 
           <View style={s.hints}>
-            {['PNG・JPEG どちらも対応', '背景を自動で透過処理', '透過 PNG で保存'].map(t => (
+            {['PNG・JPEG・HEIC に対応', '背景を自動で透過処理', '透過 PNG で保存'].map(t => (
               <View key={t} style={s.hintRow}>
                 <Icon name="check-circle" size={15} color={COLORS.blue} />
                 <Text style={s.hintTxt}>{t}</Text>

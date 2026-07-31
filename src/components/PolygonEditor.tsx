@@ -22,7 +22,15 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  ReduceMotion,
+} from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
+import ToolHint, { TOOL_ICONS } from './ui/ToolHint';
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
@@ -55,10 +63,13 @@ const RECT_RATIO     = 0.30;
 const ZOOM_MIN       = 1;
 const ZOOM_MAX       = 6;
 const ZOOM_STEP      = 0.5; // ボタン1回分のズーム量
-const PAD_L = 24; // キャンバス左余白 (表示px)
-const PAD_R = 64; // 右余白（フローティングボタン分を含む）
-const PAD_T = 24; // 上余白
-const PAD_B = 24; // 下余白
+// キャンバスの余白（表示px）。画像が枠にぴったり付いて窮屈だったので全体的に広げた。
+// 上は下地切替(市松/白/黒)のセグメント、右はフローティングボタン、
+// 下はツール説明のピルが乗るので、その分も見込んで確保する。
+const PAD_L = 32; // 左余白
+const PAD_R = 76; // 右余白（フローティングボタン分を含む）
+const PAD_T = 56; // 上余白（下地切替セグメントの下）
+const PAD_B = 56; // 下余白（ツール説明ピルの上）
 const PAN_THRESHOLD  = 8;          // この距離(表示px)を超えたらパンとみなす
 const VERTEX_HIT_PX  = 20;         // 頂点ヒット判定半径(表示px)
 const EDGE_HIT_PX    = 15;         // 辺ヒット判定距離(表示px)
@@ -67,6 +78,16 @@ const LONG_PRESS_MS  = 500;        // 長押し判定時間(ms)
 // ── 型 ─────────────────────────────────────────────────────────────────────
 
 export type Polygon = { id: number; points: [number, number][] };
+/** 現在のツールの説明。キャンバス下端に常時出して、何ができるかを示す。 */
+const TOOL_HINTS: Record<AppMode, { icon: string; title: string; desc: string }> = {
+  move:       { icon: TOOL_ICONS.move,       title: '移動・調整', desc: '四角をドラッグ／角をつまんで形を合わせる' },
+  draw:       { icon: TOOL_ICONS.draw,       title: '四角を追加', desc: '囲みたいキャラの上をタップ' },
+  eyedropper: { icon: TOOL_ICONS.eyedropper, title: 'スポイト',   desc: '消したい色をタップして透過' },
+};
+
+/** スポイトのタップ波紋の半径(px)。 */
+const EYE_RIPPLE_R = 26;
+
 /** eyedropper = スポイト: タップした色を透過させる（ポリゴンは操作しない） */
 type AppMode = 'draw' | 'move' | 'eyedropper';
 
@@ -301,6 +322,35 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   featherRef.current  = settings.featherEdges;
   // 親のコールバックは PanResponder のクロージャからも呼ぶので ref 経由で読む。
   const onEyedropRef  = useRef(onEyedrop);  onEyedropRef.current  = onEyedrop;
+
+  // ── スポイトのタップ波紋 ────────────────────────────────────────────────────
+  // 押してから画像が更新されるまでに間があり「押せたのか分からない」ので、
+  // タップ位置に波紋を出して即座に反応を返す。
+  // 【重要】波紋を出してから2フレーム待って実処理を呼ぶ。同じフレームで呼ぶと
+  // 重い再計算(親の applyEdits)が描画コミット前に走り、波紋が見えないまま固まる。
+  const [ripple, setRipple] = useState<{ x: number; y: number } | null>(null);
+  const rippleV = useSharedValue(0);
+
+  // 連打対策。スポイト1回の再計算は重いので、反映が終わるまで次のタップは捨てる。
+  // 受け付けて積むと処理が直列に溜まって固まり続け、履歴も無駄に伸びる。
+  // 捨てた時は波紋も出ないので「今は効かない」ことが分かる。
+  const eyeBusyRef = useRef(false);
+  const rippleStyle = useAnimatedStyle(() => ({
+    opacity: 1 - rippleV.value,
+    transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
+  }));
+  /** タップ位置に波紋を出し、描画が乗ってから run() を実行する。 */
+  const rippleThen = useCallback((lx: number, ly: number, run: () => void) => {
+    setRipple({ x: lx, y: ly });
+    rippleV.value = 0;
+    rippleV.value = withTiming(1, {
+      duration: 420,
+      easing: Easing.out(Easing.quad),
+      reduceMotion: ReduceMotion.Never,
+    });
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }, [rippleV]);
+
   const onUndoEditRef = useRef(onUndoEdit); onUndoEditRef.current = onUndoEdit;
   const onRedoEditRef = useRef(onRedoEdit); onRedoEditRef.current = onRedoEdit;
   const onResetEditsRef = useRef(onResetEdits); onResetEditsRef.current = onResetEdits;
@@ -975,11 +1025,23 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 // 透過済みの場所のタップは見た目が変わらない（空振り）ので、
                 // 履歴を積まずに無視する。積むと undo が1回無反応になり、
                 // 重い rgba スナップショットの枠も無駄に消費する。
-                && !isTransparentAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y)) {
+                && !isTransparentAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y)
+                // 前のスポイトが反映され終わるまでは受け付けない（連打対策）。
+                && !eyeBusyRef.current) {
               // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
+              // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
+              eyeBusyRef.current = true;
               setPast(p => [...p, { kind: 'edit' }]);
               setFuture([]);
-              onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
+
+              rippleThen(gStartLX.current, gStartLY.current, () => {
+                try {
+                  onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
+                } finally {
+                  // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
+                  eyeBusyRef.current = false;
+                }
+              });
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
@@ -1142,9 +1204,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           {bgMode === 'white' && (
             <Rect x={0} y={0} width={canvasSize.w} height={canvasSize.h} color="#FFFFFF" />
           )}
-          {bgMode === 'gray' && (
-            <Rect x={0} y={0} width={canvasSize.w} height={canvasSize.h} color="#888888" />
-          )}
           {bgMode === 'black' && (
             <Rect x={0} y={0} width={canvasSize.w} height={canvasSize.h} color="#000000" />
           )}
@@ -1160,6 +1219,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               height={bgResult.height * ds}
               fit="fill"
             />
+
 
             {/* 確定ポリゴン */}
             {polyPaths.map((path, idx) => {
@@ -1206,6 +1266,20 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
         </Canvas>}
 
+        {/* スポイトのタップ波紋。押した瞬間に出して「効いている」ことを示す。
+            処理中は JS が止まってアニメも止まるが、押した位置は残るので
+            「押せていない」という誤解は起きない。*/}
+        {ripple && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.eyeRipple,
+              { left: ripple.x - EYE_RIPPLE_R, top: ripple.y - EYE_RIPPLE_R },
+              rippleStyle,
+            ]}
+          />
+        )}
+
         {/* ポリゴン連番バッジ */}
         {labelPositions.map((pos, idx) => (
           <View
@@ -1223,22 +1297,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </View>
         ))}
 
-        {/* draw / スポイト モード インジケーター（同じヒント枠を流用）*/}
-        {(appMode === 'draw' || appMode === 'eyedropper') && (
-          <View style={styles.drawHint} pointerEvents="none">
-            <Text style={styles.drawHintTxt}>
-              {appMode === 'draw' ? '✦ タップで追加' : '✦ 消したい色をタップ'}
-            </Text>
-          </View>
-        )}
+        {/* 現在のツールの説明。常時出す。
+            アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
+            画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。*/}
+        <ToolHint {...TOOL_HINTS[appMode]} />
 
         {/* ── フローティング上部: 下地切替 ── */}
         <View style={styles.floatingTop} pointerEvents="box-none">
           <View style={styles.bgSegmented}>
             {([
+              // 'gray' は廃止（市松・白・黒で用は足りるため）。設定の「背景色」も同じ3択。
               { mode: 'checker', label: '市松' },
               { mode: 'white',   label: '白'   },
-              { mode: 'gray',    label: '灰'   },
               { mode: 'black',   label: '黒'   },
             ] as const).map(({ mode, label }) => (
               <AnimatedPressable
@@ -1418,6 +1488,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  // スポイトのタップ波紋。サイズは静的にして transform だけ動かす（白化対策）。
+  eyeRipple: {
+    position: 'absolute',
+    width: EYE_RIPPLE_R * 2,
+    height: EYE_RIPPLE_R * 2,
+    borderRadius: EYE_RIPPLE_R,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+
   // ポリゴン番号バッジ
   badge: {
     position: 'absolute', width: 26, height: 26, borderRadius: 13,
@@ -1472,13 +1553,7 @@ const styles = StyleSheet.create({
   },
 
   // draw モードのオーバーレイヒント（iOS のトースト風）
-  drawHint: {
-    position: 'absolute', bottom: 20, alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 20,
-  },
-  drawHintTxt: { fontSize: 13, fontWeight: '600', color: '#FFF', letterSpacing: 0.2 },
+
 
   // ── 下部コントロールバー（undo/redo/削除/保存）─────────────────────────────
   bar: {

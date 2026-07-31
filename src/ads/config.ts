@@ -74,5 +74,15 @@ export const AD_MODE: 'live' | 'placeholder' = 'live';
  */
 export const KEEP_EMPTY_SLOT_VISIBLE = true;
 
-/** プレースホルダ枠の高さ。アンカー型アダプティブバナーの実寸に近い値。 */
-export const AD_PLACEHOLDER_HEIGHT = 90;
+/**
+ * バナー枠の高さ（固定）。
+ *
+ * BannerAdSize.BANNER = 320×50 の固定サイズを使うので、実寸は必ず 50。
+ * それに「広告」ラベル行と上下の余白を足した値がこの定数。
+ *   paddingTop 8 + ラベル 14 + 間 2 + バナー 50 = 74
+ *
+ * アダプティブバナーをやめて固定サイズにしたのは、アダプティブだと SDK が
+ * 端末幅から高さを決めるため実寸が読めず、確保した枠と食い違って
+ * 読み込み時にガクッと伸び縮みし、直上のボタンが動いて誤タップを招くため。
+ */
+export const AD_PLACEHOLDER_HEIGHT = 74;

@@ -21,7 +21,7 @@ import {
 } from '@shopify/react-native-skia';
 
 interface Props {
-  variant: 'day' | 'night';
+  variant: 'day' | 'night' | 'sleep';
   /** 描画ボックスの一辺(px)。内部は 100×100 基準を size に拡縮 */
   size?: number;
 }
@@ -29,25 +29,50 @@ interface Props {
 export default function BirdMascot({ variant, size = 120 }: Props) {
   const k = size / 100; // 100基準 → 実サイズ
   const isDay = variant === 'day';
+  const isNight = variant === 'night';
+  const isSleep = variant === 'sleep';
 
   return (
     <Canvas style={{ width: size, height: size }}>
       <Group transform={[{ scale: k }]}>
         {/* ─ 背景の丸(シーン) ─ */}
-        <Circle cx={50} cy={50} r={48} color={isDay ? '#BFE6FF' : '#1E2A55'} />
+        <Circle
+          cx={50}
+          cy={50}
+          r={48}
+          color={
+            isDay
+              ? '#BFE6FF'
+              : isNight
+              ? '#1E2A55'
+              : '#B8B5E8'
+          }
+        />
 
         {isDay ? (
-          /* 太陽: 右上に黄色丸 */
           <Circle cx={78} cy={24} r={11} color="#FFD23F" />
-        ) : (
+        ) : isNight ? (
           <>
-            {/* 月: クリーム丸＋紺の丸を重ねて三日月に */}
             <Circle cx={76} cy={24} r={11} color="#F3ECC4" />
             <Circle cx={71} cy={21} r={10} color="#1E2A55" />
-            {/* 星 */}
-            <Circle cx={26} cy={22} r={2}   color="#FFFFFF" />
+            <Circle cx={26} cy={22} r={2} color="#FFFFFF" />
             <Circle cx={40} cy={14} r={1.5} color="#FFFFFF" />
             <Circle cx={22} cy={40} r={1.5} color="#FFFFFF" />
+          </>
+        ) : (
+          <>
+            {/* 眠り背景 */}
+            <Circle cx={75} cy={25} r={13} color="#FFF1A8" />
+
+            {/* Zzz */}
+            <Path
+              path="M25 25 L33 25 L25 35 L33 35"
+              color="#FFFFFF"
+              style="stroke"
+              strokeWidth={2}
+              strokeCap="round"
+              strokeJoin="round"
+            />
           </>
         )}
 
@@ -76,10 +101,39 @@ export default function BirdMascot({ variant, size = 120 }: Props) {
         {/* 翼: 体の右側にうっすら黒 */}
         <Oval x={61} y={44} width={18} height={32} color="#D8D8DC" />
         {/* 黒目2点 */}
-        <Circle cx={42} cy={48} r={3} color="#1C1C1E" />
-        <Circle cx={58} cy={48} r={3} color="#1C1C1E" />
+        {isSleep ? (
+          <>
+            {/* 閉じた目 */}
+            <Path
+              path="M39 48 Q42 51 45 48"
+              color="#1C1C1E"
+              style="stroke"
+              strokeWidth={2}
+              strokeCap="round"
+            />
+            <Path
+              path="M55 48 Q58 51 61 48"
+              color="#1C1C1E"
+              style="stroke"
+              strokeWidth={2}
+              strokeCap="round"
+            />
+          </>
+        ) : (
+          <>
+            <Circle cx={42} cy={48} r={3} color="#1C1C1E" />
+            <Circle cx={58} cy={48} r={3} color="#1C1C1E" />
+          </>
+        )}
         {/* 三角くちばし(オレンジ) */}
-        <Path path="M47 54 L53 54 L50 60 Z" color="#FF9500" />
+        <Path
+          path={
+            isSleep
+              ? "M47 55 L53 55 L50 58 Z"
+              : "M47 54 L53 54 L50 60 Z"
+          }
+          color="#FF9500"
+        />
         {/* ほっぺ(うっすらピンク) */}
         <Circle cx={36} cy={56} r={3.5} color="rgba(255,150,170,0.45)" />
         <Circle cx={64} cy={56} r={3.5} color="rgba(255,150,170,0.45)" />

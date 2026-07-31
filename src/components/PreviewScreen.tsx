@@ -26,6 +26,7 @@ import ImageZoomModal from './ui/ImageZoomModal';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import { savePolygons } from '../imaging';
+import { describeSaveError } from '../imaging/saveErrors';
 import { pointInPolygon } from '../imaging/maskPolygon';
 import type { RemoveBgResult } from '../imaging';
 import type { Polygon } from './PolygonEditor';
@@ -148,7 +149,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
       const { count } = await savePolygons(rgba, width, height, polygons);
       onSave(count);
     } catch (e: unknown) {
-      Alert.alert('保存エラー', e instanceof Error ? e.message : '不明なエラー');
+      // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
+      Alert.alert('保存エラー', describeSaveError(e));
     } finally {
       setIsSaving(false);
     }

@@ -6,9 +6,11 @@
 //
 
 import UIKit
+import UniformTypeIdentifiers
 import Social
 
 class ShareViewController: SLComposeServiceViewController {
+
 
     override func isContentValid() -> Bool {
         // Do validation of contentText and/or NSExtensionContext attachments here
@@ -26,5 +28,59 @@ class ShareViewController: SLComposeServiceViewController {
         // To add configuration options via table cells at the bottom of the sheet, return an array of SLComposeSheetConfigurationItem here.
         return []
     }
+  
+    // 受け取れるか確認
+  override func viewDidLoad() {
+      super.viewDidLoad()
 
+      guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem,
+            let attachments = extensionItem.attachments else {
+          return
+      }
+
+      let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: "group.com.sera.bgremover.app"
+      )
+
+      print("App Group:", containerURL?.absoluteString ?? "nil")
+
+      for attachment in attachments {
+          print("Attachment type:", attachment.registeredTypeIdentifiers)
+
+          if attachment.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+
+              attachment.loadItem(
+                  forTypeIdentifier: UTType.image.identifier,
+                  options: nil
+              ) { item, error in
+
+                if let url = item as? URL {
+
+                    let containerURL = FileManager.default.containerURL(
+                        forSecurityApplicationGroupIdentifier: "group.com.sera.bgremover.app"
+                    )
+
+                    let destination = containerURL!
+                        .appendingPathComponent("share_input.png")
+
+                    do {
+                        try FileManager.default.copyItem(
+                            at: url,
+                            to: destination
+                        )
+
+                        print("Saved:", destination)
+
+                    } catch {
+                        print("Copy error:", error)
+                    }
+                }
+
+                  if let error = error {
+                      print("Error:", error)
+                  }
+              }
+          }
+      }
+  }
 }

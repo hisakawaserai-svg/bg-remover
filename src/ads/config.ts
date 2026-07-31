@@ -35,8 +35,17 @@ export const TEST_BANNER_UNIT_IDS = {
   fixed: TestIds.BANNER,
 } as const;
 
-/** テスト時にどちらのテストユニットを使うか。表示サイズと対応させる。 */
-const TEST_BANNER_KIND: keyof typeof TEST_BANNER_UNIT_IDS = 'adaptive';
+/**
+ * テスト時にどちらのテストユニットを使うか。**表示サイズと必ず対応させる。**
+ *
+ * ここが AdBanner の BannerAdSize とずれると、その形に合わせて作られた
+ * クリエイティブが違う寸法の枠に入り、広告内の文字が見切れる。
+ * 実際 'adaptive' のまま表示側だけ固定320x50にしていた期間があり、
+ * 端末幅前提のテスト広告が320ptに押し込まれて右端が切れていた。
+ *
+ * 現在の表示側: BannerAdSize.BANNER（固定320x50）→ 'fixed'
+ */
+const TEST_BANNER_KIND: keyof typeof TEST_BANNER_UNIT_IDS = 'fixed';
 
 /** バナー用ユニットID。__DEV__ か本番ID未設定なら Google のテストIDになる。 */
 export const BANNER_UNIT_ID =

@@ -12,6 +12,9 @@
  *               children はその下のスクロール領域に配置される。
  *   style     — children のコンテナに追加するスタイル
  *   scrollable — false にすると ScrollView を使わず View のまま（デフォルト true）
+ *   scrollEnabled — スクロールの一時停止に使う（デフォルト true）。
+ *                   画面内でドラッグ操作をする間、ScrollView にジェスチャーを
+ *                   奪われないよう false にする用途。
  *   bg        — 背景色（デフォルト #F2F2F7）
  */
 
@@ -32,6 +35,13 @@ interface Props {
   footer?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   scrollable?: boolean;
+  /**
+   * false の間はスクロールしない。
+   * iOS の ScrollView はネイティブのジェスチャー認識で動くため、子の
+   * PanResponder が responder を取っていてもスクロールが優先されてしまう。
+   * ドラッグ中だけ false にして取り合いを止める。
+   */
+  scrollEnabled?: boolean;
   bg?: string;
 }
 
@@ -41,6 +51,7 @@ export default function Screen({
   footer,
   style,
   scrollable = true,
+  scrollEnabled = true,
   bg = '#F2F2F7',
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -58,6 +69,7 @@ export default function Screen({
       {scrollable ? (
         <ScrollView
           style={styles.fill}
+          scrollEnabled={scrollEnabled}
           contentContainerStyle={[
             // ヘッダーがない場合は ScrollView 上端でインセットを確保する。
             !header && { paddingTop: insets.top },

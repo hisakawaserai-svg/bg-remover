@@ -23,6 +23,8 @@ import Animated, {
   useSharedValue,
   withTiming,
   useAnimatedStyle,
+  Easing,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -44,6 +46,9 @@ import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { isTransparentAt, detectRowCount, detectColCount, toleranceToGapParams } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
+
+/** スポイトのタップ波紋の半径(px)。範囲を調整画面と同じ値にして見た目を揃える。 */
+const EYE_RIPPLE_R = 26;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -343,6 +348,38 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   );
   const HIT_PX = 18; // 線をタップ/ドラッグ開始とみなす表示座標の許容距離
 
+  // ── 分割線ドラッグ中はスクロールを止める ──────────────────────────────────
+  // iOS の ScrollView はネイティブのジェスチャー認識で動くため、子が
+  // PanResponder で responder を取っていても縦方向はスクロールが優先される。
+  // 横線を上下に動かそうとすると画面ごと動いてしまい、狙った位置に置けなかった。
+  // 線を掴んだ瞬間にスクロールを無効化し、離したら戻す。
+  const [lineDragging, setLineDragging] = useState(false);
+
+  // ── スポイトのタップ波紋（範囲を調整画面と同じ挙動）──────────────────────
+  // 押してから画像が更新されるまでに間があり「押せたのか分からない」ため、
+  // タップ位置に波紋を出して即座に反応を返す。
+  // 【重要】波紋を出してから2フレーム待って実処理を呼ぶ。同じフレームで呼ぶと
+  // 重い再計算（親の applyEdits）が描画コミット前に走り、波紋が見えないまま固まる。
+  const [ripple, setRipple] = useState<{ x: number; y: number } | null>(null);
+  const rippleV = useSharedValue(0);
+  const rippleStyle = useAnimatedStyle(() => ({
+    opacity: 1 - rippleV.value,
+    transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
+  }));
+  /** タップ位置に波紋を出し、描画が乗ってから run() を実行する。 */
+  const rippleThen = useCallback((lx: number, ly: number, run: () => void) => {
+    setRipple({ x: lx, y: ly });
+    rippleV.value = 0;
+    rippleV.value = withTiming(1, {
+      duration: 420,
+      easing: Easing.out(Easing.quad),
+      // OSの「アニメーションを減らす」でも波紋は出す（唯一の即時フィードバックのため）。
+      reduceMotion: ReduceMotion.Never,
+    });
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }, [rippleV]);
+  const rippleThenRef = useRef(rippleThen); rippleThenRef.current = rippleThen;
+
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -367,13 +404,16 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               // 前のスポイトが反映され終わるまでは受け付けない（連打対策）。
               && !eyeBusyRef.current) {
             // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
+            // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
             eyeBusyRef.current = true;
-            try {
-              onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
-            } finally {
-              // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
-              eyeBusyRef.current = false;
-            }
+            rippleThenRef.current(lx, ly, () => {
+              try {
+                onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
+              } finally {
+                // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
+                eyeBusyRef.current = false;
+              }
+            });
           }
           return;
         }
@@ -397,6 +437,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           g.current.axis = b.axis;
           g.current.index = b.index;
           g.current.snapVal = b.axis === 'row' ? rys[b.index] : cxs[b.index];
+          // 掴めた時だけスクロールを止める。線から外れたタップでは止めない
+          // （止めると線の近くを触っただけでスクロールできなくなる）。
+          setLineDragging(true);
         } else {
           // 線から離れた場所のタップは選択解除。
           setSelected(null);
@@ -420,8 +463,8 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         }
       },
 
-      onPanResponderRelease: () => { g.current.mode = 'idle'; },
-      onPanResponderTerminate: () => { g.current.mode = 'idle'; },
+      onPanResponderRelease: () => { g.current.mode = 'idle'; setLineDragging(false); },
+      onPanResponderTerminate: () => { g.current.mode = 'idle'; setLineDragging(false); },
     }),
   ).current;
 
@@ -478,7 +521,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   );
 
   return (
-    <Screen bg={IOS.bg} header={header}>
+    // lineDragging の間だけスクロールを止める（分割線を上下に動かす時に
+    // 画面ごと動いてしまうのを防ぐ）。
+    <Screen bg={IOS.bg} header={header} scrollEnabled={!lineDragging}>
       {/* 線を選択中に、線・コントロール・ボタン以外の空き領域をタップしたら選択解除する。
           子（ボタン/プレビューの PanResponder 等）が先に responder を取るので、ここは
           それらに拾われなかった余白タップだけを受ける。選択中のみ responder を取り、
@@ -522,8 +567,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 size={18}
                 color={eyedropperMode ? '#FFF' : IOS.label}
               />
-              {/* ON/OFF で文字数を揃えてある。長さが変わるとボタン幅が伸縮して
-                  隣のアイコンが動くため。折り返しも1行に固定して防ぐ。*/}
+              {/* ボタン幅は eyeBtn の flex:1 で固定なので、文字数が変わっても
+                  隣のアイコンは動かない。ただし枠に収まらないと省略記号になるため、
+                  文言は短く保つこと（英語で実際に見切れた）。*/}
               <Text
                 style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}
                 numberOfLines={1}
@@ -582,6 +628,20 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               source={{ uri: imageUri }}
               style={StyleSheet.absoluteFill}
               resizeMode="contain"
+            />
+          )}
+
+          {/* スポイトのタップ波紋。押した瞬間に出して「効いている」ことを示す。
+              処理中は JS が止まってアニメも止まるが、押した位置は残るので
+              「押せていない」という誤解は起きない。*/}
+          {ripple && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.eyeRipple,
+                { left: ripple.x - EYE_RIPPLE_R, top: ripple.y - EYE_RIPPLE_R },
+                rippleStyle,
+              ]}
             />
           )}
 
@@ -918,6 +978,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
+  // スポイトのタップ波紋。範囲を調整画面(PolygonEditor)と同じ見た目。
+  eyeRipple: {
+    position: 'absolute',
+    width: EYE_RIPPLE_R * 2,
+    height: EYE_RIPPLE_R * 2,
+    borderRadius: EYE_RIPPLE_R,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+
   previewBox: {
     width: '100%',
     // height は指定しない。画像のアスペクト比から求めた値をインラインで渡す

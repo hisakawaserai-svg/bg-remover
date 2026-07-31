@@ -149,10 +149,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <Text style={styles.sectionTitle}>{t('settings.sectionExport')}</Text>
         <Card style={styles.card} padding={0}>
+          {/* 保存先の案内なので翻訳した表示名を出す。
+              写真アプリ上の実体名は下の「アルバム名（内部）」で確認できる。 */}
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('settings.album')}</Text>
             <View style={styles.rowRight}>
-              <Text style={styles.rowValueMuted}>{ALBUM_ID}</Text>
+              <Text style={styles.rowValueMuted}>{t('app.albumName')}</Text>
               <Icon name="lock" size={14} color={IOS.secondary} style={{ marginLeft: 4 }} />
             </View>
           </View>
@@ -181,7 +183,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 onPress={() => {
                   Alert.alert(
                     t('settings.deleteAllData'),
-                    t('settings.deleteAllDataMessage', { album: ALBUM_ID }),
+                    t('settings.deleteAllDataMessage', { album: t('app.albumName') }),
                     [
                       { text: t('common.cancel'), style: 'cancel' },
                       { text: t('common.deleteAll'), style: 'destructive', onPress: () => void onDeleteAllData() },
@@ -315,6 +317,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           </View>
           <Divider />
           <View style={styles.row}>
+            {/* ここだけは翻訳しない。写真アプリに実在するアルバム名そのもので、
+                英語表示のユーザーが保存先を探す時の手がかりになる。 */}
             <Text style={styles.rowLabel}>{t('settings.albumInternal')}</Text>
             <Text style={styles.rowValueMuted}>{ALBUM_ID}</Text>
           </View>

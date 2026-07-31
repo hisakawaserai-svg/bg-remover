@@ -154,7 +154,7 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
         <View style={s.body}>
           {/* セクション見出し + ヒント */}
           <View style={s.sectionRow}>
-            <Text style={s.sectionLabel}>{t('onboarding.cutsLabel', { count: 2 })}</Text>
+            <Text style={s.sectionLabel}>{t('result.cutsLabel', { count: 2 })}</Text>
             <Text style={s.sectionHint}>{t('result.longPressHint')}</Text>
           </View>
 

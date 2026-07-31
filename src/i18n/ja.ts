@@ -11,9 +11,9 @@
  * 例: common.back（画面を戻る）は全画面で同じ意味なので共有してよい。
  *
  * 【翻訳しないもの】
- * アルバム名（imaging/index.ts の ALBUM_NAME）とアプリ名（constants.ts の APP_NAME）は
- * ここに入れない。前者は写真アルバムを検索する実体キーで、言語で変わると
- * 過去に保存した画像を見失う。後者はブランド名。
+ * 写真アルバムの内部ID（constants.ts の ALBUM_ID）はここに入れない。
+ * 写真アプリ側に実在するアルバム名そのもので、言語で変わると過去に保存した
+ * 画像を見失うため。アプリの表示名は app.name として翻訳対象に含める。
  */
 import type { CatalogNode } from './types';
 
@@ -25,6 +25,11 @@ const ja = {
   // こちらは画面に出す名前なので翻訳する。
   app: {
     name: 'スタンプ抜き',
+    /**
+     * 写真アルバムの「表示名」。内部ID（constants.ts の ALBUM_ID）とは別物。
+     * 保存先を案内する文面に使う。実体名は設定の「アルバム名（内部）」で確認できる。
+     */
+    albumName: 'スタンプ抜き',
   },
 
   // ── 複数画面で共通のラベル ────────────────────────────────────────────────
@@ -161,6 +166,8 @@ const ja = {
   result: {
     title: '分割結果',
     manualSplit: '手動分割',
+    /** 分割結果の見出し。チュートリアルの模擬画面もこれを使う。 */
+    cutsLabel: { one: 'カット後（{count}枚）', other: 'カット後（{count}枚）' },
     longPressHint: '長押しで選択・合体',
     selectedCount: { one: '{count}枚選択中', other: '{count}枚選択中' },
     mergeCount: { one: '{count}枚を合体する', other: '{count}枚を合体する' },
@@ -324,7 +331,6 @@ const ja = {
       caption: '完成！透過PNGがアルバムに保存されます',
     },
     /** チュートリアル内のダミー画面が表示する「カット後（N枚）」。 */
-    cutsLabel: { one: 'カット後（{count}枚）', other: 'カット後（{count}枚）' },
   },
 
   // ── 複雑なシートのチュートリアル（ComplexTutorial）────────────────────────

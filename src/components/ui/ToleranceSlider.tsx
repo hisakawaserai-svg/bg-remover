@@ -47,6 +47,9 @@ const SNAPS: Snap[] = [
 // ズレが残る場合はこの定数だけ微調整すれば全点に一貫して効く。
 const THUMB_INSET = Platform.OS === 'android' ? 16 : 12;
 
+/** 目盛りラベルを載せる箱の幅。英語の 'Medium' が収まる値。 */
+const STEP_LABEL_W = 72;
+
 interface Props {
   value: number;
   onChange: (v: number) => void;
@@ -261,10 +264,23 @@ const styles = StyleSheet.create({
     marginHorizontal: THUMB_INSET,
     marginTop: -spacing.xs,
   },
-  // 目盛りの真上に置く幅0のアンカー。子は中央から左右へ均等にはみ出す。
+  /**
+   * 目盛りの真上に中心を合わせるためのアンカー。
+   *
+   * left:'{pct}%' が示すのは箱の左端なので、箱幅の半分だけ負マージンで戻して
+   * 中心を目盛りに合わせる。文字数が変わっても中心がずれない。
+   *
+   * width:0 + alignItems:'center' でも中央には来るが、RN(Yoga)では
+   * 幅0の親に対して子の利用可能幅も0として測られるため、テキストが
+   * 描画されなくなる（実際にラベルが消えた）。幅は必ず持たせること。
+   *
+   * 箱同士は左右に重なるが中身のテキストは短く、pointerEvents も切ってあるので
+   * 見た目・操作とも影響しない。
+   */
   stepLabelAnchor: {
     position: 'absolute',
-    width: 0,
+    width: STEP_LABEL_W,
+    marginLeft: -STEP_LABEL_W / 2,
     alignItems: 'center',
   },
   stepLabel: {

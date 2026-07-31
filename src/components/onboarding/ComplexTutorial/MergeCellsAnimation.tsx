@@ -274,7 +274,7 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
         <View style={s.body}>
           {/* セクション見出し: 左=枚数 / 右=ヒント(選択モードで文言が変わる) */}
           <View style={s.sectionRow}>
-            <Text style={s.sectionLabel}>{t('onboarding.cutsLabel', { count: 4 })}</Text>
+            <Text style={s.sectionLabel}>{t('result.cutsLabel', { count: 4 })}</Text>
             <View>
               <Animated.Text style={[s.sectionHint, hintNormalStyle]}>{t('result.longPressHint')}</Animated.Text>
               {/* 同じ位置に重ねて入れ替える(レイアウトを動かさない) */}

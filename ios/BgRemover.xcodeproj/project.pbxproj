@@ -3,17 +3,42 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		26C754B6E0E39416559B1BA3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		3332AC56EB734B6EB84BC558 /* MaterialIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 54066D566D76461D84F84C85 /* MaterialIcons.ttf */; };
+		3919EE13301C993800763F9F /* BgRemoverShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3919EE03301C82A100763F9F /* BgRemoverShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6B6B5D2D2088AF224ABD7AC5 /* libPods-BgRemover.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B948B71046E19FBF9A6114E3 /* libPods-BgRemover.a */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3919EE0B301C82A100763F9F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3919EE02301C82A100763F9F;
+			remoteInfo = BgRemoverShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3919EE0E301C82A100763F9F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3919EE13301C993800763F9F /* BgRemoverShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0CB495C9A1A083E54751149F /* Pods-BgRemover.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BgRemover.debug.xcconfig"; path = "Target Support Files/Pods-BgRemover/Pods-BgRemover.debug.xcconfig"; sourceTree = "<group>"; };
@@ -21,6 +46,7 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = BgRemover/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = BgRemover/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = BgRemover/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		3919EE03301C82A100763F9F /* BgRemoverShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BgRemoverShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3924BDF1301C7DFD00B26246 /* BgRemover.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = BgRemover.entitlements; path = BgRemover/BgRemover.entitlements; sourceTree = "<group>"; };
 		54066D566D76461D84F84C85 /* MaterialIcons.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = MaterialIcons.ttf; path = "../node_modules/react-native-vector-icons/Fonts/MaterialIcons.ttf"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = BgRemover/AppDelegate.swift; sourceTree = "<group>"; };
@@ -30,12 +56,33 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3919EE11301C82A100763F9F /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3919EE02301C82A100763F9F /* BgRemoverShareExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		3919EE04301C82A100763F9F /* BgRemoverShareExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (3919EE11301C82A100763F9F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BgRemoverShareExtension; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				6B6B5D2D2088AF224ABD7AC5 /* libPods-BgRemover.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3919EE00301C82A100763F9F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -84,6 +131,7 @@
 			children = (
 				13B07FAE1A68108700A75B9A /* BgRemover */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
+				3919EE04301C82A100763F9F /* BgRemoverShareExtension */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
@@ -98,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* BgRemover.app */,
+				3919EE03301C82A100763F9F /* BgRemoverShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -125,16 +174,40 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				DFD1EF564C5D3C43B0B55B24 /* [CP] Embed Pods Frameworks */,
 				11A20460A8986E44C073EB3F /* [CP] Copy Pods Resources */,
+				3919EE0E301C82A100763F9F /* Embed Foundation Extensions */,
 				FAFA5CDC47DABD2ABCB06825 /* [CP-User] [RNGoogleMobileAds] Configuration */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3919EE0C301C82A100763F9F /* PBXTargetDependency */,
 			);
 			name = BgRemover;
 			productName = BgRemover;
 			productReference = 13B07F961A680F5B00A75B9A /* BgRemover.app */;
 			productType = "com.apple.product-type.application";
+		};
+		3919EE02301C82A100763F9F /* BgRemoverShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3919EE12301C82A100763F9F /* Build configuration list for PBXNativeTarget "BgRemoverShareExtension" */;
+			buildPhases = (
+				3919EDFF301C82A100763F9F /* Sources */,
+				3919EE00301C82A100763F9F /* Frameworks */,
+				3919EE01301C82A100763F9F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3919EE04301C82A100763F9F /* BgRemoverShareExtension */,
+			);
+			name = BgRemoverShareExtension;
+			packageProductDependencies = (
+			);
+			productName = BgRemoverShareExtension;
+			productReference = 3919EE03301C82A100763F9F /* BgRemoverShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -147,6 +220,9 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+					};
+					3919EE02301C82A100763F9F = {
+						CreatedOnToolsVersion = 26.0.1;
 					};
 				};
 			};
@@ -164,6 +240,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* BgRemover */,
+				3919EE02301C82A100763F9F /* BgRemoverShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -177,6 +254,13 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				26C754B6E0E39416559B1BA3 /* PrivacyInfo.xcprivacy in Resources */,
 				3332AC56EB734B6EB84BC558 /* MaterialIcons.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3919EE01301C82A100763F9F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -289,7 +373,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3919EDFF301C82A100763F9F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3919EE0C301C82A100763F9F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3919EE02301C82A100763F9F /* BgRemoverShareExtension */;
+			targetProxy = 3919EE0B301C82A100763F9F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -351,6 +450,95 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		3919EE0F301C82A100763F9F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = BgRemoverShareExtension/BgRemoverShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = NHKTC768TP;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BgRemoverShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BgRemoverShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sera.bgremover.app.BgRemoverShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3919EE10301C82A100763F9F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = BgRemoverShareExtension/BgRemoverShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = NHKTC768TP;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BgRemoverShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BgRemoverShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sera.bgremover.app.BgRemoverShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -520,6 +708,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3919EE12301C82A100763F9F /* Build configuration list for PBXNativeTarget "BgRemoverShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3919EE0F301C82A100763F9F /* Debug */,
+				3919EE10301C82A100763F9F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

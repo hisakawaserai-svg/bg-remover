@@ -9,14 +9,16 @@
  * t() は vars.count を見て one / other を選ぶ。
  *
  * 【アルバム名】
- * {album} には日本語のアルバム名がそのまま入る。写真アプリ側の実体名が
- * 「スタンプ抜き」で固定されているため、英語表示でも実際のアルバム名を出す。
+ * 案内文の {album} には app.albumName（翻訳した表示名）を入れる。
+ * 写真アプリ側の実体名は constants.ts の ALBUM_ID で固定されており、
+ * そちらは設定の「アルバム名（内部）」でだけ生の値を見せる。
  */
 import type ja from './ja';
 
 const en: typeof ja = {
   app: {
     name: 'Sticker Cutout',
+    albumName: 'Sticker Cutout',
   },
 
   common: {
@@ -129,8 +131,8 @@ const en: typeof ja = {
     moveVLine: 'Move vertical line',
     addRect: 'Add rectangle',
     addRectHint: 'Tap on the character you want to enclose',
-    tapToRemoveBg: 'Tap to erase the background',
-    eyedropperHint: 'Erase the background with the eyedropper',
+    tapToRemoveBg: 'Tap to erase',
+    eyedropperHint: 'Erase background',
     manualDesc: 'Enclose the background-removed image with rectangles to cut out one character at a time.',
     noSplitButton: 'Cut out without splitting',
     toPolygonEditor: 'Go to polygon editing',
@@ -143,6 +145,7 @@ const en: typeof ja = {
   result: {
     title: 'Split Result',
     manualSplit: 'Manual split',
+    cutsLabel: { one: 'After cutting ({count} image)', other: 'After cutting ({count} images)' },
     longPressHint: 'Long-press to select and merge',
     selectedCount: { one: '{count} selected', other: '{count} selected' },
     mergeCount: { one: 'Merge {count} piece', other: 'Merge {count} pieces' },
@@ -296,7 +299,6 @@ const en: typeof ja = {
     step4: {
       caption: 'Done! Transparent PNGs are saved to your album',
     },
-    cutsLabel: { one: 'After cutting ({count} image)', other: 'After cutting ({count} images)' },
   },
 
   complexTutorial: {

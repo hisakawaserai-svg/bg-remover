@@ -30,7 +30,6 @@ import BirdMascot from './BirdMascot';
 import SpeechBubble from './SpeechBubble';
 import { shared, easeIO, fadeHold, jumpY, norm, FRAME_SLIDE } from './shared';
 import { useT } from '../../i18n';
-import { ALBUM_ID } from '../../constants';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 const CYCLE_MS = 11000; // ゆっくり(間込み)
@@ -168,7 +167,7 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
             </View>
             <Animated.View style={[s.summaryText, summaryTextStyle]}>
               <Text style={s.summaryTitle}>{t('saveComplete.savedCount', { count: 2 })}</Text>
-              <Text style={s.summaryAlbum}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
+              <Text style={s.summaryAlbum}>{t('saveComplete.albumSuffix', { album: t('app.albumName') })}</Text>
             </Animated.View>
           </View>
 

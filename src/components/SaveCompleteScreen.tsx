@@ -108,7 +108,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
         </View>
         <View style={styles.summaryText}>
           <Text style={styles.summaryTitle}>{t('saveComplete.savedCount', { count: savedCount })}</Text>
-          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
+          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: t('app.albumName') })}</Text>
         </View>
       </View>
 

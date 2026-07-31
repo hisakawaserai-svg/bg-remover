@@ -8,14 +8,39 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 import type { StickerSession } from './types';
+import { rebaseToCurrentContainer } from './paths';
 
 const STORAGE_KEY = 'sticker_sessions';
+
+/**
+ * 保存されているファイルパスを現在のアプリ領域基準に直す。
+ *
+ * iOS はアプリ更新のたびに Data コンテナの UUID が変わるため、保存済みの
+ * 絶対パスは更新後に無効になる（詳細は paths.ts）。読み出しの入口で一度だけ
+ * 通しておけば、以降の画面はこれまで通り絶対 URI を扱えばよい。
+ */
+function rebaseSession(s: StickerSession): StickerSession {
+  return {
+    ...s,
+    imageUri: rebaseToCurrentContainer(s.imageUri),
+    thumbUri: rebaseToCurrentContainer(s.thumbUri),
+    autoData: s.autoData && {
+      ...s.autoData,
+      // cells は SavedCell[] 必須。古い保存データで欠けていても [] に寄せる。
+      cells: (s.autoData.cells ?? []).map(c => ({
+        ...c,
+        thumbPath: rebaseToCurrentContainer(c.thumbPath),
+      })),
+    },
+  };
+}
 
 async function readAll(): Promise<StickerSession[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as StickerSession[];
+    const parsed = JSON.parse(raw) as StickerSession[];
+    return parsed.map(rebaseSession);
   } catch (e) {
     console.warn('[session/store] readAll failed:', e);
     return [];

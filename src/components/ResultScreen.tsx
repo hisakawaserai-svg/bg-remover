@@ -437,7 +437,7 @@ export default function ResultScreen({
         {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
         <View style={styles.cutSection}>
           <View style={styles.sectionRow}>
-            <Text style={styles.sectionLabel}>カット後（{cells.length}枚）</Text>
+            <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
             <Text style={styles.sectionHint}>
               {selectingMode
                 ? t('result.selectedCount', { count: selectedIndices.size })

@@ -14,7 +14,7 @@
  * （設定の読み書きは settings/store.ts に一本化されているため）。
  */
 import { useSyncExternalStore } from 'react';
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 
 import ja from './ja';
 import en from './en';
@@ -39,47 +39,105 @@ const FALLBACK: Locale = 'en';
 // ── 端末の言語を調べる ──────────────────────────────────────────────────────
 
 /**
- * 端末の言語タグ（'ja-JP' など）を返す。取れなければ空文字。
+ * 端末の優先言語タグを、信頼できる順に並べて返す。
  *
- * react-native-localize を使えば確実だがネイティブモジュールなので pod install が要る。
- * Share Extension の作業を控えていてネイティブ構成を増やしたくないため、
- * 追加依存なしで取れる経路だけを順に試す。
+ * 【Intl を最優先にしてはいけない】
+ * Hermes の Intl が返すのは「アプリが解決したロケール」で、iOS は
+ * NSLocale をアプリの対応ローカライズ（.lproj / CFBundleLocalizations）で
+ * 絞り込んでから返す。このアプリは CFBundleDevelopmentRegion が en で
+ * ja のローカライズを持たないため、端末が日本語だけの設定でも
+ * Intl は 'en-US' を返す。実機で「端末は日本語なのに英語になる」の原因はこれ。
+ *
+ * NSUserDefaults の AppleLanguages / AppleLocale は端末の設定そのもので、
+ * アプリの対応言語に左右されない。こちらを先に見る。
+ * （RCTSettingsManager が NSUserDefaults の dictionaryRepresentation を
+ *   そのまま定数として返しているため参照できる）
  */
-function deviceLanguageTag(): string {
-  // 1) Intl（Hermes の ICU）。New Architecture / bridgeless でも使えるのでまず試す。
-  try {
-    const tag = Intl.DateTimeFormat().resolvedOptions().locale;
-    if (tag) return tag;
-  } catch {
-    // Intl 無効ビルドではここに来る。次の経路へ。
-  }
+/**
+ * iOS の NSUserDefaults（端末の設定そのもの）を読む。
+ *
+ * New Architecture（bridgeless）では NativeModules 経由で SettingsManager が
+ * 取れない。TurboModuleRegistry.get は __turboModuleProxy を先に見るので
+ * 新旧どちらのアーキテクチャでも届く。get は見つからなければ null を返すだけで
+ * 例外を投げない（getEnforcing は投げるので使わない）。
+ */
+type UserDefaults = Record<string, unknown> | undefined;
 
-  // 2) ネイティブモジュール経由。bridgeless では取れないことがあるので任意扱い。
+function iosUserDefaults(): UserDefaults {
+  try {
+    const mod = TurboModuleRegistry.get<{
+      getConstants: () => { settings: Record<string, unknown> };
+    }>('SettingsManager');
+    const fromTurbo = mod?.getConstants?.().settings;
+    if (fromTurbo) return fromTurbo;
+  } catch {
+    // 次の経路へ。
+  }
+  try {
+    // 旧アーキテクチャ用の経路。
+    return NativeModules.SettingsManager?.settings as UserDefaults;
+  } catch {
+    return undefined;
+  }
+}
+
+function preferredLanguageTags(): string[] {
+  const tags: string[] = [];
+
+  // 1) 端末の設定そのもの。アプリのローカライズ有無に影響されない。
   try {
     if (Platform.OS === 'ios') {
-      const s = NativeModules.SettingsManager?.settings;
-      const tag = s?.AppleLocale ?? s?.AppleLanguages?.[0];
-      if (typeof tag === 'string' && tag) return tag;
+      const s = iosUserDefaults();
+      // AppleLanguages は優先順のリスト（例: ['ja-JP', 'en-US']）。
+      const langs = s?.AppleLanguages;
+      if (Array.isArray(langs)) {
+        for (const l of langs) if (typeof l === 'string' && l) tags.push(l);
+      }
+      // AppleLocale は地域込みの1件（例: 'ja_JP'）。リストが空の時の保険。
+      const loc = s?.AppleLocale;
+      if (typeof loc === 'string' && loc) tags.push(loc);
     } else {
       const tag = NativeModules.I18nManager?.localeIdentifier;
-      if (typeof tag === 'string' && tag) return tag;
+      if (typeof tag === 'string' && tag) tags.push(tag);
     }
   } catch {
-    // 取れなくても致命的ではない。FALLBACK で動く。
+    // 取れなくても致命的ではない。次の経路へ。
   }
 
-  return '';
+  // 2) 最後の砦。上が全滅した時だけ使う（上記のとおりアプリ解決後の値なので精度は落ちる）。
+  try {
+    const tag = Intl.DateTimeFormat().resolvedOptions().locale;
+    if (tag) tags.push(tag);
+  } catch {
+    // Intl 無効ビルドではここに来る。
+  }
+
+  return tags;
 }
 
-/** 言語タグ（'ja-JP'）を対応言語へ寄せる。未対応なら FALLBACK。 */
-function resolveLocale(tag: string): Locale {
-  const primary = tag.replace('_', '-').split('-')[0]?.toLowerCase();
-  return primary && primary in CATALOGS ? (primary as Locale) : FALLBACK;
+/**
+ * 言語タグの主要部分を取り出す。
+ * 'ja' / 'ja-JP' / 'ja_JP' / 'ja-Jpan-JP' いずれも 'ja' になる。
+ */
+function primarySubtag(tag: string): string {
+  // アンダースコア区切り（'ja_JP'）とハイフン区切りの両方が来る。
+  // replace は全置換にする（'zh_Hans_CN' のように2つ以上ある形に備える）。
+  return tag.replace(/_/g, '-').split('-')[0]?.toLowerCase() ?? '';
 }
 
-/** 端末の言語に基づく既定の言語。 */
+/**
+ * 端末の言語に基づく既定の言語。
+ *
+ * 優先順のリストを頭から見て、最初に対応している言語を採用する。
+ * 例: 端末が [ko, ja, en] で対応が ja/en なら ja を選ぶ
+ * （先頭だけを見ると ko が未対応 → FALLBACK の en になってしまう）。
+ */
 export function detectLocale(): Locale {
-  return resolveLocale(deviceLanguageTag());
+  for (const tag of preferredLanguageTags()) {
+    const primary = primarySubtag(tag);
+    if (primary && primary in CATALOGS) return primary as Locale;
+  }
+  return FALLBACK;
 }
 
 // ── 現在の言語（モジュール状態）────────────────────────────────────────────

@@ -40,7 +40,6 @@ import TouchIndicator from '../TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '../shared';
 import { Cell, EditorMock, BIRD, ui } from './parts';
 import { useT } from '../../../i18n';
-import { ALBUM_ID } from '../../../imaging';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // 囲む動作 + 保存まで見せるので長め。
@@ -314,7 +313,7 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
           <View style={ui.body}>
             {/* 合体したので4枚→3枚になっている */}
             <View style={ui.sectionRow}>
-              <Text style={ui.sectionLabel}>{t('onboarding.cutsLabel', { count: 3 })}</Text>
+              <Text style={ui.sectionLabel}>{t('result.cutsLabel', { count: 3 })}</Text>
               <Text style={ui.sectionHint}>{t('result.longPressHint')}</Text>
             </View>
 
@@ -363,7 +362,7 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
             </Animated.View>
             {/* 文言は実際の SaveCompleteScreen に合わせる */}
             <Text style={s.savedTxt}>{t('saveComplete.savedCount', { count: 3 })}</Text>
-            <Text style={s.savedSub}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
+            <Text style={s.savedSub}>{t('saveComplete.albumSuffix', { album: t('app.albumName') })}</Text>
           </Animated.View>
         </Animated.View>
       </Animated.View>

@@ -25,7 +25,6 @@ import AppHeader from './ui/AppHeader';
 import Card      from './ui/Card';
 import FadeInView from './ui/FadeInView';
 import { colors, spacing, typography, radius } from './ui/theme';
-import { ALBUM_ID } from '../imaging';
 import { useT } from '../i18n';
 import type { TKey } from '../i18n';
 
@@ -108,7 +107,7 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
             {/* 補足ノート */}
             <View style={styles.noteRow}>
               <Icon name="lightbulb-outline" size={13} color={colors.secondary} />
-              <Text style={styles.noteTxt}>{t(step.noteKey, { album: ALBUM_ID })}</Text>
+              <Text style={styles.noteTxt}>{t(step.noteKey, { album: t('app.albumName') })}</Text>
             </View>
           </Card>
         </FadeInView>

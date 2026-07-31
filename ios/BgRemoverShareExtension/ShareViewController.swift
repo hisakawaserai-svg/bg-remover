@@ -55,25 +55,34 @@ class ShareViewController: SLComposeServiceViewController {
               ) { item, error in
 
                 if let url = item as? URL {
-
-                    let containerURL = FileManager.default.containerURL(
-                        forSecurityApplicationGroupIdentifier: "group.com.sera.bgremover.app"
-                    )
-
-                    let destination = containerURL!
-                        .appendingPathComponent("share_input.png")
-
-                    do {
-                        try FileManager.default.copyItem(
-                            at: url,
-                            to: destination
-                        )
-
-                        print("Saved:", destination)
-
-                    } catch {
-                        print("Copy error:", error)
+                  
+                  let destination = containerURL!
+                    .appendingPathComponent("share_input.png")
+                  
+                  do {
+                    // removeItem も throw するので do の中に入れる。
+                    // 外に置くと loadItem のクロージャが非throwのためコンパイルが通らない。
+                    if FileManager.default.fileExists(atPath: destination.path) {
+                      try FileManager.default.removeItem(at: destination)
                     }
+
+                    guard let image = UIImage(contentsOfFile: url.path) else {
+                      print("Image load failed")
+                      return
+                    }
+                    
+                    guard let pngData = image.pngData() else {
+                      print("PNG conversion failed")
+                      return
+                    }
+                    
+                    try pngData.write(to: destination)
+                    
+                    print("Saved PNG:", destination)
+                    
+                  } catch {
+                    print("Save error:", error)
+                  }
                 }
 
                   if let error = error {

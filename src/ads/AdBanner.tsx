@@ -34,12 +34,14 @@ import {
   KEEP_EMPTY_SLOT_VISIBLE,
 } from './config';
 import { colors } from '../components/ui/theme';
+import { useT } from '../i18n';
 
 /** 固定バナーの実寸。BannerAdSize.BANNER = 320×50。 */
 const BANNER_W = 320;
 const BANNER_H = 50;
 
 export default function AdBanner() {
+  const { t } = useT();
   // 実際に広告が描画されたか。これが true になるまで枠に下地を敷く。
   const [loaded, setLoaded] = useState(false);
   // 読み込み失敗（ネットワーク不通・在庫なし）。以降 BannerAd は載せない。
@@ -54,7 +56,7 @@ export default function AdBanner() {
   return (
     <View style={styles.wrap}>
       {/* 「広告」ラベルは常時表示。載る前後で高さが変わらないよう固定の行にする。 */}
-      <Text style={styles.label}>広告</Text>
+      <Text style={styles.label}>{t('ads.label')}</Text>
 
       {/* バナーの置き場。320×50 を必ず確保するので、載っても枠は動かない。 */}
       <View style={[styles.slot, !loaded && styles.slotEmpty]}>

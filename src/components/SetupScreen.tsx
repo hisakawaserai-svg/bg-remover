@@ -37,6 +37,7 @@ import CheckerboardBg from './ui/CheckerboardBg';
 import ToleranceSlider from './ui/ToleranceSlider';
 import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
+import { useT } from '../i18n';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
@@ -102,6 +103,7 @@ interface Props {
 
 export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { settings, updateSettings } = useSettings();
+  const { t } = useT();
   const thumbBg = useThumbBg();
   const [rows, setRows] = useState(initialRows);
   // 列数。行数ステッパーと全く同じUI・挙動。初期値は自動推定した列数(initialCols)。
@@ -201,14 +203,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   /** 自動背景除去も含めて全部取り消し、元画像の状態に戻す。取り消せないので確認する。 */
   const handleResetEdits = useCallback(() => {
     Alert.alert(
-      '編集をリセット',
-      '自動の背景除去とスポイトを全部取り消して、元の画像に戻します。\nこの操作は取り消せません。',
+      t('setup.resetTitle'),
+      t('setup.resetMessage'),
       [
-        { text: 'キャンセル', style: 'cancel' },
-        { text: 'リセット', style: 'destructive', onPress: () => onResetEditsRef.current?.() },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.reset'), style: 'destructive', onPress: () => onResetEditsRef.current?.() },
       ],
     );
-  }, []);
+  }, [t]);
   const onResetEditsRef = useRef(onResetEdits); onResetEditsRef.current = onResetEdits;
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
@@ -459,9 +461,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
 
   const header = (
     <AppHeader
-      title="分割設定"
+      title={t('setup.title')}
       onBack={onBack}
-      backLabel="戻る"
+      backLabel={t('common.back')}
       right={
         <HeaderActions
           showOriginalImage={!!originalImageUri}
@@ -493,14 +495,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             onPress={() => setMode('auto')}
             pressedScale={0.96}
           >
-            <Text style={[styles.modeTxt, mode === 'auto' && styles.modeTxtOn]}>自動分割</Text>
+            <Text style={[styles.modeTxt, mode === 'auto' && styles.modeTxtOn]}>{t('setup.modeAuto')}</Text>
           </AnimatedPressable>
           <AnimatedPressable
             style={[styles.modeBtn, mode === 'manual' && styles.modeBtnOn]}
             onPress={() => setMode('manual')}
             pressedScale={0.96}
           >
-            <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>範囲を調整</Text>
+            <Text style={[styles.modeTxt, mode === 'manual' && styles.modeTxtOn]}>{t('setup.modeManual')}</Text>
           </AnimatedPressable>
         </View>
 
@@ -526,7 +528,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}
                 numberOfLines={1}
               >
-                {eyedropperMode ? 'タップで背景を消す' : 'スポイトで背景を消す'}
+                {eyedropperMode ? t('setup.tapToRemoveBg') : t('setup.eyedropperHint')}
               </Text>
             </AnimatedPressable>
             {/* 取り消し / やり直し / リセットは常時表示し、使えない時は非活性にする。
@@ -623,7 +625,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             <View style={styles.cardAnchor}>
             <Card style={styles.card}>
               <View style={styles.rowInput}>
-                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>行数（段数）</Text>
+                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.rows')}</Text>
                 {/* 行数ステッパー: noSplit 時はグレーアウト＋上に Pressable を重ねてタップを横取り */}
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
@@ -642,7 +644,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                   {noSplit && (
                     <Pressable
                       style={StyleSheet.absoluteFill}
-                      onPress={() => showToast('分割しない時は行数を指定できません')}
+                      onPress={() => showToast(t('setup.rowsDisabled'))}
                     />
                   )}
                 </View>
@@ -651,7 +653,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               {/* 列数ステッパー（行数と同じUI・初期値は自動推定値）: noSplit 時は無効化 */}
               <Divider />
               <View style={styles.rowInput}>
-                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>列数</Text>
+                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.columns')}</Text>
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
@@ -670,7 +672,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                   {noSplit && (
                     <Pressable
                       style={StyleSheet.absoluteFill}
-                      onPress={() => showToast('分割しない時は列数を指定できません')}
+                      onPress={() => showToast(t('setup.columnsDisabled'))}
                     />
                   )}
                 </View>
@@ -686,7 +688,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 <View style={[styles.checkBox, noSplit && styles.checkBoxOn]}>
                   {noSplit && <Text style={styles.checkMark}>✓</Text>}
                 </View>
-                <Text style={styles.checkLabel}>分割しない（1枚だけくり抜く）</Text>
+                <Text style={styles.checkLabel}>{t('setup.noSplit')}</Text>
               </AnimatedPressable>
             </Card>
 
@@ -703,7 +705,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 <AnimatedPressable style={styles.nudgeBtn} onPress={() => nudge(-1)} pressedScale={0.9}>
                   <Text style={styles.nudgeTxt}>{shownAxis === 'row' ? '▲' : '◀'}</Text>
                 </AnimatedPressable>
-                <Text style={styles.nudgeLabel}>{shownAxis === 'row' ? '横線を移動' : '縦線を移動'}</Text>
+                <Text style={styles.nudgeLabel}>{shownAxis === 'row' ? t('setup.moveHLine') : t('setup.moveVLine')}</Text>
                 <AnimatedPressable style={styles.nudgeBtn} onPress={() => nudge(1)} pressedScale={0.9}>
                   <Text style={styles.nudgeTxt}>{shownAxis === 'row' ? '▼' : '▶'}</Text>
                 </AnimatedPressable>
@@ -728,26 +730,24 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         {/* 手動モード: 説明テキスト */}
         {mode === 'manual' && (
           <Card style={styles.card}>
-            <Text style={styles.manualDesc}>
-              背景除去済みの画像を、四角で囲んで1枚ずつ切り出します。
-            </Text>
+            <Text style={styles.manualDesc}>{t('setup.manualDesc')}</Text>
             {/* 次の画面で使うツールの予告。アイコンは範囲を調整画面と共通
                 （TOOL_ICONS）なので、進んだ先で迷わない。 */}
             <View style={styles.toolList}>
               <ToolRow
                 icon={TOOL_ICONS.draw}
-                title="四角を追加"
-                desc="囲みたいキャラの上をタップ"
+                title={t('setup.addRect')}
+                desc={t('setup.addRectHint')}
               />
               <ToolRow
                 icon={TOOL_ICONS.move}
-                title="移動・調整"
-                desc="四角をドラッグ／角をつまんで形を合わせる"
+                title={t('editor.modeMove')}
+                desc={t('editor.modeMoveHint')}
               />
               <ToolRow
                 icon={TOOL_ICONS.eyedropper}
-                title="スポイト"
-                desc="消したい色をタップして透過"
+                title={t('editor.modeEyedropper')}
+                desc={t('editor.modeEyedropperHint')}
               />
             </View>
           </Card>
@@ -755,11 +755,13 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
 
         <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, cols, mode, noSplit, { rowYsImg, colXsImg })} pressedScale={0.97}>
           <Text style={styles.btnTxt}>
-            {mode === 'auto' ? (noSplit ? '分割せずにくり抜く' : 'この行数で分割') : 'ポリゴン編集へ'}
+            {mode === 'auto'
+              ? (noSplit ? t('setup.noSplitButton') : t('setup.splitWithRows'))
+              : t('setup.toPolygonEditor')}
           </Text>
         </AnimatedPressable>
         <AnimatedPressable style={styles.secondaryBtn} onPress={onBack} pressedScale={0.97}>
-          <Text style={styles.secondaryBtnTxt}>画像を選び直す</Text>
+          <Text style={styles.secondaryBtnTxt}>{t('setup.rePickImage')}</Text>
         </AnimatedPressable>
 
         {/* トースト */}

@@ -126,8 +126,8 @@ import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
 import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
 import LoadingView from './src/components/ui/LoadingView';
 import { describeSaveError } from './src/imaging/saveErrors';
+import { t, useT } from './src/i18n';
 import { useSettings } from './src/settings/SettingsContext';
-import { APP_NAME } from './src/constants';
 
 // ── 広告 ──────────────────────────────────────────────────────────────────────
 // 置くのはホーム・保存完了・保存先の3画面だけ。SetupScreen / PolygonEditor などの
@@ -160,13 +160,15 @@ function clamp(v: number, lo: number, hi: number) {
 // ── ステップラベル ────────────────────────────────────────────────────────────
 // StickerSession.step をユーザー向けテキストに変換する純粋関数
 function stepLabel(step: StickerSession['step'], mode?: StickerSession['mode']): string {
-  if (step === 'done')  return '完了';
+  // t() は呼び出し時点の言語で解決される。この関数は描画中に呼ばれ、
+  // App 側が useT() を使っているので言語切替時は描き直される。
+  if (step === 'done')  return t('session.step.done');
   if (step === 'keyed') {
-    if (mode === 'custom') return '透過済み（手動）';
-    if (mode === 'auto')   return '透過済み（自動）';
-    return '透過済み';
+    if (mode === 'custom') return t('session.step.removedManual');
+    if (mode === 'auto')   return t('session.step.removedAuto');
+    return t('session.step.removed');
   }
-  return '未処理';
+  return t('session.step.picked');
 }
 function stepTone(step: StickerSession['step']): 'default' | 'accent' {
   return step === 'done' ? 'default' : 'accent';
@@ -175,6 +177,9 @@ function stepTone(step: StickerSession['step']): 'default' | 'accent' {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // 言語が切り替わったらこの画面ツリー全体を描き直す。
+  // 下位の画面もそれぞれ useT() を呼んでいるので、個別にも更新される。
+  const { t } = useT();
   const { width: winW, height: winH } = useWindowDimensions();
   const [splitMode, setSplitMode] = useState<SplitMode>('auto');
   const [appState,  setAppState]  = useState<AppState>('idle');
@@ -345,29 +350,31 @@ export default function App() {
     if ((Platform.Version as number) >= 33) return true;
     const r = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-      { title: 'ギャラリーへのアクセス', message: '画像を選択するために必要です。',
-        buttonPositive: '許可', buttonNegative: 'キャンセル' },
+      { title: t('permission.galleryTitle'), message: t('permission.galleryMessage'),
+        buttonPositive: t('common.allow'), buttonNegative: t('common.cancel') },
     );
     return r === PermissionsAndroid.RESULTS.GRANTED;
   };
 
-  const requestSave = async (): Promise<boolean> => {
+  // doAutoExport の依存に入れるため useCallback で参照を安定させる。
+  // 素の関数のままだと毎レンダリングで別物になり、doAutoExport も毎回作り直しになる。
+  const requestSave = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
     const perm = (Platform.Version as number) >= 33
       ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
       : PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
     const r = await PermissionsAndroid.request(perm, {
-      title: '写真への保存', message: 'ギャラリーへの保存に必要です。',
-      buttonPositive: '許可', buttonNegative: 'キャンセル',
+      title: t('permission.saveTitle'), message: t('permission.saveMessage'),
+      buttonPositive: t('common.allow'), buttonNegative: t('common.cancel'),
     });
     return r === PermissionsAndroid.RESULTS.GRANTED;
-  };
+  }, [t]);
 
   // ── 画像選択 ──────────────────────────────────────────────────────────────
 
   const pickImage = async () => {
     if (!await requestStorage()) {
-      Alert.alert('権限エラー', 'ギャラリーへのアクセスが拒否されました。');
+      Alert.alert(t('permission.errorTitle'), t('permission.galleryDenied'));
       return;
     }
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
@@ -439,7 +446,7 @@ export default function App() {
         setAppState('row_confirm');
       }
     } catch (e: unknown) {
-      Alert.alert('処理エラー', e instanceof Error ? e.message : '不明なエラー');
+      Alert.alert(t('errors.processTitle'), e instanceof Error ? e.message : t('common.unknownError'));
       setAppState('idle');
     }
   };
@@ -465,7 +472,7 @@ export default function App() {
         ? splitByBoundaries(bgResult.rgba, bgResult.width, bgResult.height, bounds.rowYsImg, bounds.colXsImg)
         : splitRowsThenCols(bgResult.rgba, bgResult.width, bgResult.height, n, c);
     if (bboxList.length === 0) {
-      Alert.alert('結果', '前景が検出されませんでした。行数を変えて再試行してください。');
+      Alert.alert(t('errors.resultTitle'), t('errors.noForeground'));
       return;
     }
     const newCells: Cell[] = await Promise.all(bboxList.map(async (bbox, idx) => {
@@ -534,7 +541,7 @@ export default function App() {
       });
       void reloadSessions();
     }
-  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance]);
+  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t]);
 
   // ── カット合体: 選択した auto セル群を 1 枚に結合 ──────────────────────────
   // 選択セルの bbox を包含する最小矩形を元画像から切り出して新しいセルを作る。
@@ -709,7 +716,7 @@ export default function App() {
   const doAutoExport = useCallback(async () => {
     if (cells.length === 0) return;
     if (!await requestSave()) {
-      Alert.alert('権限エラー', '写真への保存が拒否されました。');
+      Alert.alert(t('permission.errorTitle'), t('permission.saveDenied'));
       return;
     }
     setAppState('processing');
@@ -781,10 +788,10 @@ export default function App() {
       setAppState('done');
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
-      Alert.alert('書き出しエラー', describeSaveError(e));
+      Alert.alert(t('errors.exportTitle'), describeSaveError(e));
       setAppState('preview');
     }
-  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, appSettings.tolerance, appSettings.autoDeleteOnExport]);
+  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, t]);
 
   // ── リセット ──────────────────────────────────────────────────────────────
 
@@ -803,10 +810,10 @@ export default function App() {
 
   // 削除確認 → deleteSession → 一覧再読み込み
   const handleDeleteSession = (id: string) => {
-    Alert.alert('削除', 'この作業を削除しますか？', [
-      { text: 'キャンセル', style: 'cancel' },
+    Alert.alert(t('session.deleteTitle'), t('session.deleteMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '削除', style: 'destructive',
+        text: t('common.delete'), style: 'destructive',
         onPress: async () => {
           await deleteSession(id);
           await reloadSessions(); // 削除後に一覧を更新
@@ -829,7 +836,7 @@ export default function App() {
 
       // 消すものが無い時に「0件削除しました」と出すのは不親切なので分ける。
       if (all.length === 0) {
-        Alert.alert('作業データ', '削除する作業データはありませんでした。');
+        Alert.alert(t('deleteAll.title'), t('deleteAll.nothing'));
         return;
       }
 
@@ -848,13 +855,13 @@ export default function App() {
 
       const failed = all.length - deleted;
       Alert.alert(
-        '削除しました',
+        t('deleteAll.doneTitle'),
         failed === 0
-          ? `${deleted}件の作業データを削除しました。`
-          : `${deleted}件を削除しました。\n${failed}件は削除できませんでした。`,
+          ? t('deleteAll.doneCount', { count: deleted })
+          : t('deleteAll.donePartial', { count: deleted, failed }),
       );
     } catch (e: unknown) {
-      Alert.alert('削除エラー', e instanceof Error ? e.message : '不明なエラー');
+      Alert.alert(t('deleteAll.errorTitle'), e instanceof Error ? e.message : t('common.unknownError'));
     }
   };
 
@@ -907,7 +914,7 @@ export default function App() {
         setCells(restoredCells);
         setAppState('preview');
       } catch (e: unknown) {
-        Alert.alert('復元エラー', e instanceof Error ? e.message : '不明なエラー');
+        Alert.alert(t('errors.restoreTitle'), e instanceof Error ? e.message : t('common.unknownError'));
         setAppState('idle');
       }
       return;
@@ -940,7 +947,7 @@ export default function App() {
         setPolygons(latest.polygons?.length ? fromSessionPolygons(latest.polygons) : []);
         goToEditor('editing');
       } catch (e: unknown) {
-        Alert.alert('復元エラー', e instanceof Error ? e.message : '不明なエラー');
+        Alert.alert(t('errors.restoreTitle'), e instanceof Error ? e.message : t('common.unknownError'));
         setAppState('idle');
       }
       return;
@@ -1036,7 +1043,7 @@ export default function App() {
     return (
       <>
         <StatusBar hidden />
-        <LoadingView message="ポリゴン編集を準備しています" sub="少々お待ちください" />
+        <LoadingView message={t('loading.editorTitle')} sub={t('loading.editorSub')} />
       </>
     );
   }
@@ -1361,7 +1368,7 @@ export default function App() {
 
   const homeHeader = (
     <AppHeader
-      title={APP_NAME}
+      title={t('app.name')}
       right={
         <View style={styles.navActions}>
           <AnimatedPressable
@@ -1398,7 +1405,7 @@ export default function App() {
             >
               <Icon name="add-photo-alternate" size={22} color="#FFF" />
               <Text style={styles.startBtnTxt}>
-                {sessions.length === 0 ? '画像を選んで始める' : '新しい画像を選ぶ'}
+                {sessions.length === 0 ? t('home.pickImage') : t('home.newImage')}
               </Text>
             </AnimatedPressable>
           )}
@@ -1419,14 +1426,14 @@ export default function App() {
             {sessions.length > 0 && (
               <Card style={styles.progressCard}>
                 {/* カードタイトル */}
-                <Text style={styles.progressTitle}>作業状況</Text>
+                <Text style={styles.progressTitle}>{t('home.progressTitle')}</Text>
 
                 {/* 大きい数値行: 左=作業中、右=完了 */}
                 <View style={styles.progressStats}>
                   {/* 作業中 */}
                   <View style={styles.progressStat}>
                     <Text style={styles.progressStatNum}>{inProgressCount}</Text>
-                    <Text style={styles.progressStatLabel}>作業中</Text>
+                    <Text style={styles.progressStatLabel}>{t('home.inProgress')}</Text>
                   </View>
                   {/* 縦の区切り線 */}
                   <View style={styles.progressDivider} />
@@ -1435,7 +1442,7 @@ export default function App() {
                     <Text style={[styles.progressStatNum, styles.progressStatNumDone]}>
                       {doneCount}
                     </Text>
-                    <Text style={styles.progressStatLabel}>完了</Text>
+                    <Text style={styles.progressStatLabel}>{t('common.done')}</Text>
                   </View>
                 </View>
 
@@ -1454,7 +1461,7 @@ export default function App() {
                       />
                     </View>
                     <View style={styles.latestTexts}>
-                      <Text style={styles.latestCaption}>最新の作業</Text>
+                      <Text style={styles.latestCaption}>{t('home.latestWork')}</Text>
                       <Text style={styles.latestStep} numberOfLines={1}>
                         {stepLabel(latestInProgress.step, latestInProgress.mode)}
                       </Text>
@@ -1470,9 +1477,9 @@ export default function App() {
                   <View style={[styles.gaugeBar, gaugeLevel >= 3 && styles.gaugeBarFilled]} />
                 </View>
                 <View style={styles.gaugeLabelRow}>
-                  <Text style={styles.gaugeLabel}>選択</Text>
-                  <Text style={styles.gaugeLabel}>透過</Text>
-                  <Text style={styles.gaugeLabel}>書き出し</Text>
+                  <Text style={styles.gaugeLabel}>{t('home.gauge.select')}</Text>
+                  <Text style={styles.gaugeLabel}>{t('home.gauge.transparent')}</Text>
+                  <Text style={styles.gaugeLabel}>{t('home.gauge.export')}</Text>
                 </View>
               </Card>
             )}
@@ -1485,23 +1492,23 @@ export default function App() {
                   <Icon name="auto-fix-high" size={44} color={IOS.blue} />
                 </View>
                 <Text style={styles.emptyContentTitle}>
-                  イラストシートからキャラを切り出す
+                  {t('home.tagline')}
                 </Text>
                 <Text style={styles.emptyContentDesc}>
-                  1枚選ぶだけで自動で透過。{'\n'}LINEスタンプ用の PNG が作れます。
+                  {t('home.emptyDesc')}
                 </Text>
                 <View style={styles.emptyHints}>
                   <View style={styles.emptyHintRow}>
                     <Icon name="check-circle" size={16} color={IOS.blue} />
-                    <Text style={styles.emptyHintTxt}>PNG・JPEG・HEIC に対応</Text>
+                    <Text style={styles.emptyHintTxt}>{t('home.features.formats')}</Text>
                   </View>
                   <View style={styles.emptyHintRow}>
                     <Icon name="check-circle" size={16} color={IOS.blue} />
-                    <Text style={styles.emptyHintTxt}>背景を自動で透過処理</Text>
+                    <Text style={styles.emptyHintTxt}>{t('home.features.autoRemove')}</Text>
                   </View>
                   <View style={styles.emptyHintRow}>
                     <Icon name="check-circle" size={16} color={IOS.blue} />
-                    <Text style={styles.emptyHintTxt}>透過 PNG でアルバムに保存</Text>
+                    <Text style={styles.emptyHintTxt}>{t('home.features.savePng')}</Text>
                   </View>
                 </View>
               </View>
@@ -1509,7 +1516,7 @@ export default function App() {
 
             {sessions.length > 0 && (
               <>
-                <Text style={styles.sectionLabel}>最近の作業</Text>
+                <Text style={styles.sectionLabel}>{t('home.recentWork')}</Text>
                 {sessions.map((session, idx) => {
                   const d = new Date(session.updatedAt);
                   const dateStr = `${d.getMonth() + 1}/${d.getDate()} `
@@ -1520,8 +1527,8 @@ export default function App() {
                   // どちらも無ければ未処理(cellCount=null)として扱う。
                   const cellCount = session.autoData?.cells.length ?? session.polygons?.length;
                   const sheetLabel = cellCount != null
-                    ? `${cellCount} キャラのシート`
-                    : '処理前のシート';
+                    ? t('home.sheetOf', { count: cellCount })
+                    : t('home.unprocessedSheet');
 
                   // step → 1/2/3 本バー
                   const barLevel =
@@ -1552,7 +1559,11 @@ export default function App() {
                       <View style={styles.sessionCardInfo}>
                         {/* 上段: ラベル + チップ */}
                         <View style={styles.sessionCardTop}>
-                          <Text style={styles.sessionCardLabel} numberOfLines={1}>{sheetLabel}</Text>
+                          {/* 英語はタイトルが長い（例: Unprocessed sheet）。1行固定だと
+                              アクティブ枠のぶん幅が狭い先頭行で必ず省略されるので、
+                              2行まで許容する。行の高さはサムネ(60px)で決まっており
+                              2行でも収まるためレイアウトは崩れない。 */}
+                          <Text style={styles.sessionCardLabel} numberOfLines={2}>{sheetLabel}</Text>
                           <Chip label={stepLabel(session.step, session.mode)} tone={stepTone(session.step)} />
                         </View>
 
@@ -1587,7 +1598,7 @@ export default function App() {
         {isBusy && (
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={IOS.blue} />
-            <Text style={styles.loadingTxt}>処理しています...</Text>
+            <Text style={styles.loadingTxt}>{t('home.processing')}</Text>
           </View>
         )}
 
@@ -1783,7 +1794,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sessionCardLabel: {
-    flex: 1,
+    // flexGrow/flexBasis を分けて指定する。flex:1 だと flexBasis:0 になり、
+    // 内容の長さに関係なくチップと機械的に領域を分け合うため、英語では
+    // タイトルが「Unprocessed sh…」のように早々に省略されていた。
+    // flexBasis:'auto' にすると文字数に応じた幅を先に確保できる。
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     fontSize: 14,
     fontWeight: '600',
     color: IOS.label,

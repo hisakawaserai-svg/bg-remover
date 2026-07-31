@@ -1,5 +1,6 @@
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
+import { t } from '../i18n';
 
 // ── 調整パラメータ ──────────────────────────────────────────────────────────
 export const ALPHA_TH = 10;
@@ -560,7 +561,7 @@ export function cropToImage(
     cropW * 4,
   );
   if (!image) {
-    throw new Error('クロップ画像の生成に失敗しました');
+    throw new Error(t('errors.cropFailed'));
   }
   return image;
 }

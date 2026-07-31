@@ -40,7 +40,9 @@ export default function Chip({ label, tone = 'default', icon }: Props) {
   return (
     <View style={[styles.chip, { backgroundColor: bg }]}>
       {icon ? <View style={styles.icon}>{icon}</View> : null}
-      <Text style={[styles.label, { color: text }]}>{label}</Text>
+      {/* 英語はラベルが長くなる。折り返さず1行に収め、
+          収まらない時は隣のテキストではなくチップ側が縮むようにする。 */}
+      <Text style={[styles.label, { color: text }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -54,6 +56,10 @@ const styles = StyleSheet.create({
     paddingVertical:   spacing.xs,
     paddingHorizontal: spacing.sm,
     gap: spacing.xs,
+    // チップは縮めない。状態を表す短い語なので削られると意味が失われる。
+    // 幅が足りない時は、隣のタイトル側を折り返して吸収させる
+    // （App.tsx の sessionCardLabel は numberOfLines={2}）。
+    flexShrink: 0,
   },
   icon: {
     // アイコンが small size でも tap area に干渉しないよう独立配置

@@ -51,6 +51,7 @@ import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import { colors, spacing, radius, shadow } from './ui/theme';
 import { useSettings } from '../settings/SettingsContext';
+import { useT } from '../i18n';
 
 // ── アニメーション定数 ─────────────────────────────────────────────────────────
 
@@ -542,6 +543,7 @@ interface Props {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboarding' }: Props) {
+  const { t } = useT();
   const { updateSettings } = useSettings();
   const [skipNext, setSkipNext] = useState(true);
   const isHelp = mode === 'help';
@@ -600,9 +602,9 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
 
   const header = (
     <AppHeader
-      title="範囲を調整"
+      title={t('polygonTutorial.title')}
       onBack={onBack}
-      backLabel="戻る"
+      backLabel={t('common.back')}
     />
   );
 
@@ -618,12 +620,12 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
           <View style={[s.checkbox, skipNext && s.checkboxOn]}>
             {skipNext && <Icon name="check" size={14} color="#FFF" />}
           </View>
-          <Text style={s.skipTxt}>次回から表示しない</Text>
+          <Text style={s.skipTxt}>{t('polygonTutorial.dontShowAgain')}</Text>
         </AnimatedPressable>
       )}
 
       <AnimatedPressable style={s.startBtn} onPress={handleStart} pressedScale={0.97}>
-        <Text style={s.startBtnTxt}>{isHelp ? '閉じる' : 'はじめる'}</Text>
+        <Text style={s.startBtnTxt}>{isHelp ? t('common.close') : t('common.start')}</Text>
       </AnimatedPressable>
     </View>
   );
@@ -634,8 +636,8 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={s.headline}>四角を置いて形を合わせる</Text>
-        <Text style={s.sub}>自動でうまくいかない時はこちら</Text>
+        <Text style={s.headline}>{t('polygonTutorial.heading')}</Text>
+        <Text style={s.sub}>{t('polygonTutorial.subheading')}</Text>
 
         {/* アニメ図 + プレビューボタンを縦に並べる */}
         <View style={s.figureArea}>
@@ -643,7 +645,7 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
           {/* プレビューボタン: 実エディタの下部バー右端ボタンを縮小再現 */}
           <Animated.View style={[s.previewBtn, previewBtnStyle]}>
             <Icon name="preview" size={16} color="#FFF" />
-            <Text style={s.previewBtnTxt}>プレビュー</Text>
+            <Text style={s.previewBtnTxt}>{t('common.preview')}</Text>
           </Animated.View>
         </View>
 
@@ -653,15 +655,15 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
             phase={phase}
             aStart={0.08} aEnd={0.38} dEnd={1.05}
             num={1} icon="edit"
-            title="ペンを押して、キャラをタップ"
-            sub="四角が出る"
+            title={t('polygonTutorial.step1')}
+            sub={t('polygonTutorial.step2')}
           />
           <AnimatedStepCard
             phase={phase}
             aStart={0.38} aEnd={0.79} dEnd={1.05}
             num={2} icon="open-with"
-            title="白い点を外側へ広げてキャラを囲む"
-            sub="辺をタップで点を追加・長押しで削除"
+            title={t('polygonTutorial.step3')}
+            sub={t('polygonTutorial.step4')}
           />
           <AnimatedStepCard
             phase={phase}
@@ -669,7 +671,7 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
             // チェックマークが出ないまま次の周に入ってしまう。
             aStart={0.79} aEnd={0.90} dEnd={1.05}
             num={3} icon="photo-camera"
-            title="「プレビュー」で切り出して確認"
+            title={t('polygonTutorial.step5')}
           />
         </View>
       </ScrollView>

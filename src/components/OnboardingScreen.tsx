@@ -39,6 +39,7 @@ import OnboardingStep1 from './onboarding/OnboardingStep1';
 import OnboardingStep2 from './onboarding/OnboardingStep2';
 import OnboardingStep3 from './onboarding/OnboardingStep3';
 import OnboardingStep4 from './onboarding/OnboardingStep4';
+import { useT } from '../i18n';
 
 // ステップが active になるときに translateY で滑り込ませる量(transform のみ)。
 const SLIDE_Y = 28;
@@ -117,6 +118,7 @@ interface Props {
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function OnboardingScreen({ onComplete }: Props) {
+  const { t } = useT();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pageW, setPageW] = useState(Dimensions.get('window').width);
   const scrollRef = useRef<ScrollView>(null);
@@ -171,7 +173,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         <View style={s.navBtn} />
       ) : (
         <AnimatedPressable style={s.navBtn} onPress={() => goTo(currentIndex - 1)} pressedScale={0.96}>
-          <Text style={s.navBackTxt}>戻る</Text>
+          <Text style={s.navBackTxt}>{t('common.back')}</Text>
         </AnimatedPressable>
       )}
 
@@ -184,7 +186,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
       {/* 次へ / はじめる */}
       <AnimatedPressable style={[s.navBtn, s.nextBtn]} onPress={handleNext} pressedScale={0.96}>
-        <Text style={s.nextTxt}>{isLast ? 'はじめる' : '次へ'}</Text>
+        <Text style={s.nextTxt}>{isLast ? t('common.start') : t('common.next')}</Text>
       </AnimatedPressable>
     </View>
   );

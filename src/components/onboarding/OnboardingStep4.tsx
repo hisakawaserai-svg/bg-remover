@@ -29,10 +29,12 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import BirdMascot from './BirdMascot';
 import SpeechBubble from './SpeechBubble';
 import { shared, easeIO, fadeHold, jumpY, norm, FRAME_SLIDE } from './shared';
+import { useT } from '../../i18n';
+import { ALBUM_ID } from '../../constants';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 const CYCLE_MS = 11000; // ゆっくり(間込み)
-const ALBUM_NAME = 'スタンプ抜き'; // 実画面と同じ表記(imaging/index.ts と一致)
+// アルバム名は実画面と同じ値を使う（複製すると片方だけ変わる）。
 
 // 順次出現の開始タイミング(stagger)。サムネ → 各ボタン。さらに前倒し＆間隔を詰める。
 const THUMBS_AT  = 0.10;
@@ -47,7 +49,7 @@ const BIRD_ENTER_P  = BIRD_ENTER_DELAY / CYCLE_MS;                        // 登
 const SPEAK_START_P = (BIRD_ENTER_DELAY + SPEAK_AFTER_ENTER) / CYCLE_MS;  // 喋り出し＝跳ね
 
 // キャプション文言(後で調整しやすいよう定数化)
-const CAPTION = '完成！透過PNGがアルバムに保存されます';
+// 文言は描画時に t() で解決する。
 
 // ── ワークレットユーティリティ ────────────────────────────────────────────────
 function easeOutBack(t: number) {
@@ -60,6 +62,7 @@ function easeOutBack(t: number) {
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function OnboardingStep4({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
 
   // active(表示中)の時だけ頭出し再生。非表示では停止して進行を0へ戻す。
@@ -148,7 +151,7 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
         {/* ヘッダー(保存完了 / ホーム・設定) */}
         <View style={s.header}>
           <View style={s.headerSideL} />
-          <Text style={s.headerTitle}>保存完了</Text>
+          <Text style={s.headerTitle}>{t('saveComplete.title')}</Text>
           <View style={s.headerIcons}>
             <Icon name="home" size={18} color="#007AFF" />
             <Icon name="settings" size={18} color="#007AFF" />
@@ -164,8 +167,8 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
               </Animated.View>
             </View>
             <Animated.View style={[s.summaryText, summaryTextStyle]}>
-              <Text style={s.summaryTitle}>2枚 保存しました</Text>
-              <Text style={s.summaryAlbum}>「{ALBUM_NAME}」アルバム</Text>
+              <Text style={s.summaryTitle}>{t('saveComplete.savedCount', { count: 2 })}</Text>
+              <Text style={s.summaryAlbum}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
             </Animated.View>
           </View>
 
@@ -177,14 +180,14 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
 
           {/* ボタン3つ(stagger 出現) */}
           <Animated.View style={[s.primaryBtn, btn0Style]}>
-            <Text style={s.primaryTxt}>別の画像を処理する</Text>
+            <Text style={s.primaryTxt}>{t('saveComplete.another')}</Text>
           </Animated.View>
           <Animated.View style={[s.subBtn, btn1Style]}>
             <Icon name="photo-library" size={16} color="#007AFF" />
-            <Text style={s.subTxt}>保存先を確認する</Text>
+            <Text style={s.subTxt}>{t('saveComplete.checkDestination')}</Text>
           </Animated.View>
           <Animated.View style={[s.lineBtn, btn2Style]}>
-            <Text style={s.lineTxt}>LINE スタンプ Maker を開く</Text>
+            <Text style={s.lineTxt}>{t('saveComplete.openLineMaker')}</Text>
             <Icon name="open-in-new" size={16} color="#FFF" />
           </Animated.View>
         </View>
@@ -194,7 +197,7 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION}
+          text={t('onboarding.step4.caption')}
           direction="left"
           mascotStyle={mascotStyle}
           bubbleStyle={bubbleStyle}

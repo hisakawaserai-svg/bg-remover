@@ -24,7 +24,8 @@ import { useThumbBg } from '../hooks/useThumbBg';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
-import { ALBUM_NAME } from '../imaging';
+import { ALBUM_ID } from '../imaging';
+import { useT } from '../i18n';
 import AdBanner from '../ads/AdBanner';
 
 // グリッドの最大表示枚数
@@ -56,6 +57,7 @@ interface Props {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, onHome, onSettings }: Props) {
+  const { t } = useT();
   const bg = useThumbBg();
   /** グリッド表示用: 最大 MAX_GRID 枚 */
   const [thumbUris, setThumbUris] = useState<string[]>([]);
@@ -70,7 +72,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
       try {
         const result = await CameraRoll.getPhotos({
           first: Math.max(savedCount, 1),
-          groupName: ALBUM_NAME,
+          groupName: ALBUM_ID,
           assetType: 'Photos',
         });
         const uris = result.edges.map(e => e.node.image.uri);
@@ -91,7 +93,7 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
 
   const header = (
     <AppHeader
-      title="保存完了"
+      title={t('saveComplete.title')}
       right={<HeaderActions showHome showSettings onHome={onHome} onSettings={onSettings} />}
     />
   );
@@ -105,8 +107,8 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
           <Icon name="check" size={28} color="#0F6E56" />
         </View>
         <View style={styles.summaryText}>
-          <Text style={styles.summaryTitle}>{savedCount}枚 保存しました</Text>
-          <Text style={styles.summaryAlbum}>「{ALBUM_NAME}」アルバム</Text>
+          <Text style={styles.summaryTitle}>{t('saveComplete.savedCount', { count: savedCount })}</Text>
+          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
         </View>
       </View>
 
@@ -152,18 +154,18 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
 
         {/* 主ボタン: 別の画像を処理する → image picker を直接起動 */}
         <AnimatedPressable style={styles.primaryBtn} onPress={onNewImage} pressedScale={0.97}>
-          <Text style={styles.primaryBtnTxt}>別の画像を処理する</Text>
+          <Text style={styles.primaryBtnTxt}>{t('saveComplete.another')}</Text>
         </AnimatedPressable>
 
         {/* 保存先 */}
         <AnimatedPressable style={styles.subBtn} onPress={onSaved} pressedScale={0.97}>
           <Icon name="photo-library" size={16} color={IOS.blue} />
-          <Text style={styles.subBtnTxt}>保存先を確認する</Text>
+          <Text style={styles.subBtnTxt}>{t('saveComplete.checkDestination')}</Text>
         </AnimatedPressable>
 
         {/* LINE スタンプ Maker */}
         <AnimatedPressable style={styles.lineBtn} onPress={openLineStickerMaker} pressedScale={0.97}>
-          <Text style={styles.lineBtnTxt}>LINE スタンプ Maker を開く</Text>
+          <Text style={styles.lineBtnTxt}>{t('saveComplete.openLineMaker')}</Text>
           <Icon name="open-in-new" size={16} color="#FFF" />
         </AnimatedPressable>
 

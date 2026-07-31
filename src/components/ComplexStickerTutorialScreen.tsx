@@ -38,6 +38,7 @@ import { colors, spacing, radius } from './ui/theme';
 import ComplexStep1, { CYCLE_MS as STEP1_MS } from './onboarding/ComplexTutorial/AutoSplitAnimation';
 import ComplexStep2, { CYCLE_MS as STEP2_MS } from './onboarding/ComplexTutorial/MergeCellsAnimation';
 import ComplexStep3, { CYCLE_MS as STEP3_MS } from './onboarding/ComplexTutorial/FinishAnimation';
+import { useT } from '../i18n';
 
 
 // render は「今そのページが表示中か(active)」を受け取る。
@@ -101,6 +102,7 @@ interface Props {
 export default function ComplexStickerTutorialScreen({
   onClose,
 }: Props) {
+  const { t } = useT();
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -177,7 +179,7 @@ export default function ComplexStickerTutorialScreen({
           onPress={onClose}
         >
           <Text style={styles.backTxt}>
-            戻る
+            {t('common.back')}
           </Text>
         </AnimatedPressable>
 
@@ -188,7 +190,7 @@ export default function ComplexStickerTutorialScreen({
           onPress={()=>goTo(currentIndex-1)}
         >
           <Text style={styles.backTxt}>
-            戻る
+            {t('common.back')}
           </Text>
         </AnimatedPressable>
 
@@ -222,7 +224,7 @@ export default function ComplexStickerTutorialScreen({
       >
 
         <Text style={styles.nextTxt}>
-          {isLast ? '完了':'次へ'}
+          {isLast ? t('common.done') : t('common.next')}
         </Text>
 
       </AnimatedPressable>

@@ -25,6 +25,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import SpeechBubble from './SpeechBubble';
 import TouchIndicator from './TouchIndicator';
 import { shared, COLORS, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from './shared';
+import { useT } from '../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 const CYCLE_MS = 12000; // ゆっくり(間込み)
@@ -44,11 +45,11 @@ const SELECTED_CELL = 1;
 const CELL_TINTS = ['#FFD9C2', '#C2E0FF', '#D6F5DD', '#FFE3F0', '#E5DBFF', '#FFF2C2'];
 const GRID_GUTTER = 6;
 
-const CAPTION_A = '「画像を選んで始める」をタップ';
-const CAPTION_B = '背景を透過したい画像を選ぼう！';
+// 文言は描画時に t() で解決する（下の useT 参照）。
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function OnboardingStep1({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
   const [cellSize, setCellSize] = useState(0);
 
@@ -145,7 +146,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
       {/* ── 実画面の枠(ホーム空状態の再現)。下キャプションぶん上へスライド ── */}
       <Animated.View style={[shared.frame, frameStyle]}>
         <View style={s.titleBar}>
-          <Text style={s.title}>スタンプ抜き</Text>
+          <Text style={s.title}>{t('app.name')}</Text>
           <Icon name="auto-fix-high" size={20} color={COLORS.blue} />
         </View>
 
@@ -153,14 +154,14 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
           <View style={s.emptyIconWrap}>
             <Icon name="auto-fix-high" size={40} color={COLORS.blue} />
           </View>
-          <Text style={s.emptyTitle}>イラストシートからキャラを切り出す</Text>
-          <Text style={s.emptyDesc}>1枚選ぶだけで自動で透過。</Text>
+          <Text style={s.emptyTitle}>{t('onboarding.step1.tagline')}</Text>
+          <Text style={s.emptyDesc}>{t('onboarding.step1.lead')}</Text>
 
           <View style={s.hints}>
-            {['PNG・JPEG・HEIC に対応', '背景を自動で透過処理', '透過 PNG で保存'].map(t => (
-              <View key={t} style={s.hintRow}>
+            {[t('home.features.formats'), t('home.features.autoRemove'), t('onboarding.step1.savePng')].map(feature => (
+              <View key={feature} style={s.hintRow}>
                 <Icon name="check-circle" size={15} color={COLORS.blue} />
-                <Text style={s.hintTxt}>{t}</Text>
+                <Text style={s.hintTxt}>{feature}</Text>
               </View>
             ))}
           </View>
@@ -168,7 +169,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
 
         {/* 下部CTA */}
         <Animated.View style={[s.cta, ctaStyle]}>
-          <Text style={s.ctaTxt}>画像を選んで始める</Text>
+          <Text style={s.ctaTxt}>{t('onboarding.step1.pick')}</Text>
           <TouchIndicator progress={phase} window={[0.34, 0.46]} />
         </Animated.View>
 
@@ -179,9 +180,9 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
         <Animated.View style={[s.modal, modalStyle]}>
           <View style={s.grabber} />
           <View style={s.modalHeader}>
-            <Text style={s.modalCancel}>キャンセル</Text>
-            <Text style={s.modalTitle}>写真を選択</Text>
-            <Text style={s.modalDone}>完了</Text>
+            <Text style={s.modalCancel}>{t('common.cancel')}</Text>
+            <Text style={s.modalTitle}>{t('onboarding.step1.photoPickerTitle')}</Text>
+            <Text style={s.modalDone}>{t('common.done')}</Text>
           </View>
           <View
             style={s.grid}
@@ -214,7 +215,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
         {/* A文(キャラあり=常時表示の本体) */}
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION_A}
+          text={t('onboarding.step1.caption')}
           direction="left"
           mascotStyle={mascotStyle}
           bubbleStyle={bubbleAStyle}
@@ -223,7 +224,7 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
         <View style={s.bubbleOverlay}>
           <SpeechBubble
             stepNumber={2}
-            text={CAPTION_B}
+            text={t('onboarding.step1.bubble')}
             direction="left"
             mascotStyle={s.hiddenMascot}
             bubbleStyle={bubbleBStyle}

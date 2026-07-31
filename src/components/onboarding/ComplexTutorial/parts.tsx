@@ -21,6 +21,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import BirdMascot from '../BirdMascot';
 import TouchIndicator from '../TouchIndicator';
 import { FRAME_W } from '../shared';
+import { useT } from '../../../i18n';
 
 // ── グリッドの寸法 ────────────────────────────────────────────────────────────
 // frame の内側(padding) を2列 + gap で割る。
@@ -86,11 +87,12 @@ export function EditorMock({
    */
   subject?: React.ReactNode;
 }) {
+  const { t } = useT();
   return (
     <>
       <View style={ui.header}>
-        <Text style={ui.headerSide}>戻る</Text>
-        <Text style={ui.headerTitle}>手動切り抜き</Text>
+        <Text style={ui.headerSide}>{t('common.back')}</Text>
+        <Text style={ui.headerTitle}>{t('complexTutorial.manualCrop')}</Text>
         <Icon name="settings" size={18} color="#007AFF" />
       </View>
 
@@ -116,7 +118,7 @@ export function EditorMock({
         <View style={ui.editorTool}><Icon name="redo" size={16} color="#8E8E93" /></View>
         <View style={ui.editorTool}><Icon name="delete" size={16} color="#8E8E93" /></View>
         <View style={ui.editorPreviewBtn}>
-          <Text style={ui.editorPreviewTxt}>プレビュー</Text>
+          <Text style={ui.editorPreviewTxt}>{t('common.preview')}</Text>
           {progress && previewTap && (
             <TouchIndicator progress={progress} window={previewTap} />
           )}

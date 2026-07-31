@@ -31,6 +31,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import ToolHint, { TOOL_ICONS } from './ui/ToolHint';
+import { useT } from '../i18n';
+import type { TKey } from '../i18n';
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
@@ -79,10 +81,12 @@ const LONG_PRESS_MS  = 500;        // 長押し判定時間(ms)
 
 export type Polygon = { id: number; points: [number, number][] };
 /** 現在のツールの説明。キャンバス下端に常時出して、何ができるかを示す。 */
-const TOOL_HINTS: Record<AppMode, { icon: string; title: string; desc: string }> = {
-  move:       { icon: TOOL_ICONS.move,       title: '移動・調整', desc: '四角をドラッグ／角をつまんで形を合わせる' },
-  draw:       { icon: TOOL_ICONS.draw,       title: '四角を追加', desc: '囲みたいキャラの上をタップ' },
-  eyedropper: { icon: TOOL_ICONS.eyedropper, title: 'スポイト',   desc: '消したい色をタップして透過' },
+// 文言そのものではなく i18n のキーを持つ。モジュール定数なのでここで t() を呼ぶと
+// 初期化時の言語で固定され、設定から言語を変えてもヒントだけ変わらなくなる。
+const TOOL_HINTS: Record<AppMode, { icon: string; titleKey: TKey; descKey: TKey }> = {
+  move:       { icon: TOOL_ICONS.move,       titleKey: 'editor.modeMove',       descKey: 'editor.modeMoveHint' },
+  draw:       { icon: TOOL_ICONS.draw,       titleKey: 'editor.modeAdd',        descKey: 'editor.modeAddHint' },
+  eyedropper: { icon: TOOL_ICONS.eyedropper, titleKey: 'editor.modeEyedropper', descKey: 'editor.modeEyedropperHint' },
 };
 
 /** スポイトのタップ波紋の半径(px)。 */
@@ -235,6 +239,7 @@ function distPointToSegment(
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
 export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+  const { t } = useT();
 
   const { settings } = useSettings();
 
@@ -494,23 +499,23 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     }
     setUncoveredRegions(regions); // 該当箇所を赤く見せた状態で聞く
     Alert.alert(
-      '囲まれていない部分があります',
-      '塗りつぶされていない部分は保存されません。このまま進めますか？',
+      t('editor.uncoveredTitle'),
+      t('editor.uncoveredMessage'),
       [
-        { text: '戻って直す', style: 'cancel', onPress: () => setUncoveredRegions([]) },
-        { text: 'このまま進める', onPress: () => { onPreview(polygons); setUncoveredRegions([]); } },
+        { text: t('editor.uncoveredBack'), style: 'cancel', onPress: () => setUncoveredRegions([]) },
+        { text: t('editor.uncoveredProceed'), onPress: () => { onPreview(polygons); setUncoveredRegions([]); } },
       ],
     );
   };
 
   const handleReset = () => {
     Alert.alert(
-      '編集をリセット',
-      'ポリゴンを消し、自動の背景除去とスポイトも取り消して元の画像に戻します。\nこの操作は取り消せません。',
+      t('editor.resetTitle'),
+      t('editor.resetMessage'),
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'リセット',
+          text: t('common.reset'),
           style: 'destructive',
           onPress: () => {
             onResetEditsRef.current?.(); // 画像の巻き戻しは親が行う
@@ -1141,7 +1146,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // ── レンダー ──────────────────────────────────────────────────────────────
 
   if (!skImage) {
-    return <View style={styles.root}><Text style={styles.error}>画像の読み込みに失敗しました</Text></View>;
+    return <View style={styles.root}><Text style={styles.error}>{t('editor.loadFailed')}</Text></View>;
   }
 
   const canPreview = polygons.length > 0;
@@ -1150,9 +1155,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const header = (
     <AppHeader
-      title="範囲を調整"
+      title={t('editor.title')}
       onBack={() => onBack(polygons)}
-      backLabel="戻る"
+      backLabel={t('common.back')}
       right={
         <HeaderActions
           showOriginalImage={!!originalImageUri}
@@ -1300,16 +1305,20 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         {/* 現在のツールの説明。常時出す。
             アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
             画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。*/}
-        <ToolHint {...TOOL_HINTS[appMode]} />
+        <ToolHint
+          icon={TOOL_HINTS[appMode].icon}
+          title={t(TOOL_HINTS[appMode].titleKey)}
+          desc={t(TOOL_HINTS[appMode].descKey)}
+        />
 
         {/* ── フローティング上部: 下地切替 ── */}
         <View style={styles.floatingTop} pointerEvents="box-none">
           <View style={styles.bgSegmented}>
             {([
               // 'gray' は廃止（市松・白・黒で用は足りるため）。設定の「背景色」も同じ3択。
-              { mode: 'checker', label: '市松' },
-              { mode: 'white',   label: '白'   },
-              { mode: 'black',   label: '黒'   },
+              { mode: 'checker', label: t('colors.checker') },
+              { mode: 'white',   label: t('colors.white') },
+              { mode: 'black',   label: t('colors.black') },
             ] as const).map(({ mode, label }) => (
               <AnimatedPressable
                 key={mode}
@@ -1407,7 +1416,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           pressedScale={0.96}
         >
           <Icon name="preview" size={20} color="#FFF" />
-          <Text style={styles.exportBtnTxt}>プレビュー</Text>
+          <Text style={styles.exportBtnTxt}>{t('common.preview')}</Text>
           {polygons.length > 0 && (
             <View style={styles.exportBadge}>
               <Text style={styles.exportBadgeTxt}>{polygons.length}</Text>

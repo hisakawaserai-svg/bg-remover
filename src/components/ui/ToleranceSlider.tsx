@@ -14,6 +14,8 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
+import { useT } from '../../i18n';
+import type { TKey } from '../../i18n';
 import {
   useSharedValue,
   withTiming,
@@ -25,12 +27,17 @@ import { colors, radius, shadow, spacing, typography } from './theme';
 // 弱/中/強のスナップ点。値とラベルを1箇所で対応管理する（将来ズレないように）。
 interface Snap {
   value: number;
-  label: string;
+  /**
+   * 文言そのものではなく i18n のキーを持つ。
+   * SNAPS はモジュール定数なのでここで t() を呼ぶと初期化時の言語で固定されてしまい、
+   * 設定から言語を変えても目盛りだけ元の言語のまま残る。描画時に解決する。
+   */
+  labelKey: TKey;
 }
 const SNAPS: Snap[] = [
-  { value: 15, label: '粗い' },
-  { value: 30, label: '中' },
-  { value: 50, label: '細かい' },
+  { value: 15, labelKey: 'granularity.coarse' },
+  { value: 30, labelKey: 'granularity.medium' },
+  { value: 50, labelKey: 'granularity.fine' },
 ];
 
 // Slider のつまみ半径ぶん、トラック両端は内側にオフセットしてつまみが移動する。
@@ -68,6 +75,7 @@ export default function ToleranceSlider({
   showLabel = true,
   bare = false,
 }: Props) {
+  const { t } = useT();
   // つまみ位置の表示用。スナップ時はここをアニメで動かす（親の値とは別管理）。
   const [displayValue, setDisplayValue] = useState(value);
   // 直近で吸い付いたスナップ値（目盛り強調用）。null = 吸い付いていない。
@@ -126,8 +134,8 @@ export default function ToleranceSlider({
     <View style={bare ? styles.wrapBare : styles.wrap}>
       {showLabel && (
         <View style={styles.titleRow}>
-          <Text style={styles.label}>分割の細かさ</Text>
-          <Text style={styles.hint}>合体するなら細かく</Text>
+          <Text style={styles.label}>{t('granularity.label')}</Text>
+          <Text style={styles.hint}>{t('granularity.hint')}</Text>
         </View>
       )}
 
@@ -162,16 +170,23 @@ export default function ToleranceSlider({
       {/* ラベルもスナップ点の実値の比率位置に置く（吸い付く点の真下）。 */}
       <View style={styles.labelLayer}>
         {snaps.map(s => (
-          <Text
+          // 幅0のアンカーを目盛りの真上に置き、その中で中央揃えする。
+          // 以前は Text を直接 left:% に置いて translateX(-8) で寄せていたが、
+          // -8 は日本語2文字ぶんの決め打ちで、英語(Coarse/Medium/Fine)では
+          // 中心がずれて隣のラベルとぶつかっていた。
+          // 幅0＋alignItems:'center' なら文字数に関係なく中心が合う。
+          <View
             key={s.value}
-            style={[
-              styles.stepLabel,
-              { left: `${pct(s.value)}%` },
-              activeSnap === s.value && styles.stepLabelActive,
-            ]}
+            style={[styles.stepLabelAnchor, { left: `${pct(s.value)}%` }]}
+            pointerEvents="none"
           >
-            {s.label}
-          </Text>
+            <Text
+              numberOfLines={1}
+              style={[styles.stepLabel, activeSnap === s.value && styles.stepLabelActive]}
+            >
+              {t(s.labelKey)}
+            </Text>
+          </View>
         ))}
       </View>
     </View>
@@ -242,17 +257,20 @@ const styles = StyleSheet.create({
   },
   labelLayer: {
     position: 'relative',
-    height: 16,
+    height: 18,
     marginHorizontal: THUMB_INSET,
     marginTop: -spacing.xs,
   },
+  // 目盛りの真上に置く幅0のアンカー。子は中央から左右へ均等にはみ出す。
+  stepLabelAnchor: {
+    position: 'absolute',
+    width: 0,
+    alignItems: 'center',
+  },
   stepLabel: {
     ...typography.caption,
-    position: 'absolute',
     color: colors.secondary,
-    transform: [{ translateX: -8 }], // ラベル幅の半分ぶん左へ寄せて中央合わせ
     textAlign: 'center',
-    minWidth: 16,
   },
   stepLabelActive: {
     color: colors.accent,

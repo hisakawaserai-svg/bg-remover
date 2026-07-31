@@ -39,6 +39,8 @@ import SpeechBubble from '../SpeechBubble';
 import TouchIndicator from '../TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '../shared';
 import { Cell, EditorMock, BIRD, ui } from './parts';
+import { useT } from '../../../i18n';
+import { ALBUM_ID } from '../../../imaging';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // 囲む動作 + 保存まで見せるので長め。
@@ -70,9 +72,7 @@ const HANDLE_R = 5;
 const FINGER_R = 7;
 const BOX_SW = 2.5;
 
-const CAPTION_A = '角を動かして形を合わせます';                // フェーズA(上)
-const CAPTION_C = 'あとは「保存する」だけ';                    // フェーズC(下)
-const CAPTION_D = '複雑なシートもきれいに切り抜けます';         // フェーズD(下)
+// 文言は描画時に t() で解決する。
 
 // ── タイムライン ──────────────────────────────────────────────────────────────
 // [0.02,0.26] A喋り / [0.04,0.10] タップ / [0.08,0.14] 四角出現 / [0.14,0.18] ポーズ
@@ -102,6 +102,7 @@ function lerp(t: number, from: number, to: number) {
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function FinishAnimation({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
 
   useEffect(() => {
@@ -287,7 +288,7 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION_A}
+          text={t('complexTutorial.finish.caption')}
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
@@ -305,16 +306,16 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
         {/* ── 層2: 分割結果画面(仕上がり) ── */}
         <Animated.View style={[StyleSheet.absoluteFill, resultLayerStyle]}>
           <View style={ui.header}>
-            <Text style={ui.headerSide}>戻る</Text>
-            <Text style={ui.headerTitle}>分割結果</Text>
+            <Text style={ui.headerSide}>{t('common.back')}</Text>
+            <Text style={ui.headerTitle}>{t('result.title')}</Text>
             <Icon name="settings" size={18} color="#007AFF" />
           </View>
 
           <View style={ui.body}>
             {/* 合体したので4枚→3枚になっている */}
             <View style={ui.sectionRow}>
-              <Text style={ui.sectionLabel}>カット後（3枚）</Text>
-              <Text style={ui.sectionHint}>長押しで選択・合体</Text>
+              <Text style={ui.sectionLabel}>{t('onboarding.cutsLabel', { count: 3 })}</Text>
+              <Text style={ui.sectionHint}>{t('result.longPressHint')}</Text>
             </View>
 
             {/* 上段: 綺麗に切れている2枚 */}
@@ -345,10 +346,10 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
             <View style={ui.actionRow}>
               <View style={ui.actionBtn}>
                 <Icon name="refresh" size={16} color="#007AFF" />
-                <Text style={ui.actionBtnTxt}>リセット</Text>
+                <Text style={ui.actionBtnTxt}>{t('common.reset')}</Text>
               </View>
               <Animated.View style={[ui.saveBtn, saveBtnStyle]}>
-                <Text style={ui.primaryBtnTxt}>保存する</Text>
+                <Text style={ui.primaryBtnTxt}>{t('common.save')}</Text>
                 {/* タップ表現: 保存ボタンを押す */}
                 <TouchIndicator progress={phase} window={SAVE_TAP} />
               </Animated.View>
@@ -361,8 +362,8 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
               <Icon name="check" size={30} color="#FFF" />
             </Animated.View>
             {/* 文言は実際の SaveCompleteScreen に合わせる */}
-            <Text style={s.savedTxt}>3枚 保存しました</Text>
-            <Text style={s.savedSub}>「スタンプ抜き」アルバム</Text>
+            <Text style={s.savedTxt}>{t('saveComplete.savedCount', { count: 3 })}</Text>
+            <Text style={s.savedSub}>{t('saveComplete.albumSuffix', { album: ALBUM_ID })}</Text>
           </Animated.View>
         </Animated.View>
       </Animated.View>
@@ -371,7 +372,7 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={2}
-          text={CAPTION_C}
+          text={t('complexTutorial.finish.bubble')}
           direction="left"
           mascotStyle={mascotCStyle}
           bubbleStyle={bubbleCStyle}
@@ -380,7 +381,7 @@ export default function FinishAnimation({ active = true }: { active?: boolean })
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={3}
-          text={CAPTION_D}
+          text={t('complexTutorial.finish.closing')}
           direction="left"
           mascotStyle={mascotDStyle}
           bubbleStyle={bubbleDStyle}

@@ -29,6 +29,7 @@ import BirdMascot from './BirdMascot';
 import SpeechBubble from './SpeechBubble';
 import TouchIndicator from './TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from './shared';
+import { useT } from '../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 const CYCLE_MS = 11000; // ゆっくり(間込み)
@@ -40,11 +41,11 @@ const CUTS = [
 ] as const;
 
 // 進行に合わせて差し替えるキャプション文言(後で調整しやすいよう定数化)
-const CAPTION_A = '分割されたカットを確認しよう！';   // フェーズA(下に表示)
-const CAPTION_B = 'OKなら「保存する」をタップ';   // フェーズB(上に表示)
+// 文言は描画時に t() で解決する。
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function OnboardingStep3({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
 
   // active(表示中)の時だけ頭出し再生。非表示では停止して進行を0へ戻す。
@@ -130,7 +131,7 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION_A}
+          text={t('onboarding.step3.caption')}
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
@@ -141,8 +142,8 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
       <Animated.View style={[shared.frame, frameStyle]}>
         {/* ヘッダー(戻る / 分割結果 / 画像・ホーム・設定) */}
         <View style={s.header}>
-          <Text style={s.headerSide}>戻る</Text>
-          <Text style={s.headerTitle}>分割結果</Text>
+          <Text style={s.headerSide}>{t('common.back')}</Text>
+          <Text style={s.headerTitle}>{t('result.title')}</Text>
           <View style={s.headerIcons}>
             <Icon name="image" size={18} color="#007AFF" />
             <Icon name="home" size={18} color="#007AFF" />
@@ -153,8 +154,8 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
         <View style={s.body}>
           {/* セクション見出し + ヒント */}
           <View style={s.sectionRow}>
-            <Text style={s.sectionLabel}>カット後（2枚）</Text>
-            <Text style={s.sectionHint}>長押しで選択・合体</Text>
+            <Text style={s.sectionLabel}>{t('onboarding.cutsLabel', { count: 2 })}</Text>
+            <Text style={s.sectionHint}>{t('result.longPressHint')}</Text>
           </View>
 
           {/* カット2枚(day/night・番号バッジ) */}
@@ -173,18 +174,18 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
           <View style={s.actionRow}>
             <View style={s.actionBtn}>
               <Icon name="refresh" size={16} color="#007AFF" />
-              <Text style={s.actionTxt}>リセット</Text>
+              <Text style={s.actionTxt}>{t('common.reset')}</Text>
             </View>
             <View style={s.actionDivider} />
             <View style={s.actionBtn}>
               <Icon name="edit" size={16} color="#007AFF" />
-              <Text style={s.actionTxt}>手動分割</Text>
+              <Text style={s.actionTxt}>{t('result.manualSplit')}</Text>
             </View>
           </View>
 
           {/* 保存する(押下スケール + TouchIndicator) */}
           <Animated.View style={[s.saveBtn, saveStyle]}>
-            <Text style={s.saveTxt}>保存する</Text>
+            <Text style={s.saveTxt}>{t('common.save')}</Text>
             {/* タップ表現: フェーズBで保存ボタンを押す */}
             <TouchIndicator progress={phase} window={[0.74, 0.88]} />
           </Animated.View>
@@ -195,7 +196,7 @@ export default function OnboardingStep3({ active = true }: { active?: boolean })
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={2}
-          text={CAPTION_B}
+          text={t('onboarding.step3.bubble')}
           direction="left"
           mascotStyle={mascotBStyle}
           bubbleStyle={bubbleBStyle}

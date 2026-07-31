@@ -36,6 +36,8 @@ import BirdMascot from '../BirdMascot';
 import SpeechBubble from '../SpeechBubble';
 import TouchIndicator from '../TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '../shared';
+import { useT } from '../../../i18n';
+import type { TKey } from '../../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // OnboardingStep2 と同じくゆっくり(間込み)。
@@ -47,18 +49,18 @@ const BIRD = 64;
 
 // 細かさスライダーのスナップラベル(粗い/中/細かい)。位置は簡略のため等間隔。
 const STRENGTHS = [
-  { label: '粗い', pct: 25 },
-  { label: '中', pct: 50 },
-  { label: '細かい', pct: 75 },
+  { labelKey: 'granularity.coarse' as TKey, pct: 25 },
+  { labelKey: 'granularity.medium' as TKey, pct: 50 },
+  { labelKey: 'granularity.fine' as TKey, pct: 75 },
 ] as const;
 const STRENGTH_ON = 1; // つまみの位置(中)
 
 // 進行に合わせて差し替えるキャプション文言(後で調整しやすいよう定数化)
-const CAPTION_A = '自動分割は全段を同じ線で切ります';      // フェーズA(上に表示)
-const CAPTION_C = 'このまま「分割」をタップすると…';        // フェーズC(下に表示)
+// 文言は描画時に t() で解決する。
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function AutoSplitAnimation({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
 
   // active(表示中)の時だけ頭出し再生。非表示では停止して進行を0へ戻す。
@@ -154,7 +156,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION_A}
+          text={t('complexTutorial.autoSplit.caption')}
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
@@ -165,8 +167,8 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
       <Animated.View style={[shared.frame, frameStyle]}>
         {/* ヘッダー(戻る / 分割設定 / 設定) */}
         <View style={s.header}>
-          <Text style={s.headerSide}>戻る</Text>
-          <Text style={s.headerTitle}>分割設定</Text>
+          <Text style={s.headerSide}>{t('common.back')}</Text>
+          <Text style={s.headerTitle}>{t('setup.title')}</Text>
           <Icon name="settings" size={18} color="#007AFF" />
         </View>
 
@@ -174,10 +176,10 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
           {/* タブ(自動分割[選択] / 範囲を調整) */}
           <View style={s.tabRow}>
             <View style={[s.tab, s.tabOn]}>
-              <Text style={[s.tabTxt, s.tabTxtOn]}>自動分割</Text>
+              <Text style={[s.tabTxt, s.tabTxtOn]}>{t('setup.modeAuto')}</Text>
             </View>
             <View style={s.tab}>
-              <Text style={s.tabTxt}>範囲を調整</Text>
+              <Text style={s.tabTxt}>{t('setup.modeManual')}</Text>
             </View>
           </View>
 
@@ -205,14 +207,14 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
 
             {/* 「4個に分かれます」バッジ(右上・薄青ピル) */}
             <Animated.View style={[s.badge, badgeStyle]} pointerEvents="none">
-              <Text style={s.badgeTxt}>4個に分かれます</Text>
+              <Text style={s.badgeTxt}>{t('setup.splitsInto', { count: 4 })}</Text>
             </Animated.View>
           </View>
 
           {/* 行数(段数) / 列数ステッパー(静的表示) */}
           <View style={s.card}>
             <View style={s.cardRow}>
-              <Text style={s.rowLabel}>行数（段数）</Text>
+              <Text style={s.rowLabel}>{t('setup.rows')}</Text>
               <View style={s.stepper}>
                 <View style={s.stepBtn}><Text style={s.stepTxt}>−</Text></View>
                 <Text style={s.stepVal}>2</Text>
@@ -221,7 +223,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
             </View>
             <View style={s.cardDivider} />
             <View style={s.cardRow}>
-              <Text style={s.rowLabel}>列数</Text>
+              <Text style={s.rowLabel}>{t('setup.columns')}</Text>
               <View style={s.stepper}>
                 <View style={s.stepBtn}><Text style={s.stepTxt}>−</Text></View>
                 <Text style={s.stepVal}>2</Text>
@@ -232,21 +234,21 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
 
           {/* 分割の細かさ(連続スライダー風・簡略表示。STEP1では操作しない) */}
           <View style={s.sliderCard}>
-            <Text style={s.rowLabel}>分割の細かさ</Text>
+            <Text style={s.rowLabel}>{t('granularity.label')}</Text>
             <View style={s.track}>
               <View style={[s.trackFill, { width: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
               {STRENGTHS.map(snp => (
-                <View key={snp.label} style={[s.tick, { left: `${snp.pct}%` }]} />
+                <View key={snp.labelKey} style={[s.tick, { left: `${snp.pct}%` }]} />
               ))}
               <View style={[s.thumb, { left: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
             </View>
             <View style={s.labelRow}>
               {STRENGTHS.map((snp, i) => (
                 <Text
-                  key={snp.label}
+                  key={snp.labelKey}
                   style={[s.snapTxt, { left: `${snp.pct}%` }, i === STRENGTH_ON && s.snapTxtOn]}
                 >
-                  {snp.label}
+                  {t(snp.labelKey)}
                 </Text>
               ))}
             </View>
@@ -254,7 +256,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
 
           {/* 「この行数で分割」ボタン(押下スケール) */}
           <Animated.View style={[s.cta, ctaStyle]}>
-            <Text style={s.ctaTxt}>この行数で分割</Text>
+            <Text style={s.ctaTxt}>{t('setup.splitWithRows')}</Text>
             {/* タップ表現: フェーズC末でボタンを押す */}
             <TouchIndicator progress={phase} window={[0.80, 0.94]} />
           </Animated.View>
@@ -265,7 +267,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={2}
-          text={CAPTION_C}
+          text={t('complexTutorial.autoSplit.bubble')}
           direction="left"
           mascotStyle={mascotCStyle}
           bubbleStyle={bubbleCStyle}

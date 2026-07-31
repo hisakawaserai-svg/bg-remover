@@ -13,6 +13,7 @@
  * 保存経路（doAutoExport / PreviewScreen）で共通に使う。
  */
 import { Platform } from 'react-native';
+import { t } from '../i18n';
 
 /** 写真ライブラリの権限まわりが原因と思われるエラーか。 */
 function looksLikePhotoPermissionError(msg: string): boolean {
@@ -31,21 +32,19 @@ export function describeSaveError(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e ?? '');
 
   if (looksLikePhotoPermissionError(raw)) {
-    const path = Platform.OS === 'ios'
-      ? '設定 → プライバシーとセキュリティ → 写真 → このアプリ'
-      : '設定 → アプリ → このアプリ → 権限 → 写真と動画';
-    const choice = Platform.OS === 'ios' ? '「すべての写真」' : '「許可」';
+    const isIos = Platform.OS === 'ios';
+    const path = t(isIos ? 'saveError.pathIos' : 'saveError.pathAndroid');
+    const choice = t(isIos ? 'saveError.choiceIos' : 'saveError.choiceAndroid');
     return [
-      '写真アルバムに保存できませんでした。',
+      t('saveError.headline'),
       '',
-      `写真へのアクセスが制限されている可能性があります。${path} を開き、${choice} を選んでください。`,
-      Platform.OS === 'ios'
-        ? '※「選択した写真のみ」だと、アルバムへの保存ができません。'
-        : '',
+      t('saveError.guide', { path, choice }),
+      // 「選択した写真のみ」は iOS 固有の状態なので、Android では出さない。
+      isIos ? t('saveError.limitedNote') : '',
       '',
-      `（詳細: ${raw}）`,
+      t('saveError.detail', { raw }),
     ].filter(Boolean).join('\n');
   }
 
-  return raw || '不明なエラー';
+  return raw || t('common.unknownError');
 }

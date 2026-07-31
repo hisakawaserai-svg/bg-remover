@@ -39,6 +39,7 @@ import SpeechBubble from '../SpeechBubble';
 import TouchIndicator from '../TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '../shared';
 import { EditorMock, BODY_PAD, GRID_GAP, INNER_W, CELL, BIRD, ui } from './parts';
+import { useT } from '../../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // 長押し→選択→合体→編集へ、と手数が多いので STEP1 より長め。
@@ -47,9 +48,7 @@ export const CYCLE_MS = 17000;
 
 // グリッドの寸法・セル・編集画面モックは parts.tsx で STEP3 と共有している。
 
-const CAPTION_A = '下の2枚は1匹が割れています';                 // フェーズA(上)
-const CAPTION_C = '長押しで選んで、もう1枚をタップ→「合体」';    // フェーズC(下)
-const CAPTION_D = 'タップすれば1枚だけ編集できます';             // フェーズD(下)
+// 文言は描画時に t() で解決する。
 
 // ── タイムライン ──────────────────────────────────────────────────────────────
 // A喋り[0.02,0.24] → 長押し[0.18,0.30] → 選択モード[0.30] → C喋り[0.32,0.62]
@@ -76,6 +75,7 @@ const RESET_START = 0.97;      // ループ先頭へ戻すための片付け
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 export default function MergeCellsAnimation({ active = true }: { active?: boolean }) {
+  const { t } = useT();
   const phase = useSharedValue(0);
 
   useEffect(() => {
@@ -244,7 +244,7 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
-          text={CAPTION_A}
+          text={t('complexTutorial.merge.caption')}
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
@@ -266,20 +266,20 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
         <Animated.View style={[StyleSheet.absoluteFill, resultLayerStyle]}>
         {/* ヘッダー(戻る / 分割結果 / 設定) */}
         <View style={s.header}>
-          <Text style={s.headerSide}>戻る</Text>
-          <Text style={s.headerTitle}>分割結果</Text>
+          <Text style={s.headerSide}>{t('common.back')}</Text>
+          <Text style={s.headerTitle}>{t('result.title')}</Text>
           <Icon name="settings" size={18} color="#007AFF" />
         </View>
 
         <View style={s.body}>
           {/* セクション見出し: 左=枚数 / 右=ヒント(選択モードで文言が変わる) */}
           <View style={s.sectionRow}>
-            <Text style={s.sectionLabel}>カット後（4枚）</Text>
+            <Text style={s.sectionLabel}>{t('onboarding.cutsLabel', { count: 4 })}</Text>
             <View>
-              <Animated.Text style={[s.sectionHint, hintNormalStyle]}>長押しで選択・合体</Animated.Text>
+              <Animated.Text style={[s.sectionHint, hintNormalStyle]}>{t('result.longPressHint')}</Animated.Text>
               {/* 同じ位置に重ねて入れ替える(レイアウトを動かさない) */}
               <Animated.Text style={[s.sectionHint, s.sectionHintOverlay, hintSelectStyle]}>
-                2枚選択中
+                {t('result.selectedCount', { count: 2 })}
               </Animated.Text>
             </View>
           </View>
@@ -347,10 +347,10 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
               <View style={ui.actionRow}>
                 <View style={ui.actionBtn}>
                   <Icon name="refresh" size={16} color="#007AFF" />
-                  <Text style={ui.actionBtnTxt}>リセット</Text>
+                  <Text style={ui.actionBtnTxt}>{t('common.reset')}</Text>
                 </View>
                 <View style={ui.saveBtn}>
-                  <Text style={ui.primaryBtnTxt}>保存する</Text>
+                  <Text style={ui.primaryBtnTxt}>{t('common.save')}</Text>
                 </View>
               </View>
             </Animated.View>
@@ -359,12 +359,12 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
             <Animated.View style={[s.footerLayer, footerSelectStyle]}>
               <Animated.View style={[ui.primaryBtn, mergeBtnStyle]}>
                 <Icon name="merge-type" size={18} color="#FFF" style={ui.mergeIcon} />
-                <Text style={ui.primaryBtnTxt}>2枚を合体する</Text>
+                <Text style={ui.primaryBtnTxt}>{t('result.mergeCount', { count: 2 })}</Text>
                 {/* タップ表現: 合体ボタンを押す */}
                 <TouchIndicator progress={phase} window={MERGE_TAP} />
               </Animated.View>
               <View style={ui.cancelBtn}>
-                <Text style={ui.cancelBtnTxt}>キャンセル</Text>
+                <Text style={ui.cancelBtnTxt}>{t('common.cancel')}</Text>
               </View>
             </Animated.View>
           </View>
@@ -376,7 +376,7 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={2}
-          text={CAPTION_C}
+          text={t('complexTutorial.merge.bubble')}
           direction="left"
           mascotStyle={mascotCStyle}
           bubbleStyle={bubbleCStyle}
@@ -385,7 +385,7 @@ export default function MergeCellsAnimation({ active = true }: { active?: boolea
       <View style={shared.captionBottom}>
         <SpeechBubble
           stepNumber={3}
-          text={CAPTION_D}
+          text={t('complexTutorial.merge.bubble2')}
           direction="left"
           mascotStyle={mascotDStyle}
           bubbleStyle={bubbleDStyle}

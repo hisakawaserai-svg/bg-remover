@@ -21,6 +21,7 @@ import React, {
 } from 'react';
 import { loadSettings, saveSettings, DEFAULTS } from './store';
 import type { AppSettings } from './store';
+import { setLocale } from '../i18n';
 
 // ── Context の型 ──────────────────────────────────────────────────────────────
 
@@ -63,6 +64,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // loadSettings は失敗時も DEFAULTS を返すため、catch は不要。
   useEffect(() => {
     void loadSettings().then(s => {
+      // 保存済みの言語を i18n へ反映してから state を更新する。
+      // i18n は React の外にモジュール変数で「現在の言語」を持っており、
+      // t() を呼ぶ側（imaging 層の throw など）はフックを経由しないため、
+      // 設定を読んだこの時点で一度だけ橋渡ししてやる必要がある。
+      setLocale(s.language);
       setSettings(s);
       setLoaded(true);
     });
@@ -73,6 +79,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // state 更新を先に行うことで UI のレスポンスを即時に保ち、
     // AsyncStorage の非同期書き込みが完了するのを待たせない。
     const next = { ...settings, ...partial };
+    // 言語が変わった時は i18n 側にも伝える。setLocale は同じ言語なら何もしないので、
+    // 言語以外の設定変更でここを通っても再描画は起きない。
+    setLocale(next.language);
     setSettings(next);
     await saveSettings(next);
   }, [settings]);

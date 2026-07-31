@@ -14,6 +14,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { LanguageSetting } from '../i18n';
 
 const STORAGE_KEY = 'app_settings';
 
@@ -54,6 +55,12 @@ export interface AppSettings {
   skipPolygonTutorial: boolean;
   /** 全体オンボーディングを表示済みか（false = 未表示 = 初回） */
   hasSeenOnboarding: boolean;
+  /**
+   * 表示言語。'auto' は端末の言語に追従する。
+   * 既定を 'auto' にしているので、既存ユーザーの保存済み設定にこのキーが
+   * 無くても（下の loadSettings のマージで）端末の言語で表示される。
+   */
+  language: LanguageSetting;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -71,6 +78,7 @@ export const DEFAULTS: AppSettings = {
   autoDeleteOnExport: true,
   skipPolygonTutorial: false,
   hasSeenOnboarding: false,
+  language: 'auto',
 };
 
 /** 設定を読み込む。失敗時はデフォルト値を返す（UI がクラッシュしないよう）。*/

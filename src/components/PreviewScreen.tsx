@@ -27,6 +27,7 @@ import { useThumbBg } from '../hooks/useThumbBg';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import { savePolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
+import { useT } from '../i18n';
 import { pointInPolygon } from '../imaging/maskPolygon';
 import type { RemoveBgResult } from '../imaging';
 import type { Polygon } from './PolygonEditor';
@@ -120,6 +121,7 @@ function buildThumbnail(
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
 export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
+  const { t } = useT();
   const bg = useThumbBg();
   // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
   const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
@@ -140,7 +142,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
   const handleSave = useCallback(async () => {
     const ok = await onRequestSave();
     if (!ok) {
-      Alert.alert('権限エラー', '写真への保存が拒否されました。');
+      Alert.alert(t('permission.errorTitle'), t('permission.saveDenied'));
       return;
     }
     setIsSaving(true);
@@ -150,17 +152,17 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
       onSave(count);
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
-      Alert.alert('保存エラー', describeSaveError(e));
+      Alert.alert(t('preview.saveErrorTitle'), describeSaveError(e));
     } finally {
       setIsSaving(false);
     }
-  }, [bgResult, polygons, onSave, onRequestSave]);
+  }, [bgResult, polygons, onSave, onRequestSave, t]);
 
   const header = (
     <AppHeader
-      title="プレビュー"
+      title={t('preview.title')}
       onBack={isSaving ? undefined : onBack}
-      backLabel="編集に戻る"
+      backLabel={t('preview.backToEdit')}
     />
   );
 
@@ -174,7 +176,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
         pressedScale={0.97}
       >
         <Text style={styles.saveBtnTxt}>
-          {isSaving ? '保存中...' : `保存する（${polygons.length}枚）`}
+          {isSaving ? t('common.saving') : t('preview.saveCount', { count: polygons.length })}
         </Text>
       </AnimatedPressable>
     </View>
@@ -189,14 +191,14 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
         ? (
           // ポリゴンが1件も無い場合: 生成中ではなく「対象なし」を明示
           <View style={styles.loading}>
-            <Text style={styles.loadingTxt}>書き出す対象がありません</Text>
+            <Text style={styles.loadingTxt}>{t('preview.nothingToExport')}</Text>
           </View>
         )
         : thumbs.length === 0
         ? (
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={IOS.blue} />
-            <Text style={styles.loadingTxt}>プレビューを生成中...</Text>
+            <Text style={styles.loadingTxt}>{t('loading.previewGenerating')}</Text>
           </View>
         )
         : (

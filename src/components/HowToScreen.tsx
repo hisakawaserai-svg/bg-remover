@@ -25,31 +25,22 @@ import AppHeader from './ui/AppHeader';
 import Card      from './ui/Card';
 import FadeInView from './ui/FadeInView';
 import { colors, spacing, typography, radius } from './ui/theme';
-import { ALBUM_NAME } from '../imaging';
+import { ALBUM_ID } from '../imaging';
+import { useT } from '../i18n';
+import type { TKey } from '../i18n';
 
 // ── ステップデータ ──────────────────────────────────────────────────────────
 // 内容を配列で持つことで、ステップ追加時に JSX を触らなくて済む。
 
-const STEPS = [
-  {
-    icon:  'add-photo-alternate',
-    title: 'STEP 1  画像を選ぶ',
-    body:  'ホーム画面の「画像を選択」からイラストシートを選びます。\n複数キャラが並んだ1枚の画像でOKです。',
-    note:  '対応形式：PNG・JPEG（JPG）・HEIC\n※その他の画像形式は正常に読み込めない場合があります。',
-  },
-  {
-    icon:  'tune',
-    title: 'STEP 2  分割モードを選ぶ',
-    body:  'セットアップ画面でモードを選びます。\n\n【自動分割】行数を確認・調整して「この行数で分割」。プレビューに分割線が表示されます。\n\n【範囲を調整】ポリゴンで各キャラを直接囲んで切り出します。自動がうまくいかないときに使います。',
-    note:  'まず自動を試してみてください。自動で大半は揃います。',
-  },
-  {
-    icon:  'check-circle-outline',
-    title: 'STEP 3  結果を確認・調整する',
-    body:  '分割結果を確認し、ズレや合体があれば調整します。\n\n• 合体している → 「戻る」で分割の細かさを上げて分割し直す\n• 隣のカットとまとめたい → カットを長押しして選択し「合体する」\n• 1枚だけ直したい → カットをタップしてポリゴン編集\n• 編集をやり直したい → 「リセット」で最初の分割結果に戻す\n• 全部やり直したい → 「手動分割」でポリゴンモードへ',
-    note:  `完璧でなくても「保存する」で透過PNGとして「${ALBUM_NAME}」アルバムに保存されます。\n段ごとに数が違う画像（例: 最後の段だけ列数が多い）は、自動分割が全段共通の線を使う都合で一部の段だけズレることがあります。その段のセルだけ「合体する」または「ポリゴン編集」で直してください。`,
-  },
-] as const;
+/**
+ * ステップの中身。文言そのものではなく i18n のキーを持ち、描画時に t() で解決する。
+ * モジュール定数のまま文言を埋めると、初期化時の言語で固定されてしまう。
+ */
+const STEPS: { icon: string; titleKey: TKey; bodyKey: TKey; noteKey: TKey }[] = [
+  { icon: 'add-photo-alternate',  titleKey: 'howto.step1Title', bodyKey: 'howto.step1Body', noteKey: 'howto.step1Note' },
+  { icon: 'tune',                 titleKey: 'howto.step2Title', bodyKey: 'howto.step2Body', noteKey: 'howto.step2Note' },
+  { icon: 'check-circle-outline', titleKey: 'howto.step3Title', bodyKey: 'howto.step3Body', noteKey: 'howto.step3Note' },
+];
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -70,6 +61,7 @@ interface Props {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutorial, mode = 'help', onStart }: Props) {
+  const { t } = useT();
   const isOnboarding = mode === 'onboarding';
 
   // stagger の起点delay。各ステップは STAGGER_INTERVAL ずつずれて登場する。
@@ -79,10 +71,10 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
   const header = (
     <FadeInView delay={0}>
       <AppHeader
-        title="使い方"
+        title={t('howto.title')}
         // help は「戻る」で呼び出し元へ戻る。onboarding は末尾CTAで前進するため非表示。
         onBack={isOnboarding ? undefined : onClose}
-        backLabel={isOnboarding ? undefined : '戻る'}
+        backLabel={isOnboarding ? undefined : t('common.back')}
       />
     </FadeInView>
   );
@@ -93,32 +85,30 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
       {/* ── リード文 ── delay=1段目 */}
       <FadeInView delay={STAGGER_INTERVAL * 1}>
         <View style={styles.lead}>
-          <Text style={styles.leadTxt}>
-            イラストシートの背景を除去し、キャラクターごとに切り出して透過PNGで保存するアプリです。まず自動で試し、うまくいかない部分だけ手動で直す、という流れで使います。
-          </Text>
+          <Text style={styles.leadTxt}>{t('howto.intro')}</Text>
         </View>
       </FadeInView>
 
       {/* ── ステップカード群 ── delay を STAGGER_INTERVAL ずつずらして順番登場 */}
       {STEPS.map((step, i) => (
         // i=0→delay=2段目, i=1→3段目, i=2→4段目
-        <FadeInView key={step.title} delay={STAGGER_INTERVAL * (i + 2)}>
+        <FadeInView key={step.titleKey} delay={STAGGER_INTERVAL * (i + 2)}>
           <Card style={styles.stepCard}>
             {/* アイコン + タイトル行 */}
             <View style={styles.stepHeader}>
               <View style={styles.iconWrap}>
                 <Icon name={step.icon} size={22} color={colors.accent} />
               </View>
-              <Text style={styles.stepTitle}>{step.title}</Text>
+              <Text style={styles.stepTitle}>{t(step.titleKey)}</Text>
             </View>
 
             {/* 本文 */}
-            <Text style={styles.stepBody}>{step.body}</Text>
+            <Text style={styles.stepBody}>{t(step.bodyKey)}</Text>
 
             {/* 補足ノート */}
             <View style={styles.noteRow}>
               <Icon name="lightbulb-outline" size={13} color={colors.secondary} />
-              <Text style={styles.noteTxt}>{step.note}</Text>
+              <Text style={styles.noteTxt}>{t(step.noteKey, { album: ALBUM_ID })}</Text>
             </View>
           </Card>
         </FadeInView>
@@ -132,10 +122,10 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
           <Icon name="grid-view" size={20} color={colors.accent}/>
           <View style={styles.tutorialText}>
             <Text style={styles.tutorialLabel}>
-              複雑な画像を分割する方法
+              {t('howto.complexTitle')}
             </Text>
             <Text style={styles.tutorialSub}>
-              合体したキャラクターを分ける手順
+              {t('howto.complexDescription')}
             </Text>
           </View>
           <Icon name="chevron-right" size={20}/>
@@ -162,8 +152,8 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
               <Icon name="gesture" size={20} color={colors.accent} />
             </View>
             <View style={styles.tutorialText}>
-              <Text style={styles.tutorialLabel}>範囲を調整の使い方</Text>
-              <Text style={styles.tutorialSub}>四角で囲む操作のアニメーション説明</Text>
+              <Text style={styles.tutorialLabel}>{t('howto.polygonTitle')}</Text>
+              <Text style={styles.tutorialSub}>{t('howto.polygonDescription')}</Text>
             </View>
             <Icon name="chevron-right" size={20} color={colors.secondary} />
           </AnimatedPressable>
@@ -175,11 +165,11 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
         <Card style={styles.tipsCard}>
           <View style={styles.tipsHeader}>
             <Icon name="tips-and-updates" size={16} color="#FF9500" />
-            <Text style={styles.tipsTitle}>きれいに抜くコツ</Text>
+            <Text style={styles.tipsTitle}>{t('howto.tipsTitle')}</Text>
           </View>
-          <TipRow text="白・薄グレーの単色背景イラストが最も綺麗に抜ける" />
-          <TipRow text="分割の細かさは「中」から始め、合体して分かれないなら「細かい」へ" />
-          <TipRow text="自動でどうしても揃わない場合は「手動分割」でポリゴン編集" />
+          <TipRow text={t('howto.tip1')} />
+          <TipRow text={t('howto.tip2')} />
+          <TipRow text={t('howto.tip3')} />
         </Card>
       </FadeInView>
 
@@ -188,13 +178,13 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
         <Card style={styles.cautionCard}>
           <View style={styles.tipsHeader}>
             <Icon name="info-outline" size={16} color={colors.secondary} />
-            <Text style={[styles.tipsTitle, { color: colors.secondary }]}>ご注意</Text>
+            <Text style={[styles.tipsTitle, { color: colors.secondary }]}>{t('howto.noticeTitle')}</Text>
           </View>
           {/* 「選択した写真のみ」だとアルバムへの保存が Photos 側で拒否され、
               書き出し時に PHPhotosErrorDomain エラーになる。実際に踏んだので明記する。 */}
-          <TipRow text="保存には写真への「フルアクセス」が必要です。「選択した写真のみ」だとアルバムに保存できません（設定 → プライバシーとセキュリティ → 写真）" />
-          <TipRow text="出力は透過PNGのみ（JPEG は透過を保持できないため）" />
-          <TipRow text="背景除去・分割の処理中はアプリを閉じないでください" />
+          <TipRow text={t('howto.notice1')} />
+          <TipRow text={t('howto.notice2')} />
+          <TipRow text={t('howto.notice3')} />
         </Card>
       </FadeInView>
 
@@ -202,7 +192,7 @@ export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutor
       {isOnboarding && (
         <FadeInView delay={STAGGER_INTERVAL * 8}>
           <AnimatedPressable style={styles.startBtn} onPress={() => onStart?.()} pressedScale={0.97}>
-            <Text style={styles.startBtnTxt}>はじめる</Text>
+            <Text style={styles.startBtnTxt}>{t('common.start')}</Text>
           </AnimatedPressable>
         </FadeInView>
       )}

@@ -40,7 +40,10 @@ export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
 export type { UncoveredRegion } from './maskPolygon';
 
 const TARGET_SIZE = 500;
-export const ALBUM_NAME = 'スタンプ抜き';
+// 写真アルバムの内部ID。定義は constants.ts（表示名と分離した理由もそこに書いてある）。
+// imaging からも参照できるよう再エクスポートする。
+export { ALBUM_ID } from '../constants';
+import { ALBUM_ID } from '../constants';
 
 // 元画像の永続保存先ディレクトリ（DocumentDirectory 配下）。
 export const SOURCE_DIR = `${RNFS.DocumentDirectoryPath}/sources`;
@@ -118,15 +121,15 @@ export async function saveCells(
     // 2) アルバム指定でフォトライブラリ/ギャラリーへ保存（iOS/Android共通）。
     await CameraRoll.saveAsset(`file://${tmpPath}`, {
       type: 'photo',
-      album: ALBUM_NAME,
+      album: ALBUM_ID,
     });
 
     // 3) 一時ファイルは掃除（保存はギャラリー側に残る）。
     await RNFS.unlink(tmpPath).catch(() => {});
   }
 
-  console.log(`[SAVED] ${bytesList.length} images → album "${ALBUM_NAME}"`);
-  return { count: bytesList.length, album: ALBUM_NAME };
+  console.log(`[SAVED] ${bytesList.length} images → album "${ALBUM_ID}"`);
+  return { count: bytesList.length, album: ALBUM_ID };
 }
 
 // ── PolygonEditor 向け保存ユーティリティ ──────────────────────────────────────
@@ -144,7 +147,7 @@ export function makeDateStr(): string {
 }
 
 /**
- * base64 PNG を一時ファイル経由で ALBUM_NAME アルバムに保存する。
+ * base64 PNG を一時ファイル経由で ALBUM_ID アルバムに保存する。
  * CameraRoll の呼び出しはここに集約し、PolygonEditor 側には持たせない。
  */
 export async function saveStickerPng(base64: string, filename: string): Promise<void> {
@@ -152,7 +155,7 @@ export async function saveStickerPng(base64: string, filename: string): Promise<
   // 1) キャッシュに一時 PNG を書き出す
   await RNFS.writeFile(tmpPath, base64, 'base64');
   // 2) ギャラリーのアルバムに保存
-  await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_NAME });
+  await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_ID });
   // 3) 一時ファイルを削除
   await RNFS.unlink(tmpPath).catch(() => {});
 }
@@ -252,13 +255,13 @@ export async function savePolygons(
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
     const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
     await RNFS.writeFile(tmpPath, bytesToBase64(bytes), 'base64');
-    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_NAME });
+    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_ID });
     await RNFS.unlink(tmpPath).catch(() => {});
     count++;
   }
 
-  console.log(`[SAVED] ${count} polygons → album "${ALBUM_NAME}"`);
-  return { count, album: ALBUM_NAME };
+  console.log(`[SAVED] ${count} polygons → album "${ALBUM_ID}"`);
+  return { count, album: ALBUM_ID };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,13 +282,13 @@ export async function saveSkImages(images: SkImage[]): Promise<SaveResult> {
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
     const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
     await RNFS.writeFile(tmpPath, bytesToBase64(bytes), 'base64');
-    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_NAME });
+    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album: ALBUM_ID });
     await RNFS.unlink(tmpPath).catch(() => {});
     count++;
   }
 
-  console.log(`[SAVED] ${count} images → album "${ALBUM_NAME}"`);
-  return { count, album: ALBUM_NAME };
+  console.log(`[SAVED] ${count} images → album "${ALBUM_ID}"`);
+  return { count, album: ALBUM_ID };
 }
 
 /**

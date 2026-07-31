@@ -24,10 +24,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import EmptyState from './ui/EmptyState';
-import { ALBUM_NAME } from '../imaging';
+import { ALBUM_ID } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
-import { APP_NAME } from '../constants';
+import { t, useT } from '../i18n';
 import AdBanner from '../ads/AdBanner';
 
 // ── 市松模様コンポーネント ────────────────────────────────────────────────────
@@ -96,7 +96,9 @@ function toDateKey(timestamp: number): string {
 
 function toDateLabel(dateKey: string): string {
   const [y, m, day] = dateKey.split('-');
-  return `${y}年${Number(m)}月${Number(day)}日`;
+  // 日付の並びは言語で変わる（日本語は年月日、英語は月/日/年）ので
+  // 組み立てそのものをカタログ側に持たせる。
+  return t('saved.dateFormat', { y, m: Number(m), d: Number(day) });
 }
 
 function buildSections(photos: Photo[], cols: number): DateSection[] {
@@ -129,6 +131,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
 export default function SavedScreen({ onClose }: Props) {
+  const { t } = useT();
   const { settings } = useSettings();
   const thumbBg = useThumbBg();
 
@@ -145,7 +148,7 @@ export default function SavedScreen({ onClose }: Props) {
     try {
       const result = await CameraRoll.getPhotos({
         first: 200,
-        groupName: ALBUM_NAME,
+        groupName: ALBUM_ID,
         assetType: 'Photos',
       });
       // timestamp も一緒に取得する。通し番号は取得順(新しい順)で付与。
@@ -179,9 +182,9 @@ export default function SavedScreen({ onClose }: Props) {
   // ── ヘッダー ──────────────────────────────────────────────────────────────
   const header = (
     <AppHeader
-      title={`保存先  ${loading ? '…' : `${photos.length} 枚`}`}
+      title={loading ? t('saved.titleLoading') : t('saved.titleCount', { count: photos.length })}
       onBack={onClose}
-      backLabel="戻る"
+      backLabel={t('common.back')}
       right={
         <AnimatedPressable onPress={fetchPhotos} style={styles.reloadBtn}>
           <Icon name="refresh" size={22} color={IOS.blue} />
@@ -241,8 +244,8 @@ export default function SavedScreen({ onClose }: Props) {
       ) : photos.length === 0 ? (
         <EmptyState
           icon={<Icon name="photo-library" size={56} color={IOS.secondary} />}
-          title="まだ書き出した画像はありません"
-          description={`「${APP_NAME}」で処理・保存した画像がここに表示されます`}
+          title={t('saved.empty')}
+          description={t('saved.emptyDescription', { app: t('app.name') })}
         />
       ) : (
         <SectionList

@@ -34,6 +34,7 @@ import CheckerboardBg from './ui/CheckerboardBg';
 import { useThumbBg } from '../hooks/useThumbBg';
 import type { Cell } from '../cellTypes';
 import type { BBox } from '../imaging';
+import { useT } from '../i18n';
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,7 @@ export default function ResultScreen({
   onEditCell,
   onMerge,
 }: Props) {
+  const { t } = useT();
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
 
@@ -312,15 +314,15 @@ export default function ResultScreen({
 
     if (warningIndexes.length > 0) {
       Alert.alert(
-        '確認',
-        `うまく分割できていないスタンプがあります。\n\n対象: ${warningIndexes.join('、')}番`,
+        t('result.confirmTitle'),
+        t('result.warningMessage', { targets: warningIndexes.join('、') }),
         [
           {
-            text: 'キャンセル',
+            text: t('common.cancel'),
             style: 'cancel',
           },
           {
-            text: '保存する',
+            text: t('common.save'),
             onPress: () => void executeSave(),
           },
         ],
@@ -404,9 +406,9 @@ export default function ResultScreen({
   // ── ヘッダー ──────────────────────────────────────────────────────────────
   const header = (
     <AppHeader
-      title="分割結果"
+      title={t('result.title')}
       onBack={onBack}
-      backLabel="戻る"
+      backLabel={t('common.back')}
       right={
         <HeaderActions
           showOriginalImage
@@ -438,8 +440,8 @@ export default function ResultScreen({
             <Text style={styles.sectionLabel}>カット後（{cells.length}枚）</Text>
             <Text style={styles.sectionHint}>
               {selectingMode
-                ? `${selectedIndices.size}枚選択中`
-                : '長押しで選択・合体'}
+                ? t('result.selectedCount', { count: selectedIndices.size })
+                : t('result.longPressHint')}
             </Text>
           </View>
 
@@ -469,7 +471,7 @@ export default function ResultScreen({
           {cells.some(c => c.kind === 'poly') && (
             <>
               <Text style={[styles.sectionLabel, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-                手動分割
+                {t('result.manualSplit')}
               </Text>
               <View style={styles.grid}>
                 {cells.map((cell, i) => {
@@ -502,8 +504,8 @@ export default function ResultScreen({
               {selectedArr.length >= 2 && !canMerge && (
                 <Text style={styles.mergeWarning}>
                   {anyPolySelected
-                    ? 'ポリゴン編集済みのカットは合体できません'
-                    : 'すき間なく隣り合う2枚を選んでください'}
+                    ? t('result.polygonCannotMerge')
+                    : t('result.needAdjacent')}
                 </Text>
               )}
               <AnimatedPressable
@@ -514,7 +516,9 @@ export default function ResultScreen({
               >
                 <Icon name="merge-type" size={20} color="#FFF" style={{ marginRight: spacing.xs }} />
                 <Text style={styles.saveBtnTxt}>
-                  {selectedArr.length >= 2 ? `${selectedArr.length}枚を合体する` : '2枚以上選択してください'}
+                  {selectedArr.length >= 2
+                    ? t('result.mergeCount', { count: selectedArr.length })
+                    : t('result.needTwo')}
                 </Text>
               </AnimatedPressable>
               <AnimatedPressable
@@ -522,7 +526,7 @@ export default function ResultScreen({
                 onPress={exitSelectingMode}
                 pressedScale={0.97}
               >
-                <Text style={styles.cancelBtnTxt}>キャンセル</Text>
+                <Text style={styles.cancelBtnTxt}>{t('common.cancel')}</Text>
               </AnimatedPressable>
             </>
           ) : (
@@ -534,17 +538,17 @@ export default function ResultScreen({
                   style={styles.actionBtn}
                   onPress={() => {
                     Alert.alert(
-                      'リセット',
-                      '分割結果を最初の状態に戻します。合体やカットの編集はすべて破棄されます。',
+                      t('common.reset'),
+                      t('result.resetMessage'),
                       [
-                        { text: 'キャンセル', style: 'cancel' },
-                        { text: 'リセット', style: 'destructive', onPress: onReSplit },
+                        { text: t('common.cancel'), style: 'cancel' },
+                        { text: t('common.reset'), style: 'destructive', onPress: onReSplit },
                       ],
                     );
                   }}
                 >
                   <Icon name="refresh" size={18} color={colors.accent} />
-                  <Text style={styles.actionBtnTxt}>リセット</Text>
+                  <Text style={styles.actionBtnTxt}>{t('common.reset')}</Text>
                 </AnimatedPressable>
 
                 {/* 保存する */}
@@ -554,7 +558,7 @@ export default function ResultScreen({
                   disabled={saving}
                   pressedScale={0.97}
                 >
-                  <Text style={styles.saveBtnTxt}>{saving ? '保存中...' : '保存する'}</Text>
+                  <Text style={styles.saveBtnTxt}>{saving ? t('common.saving') : t('common.save')}</Text>
                 </AnimatedPressable>
               </View>
             </>

@@ -1,5 +1,6 @@
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
+import { t } from '../i18n';
 
 // ── 調整パラメータ ──────────────────────────────────────────────────────────
 export const TOLERANCE = 30;
@@ -70,14 +71,14 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
   if (fileUri.startsWith('file://')) {
     const path = fileUri.slice('file://'.length);
     if (!(await RNFS.exists(path))) {
-      throw new Error('元画像が見つかりません。もう一度画像を選び直してください。');
+      throw new Error(t('errors.sourceMissing'));
     }
   }
 
   const data = await Skia.Data.fromURI(fileUri);
   const image = Skia.Image.MakeImageFromEncoded(data);
   if (!image) {
-    throw new Error('画像のデコードに失敗しました');
+    throw new Error(t('errors.decodeFailed'));
   }
 
   // OOM対策: 長辺が上限(2500px)を超える場合のみ縮小する。
@@ -119,7 +120,7 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
     alphaType: AlphaType.Unpremul,
   });
   if (!rawPixels) {
-    throw new Error('ピクセルデータの取得に失敗しました');
+    throw new Error(t('errors.pixelsFailed'));
   }
 
   const rgba = rawPixels instanceof Uint8Array

@@ -31,10 +31,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Card from './ui/Card';
 import OnboardingScreen from './OnboardingScreen';
-import { ALBUM_NAME } from '../imaging';
+import { ALBUM_ID } from '../imaging';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
 import Divider from './ui/Divider';
+import { useT } from '../i18n';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
 // require は TS の moduleResolution によっては型エラーになる場合がある。
@@ -56,6 +57,7 @@ interface Props {
 export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Props) {
   // Context から設定を取得。props 経由の受け渡しは不要になった。
   const { settings, updateSettings } = useSettings();
+  const { t } = useT();
 
   // スライダーの操作中の値を local state で持ち、
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
@@ -69,10 +71,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
 
   const header = (
     <AppHeader
-      title="設定"
+      title={t('settings.title')}
       right={
         <AnimatedPressable onPress={onClose} style={styles.doneBtn}>
-          <Text style={styles.doneBtnTxt}>完了</Text>
+          <Text style={styles.doneBtnTxt}>{t('common.done')}</Text>
         </AnimatedPressable>
       }
     />
@@ -89,13 +91,13 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         {/* ════════════════════════════════════════
             セクション 1: 透過設定
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>透過設定</Text>
+        <Text style={styles.sectionTitle}>{t('settings.sectionTransparency')}</Text>
         <Card style={styles.card} padding={0}>
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>自動除去の許容値</Text>
-              <Text style={styles.rowSub}>背景色との色差しきい値（大きいほど広く抜ける）</Text>
+              <Text style={styles.rowLabel}>{t('settings.autoTolerance')}</Text>
+              <Text style={styles.rowSub}>{t('settings.autoToleranceHint')}</Text>
             </View>
             {/* 現在値を数値でリアルタイム表示 */}
             <Text style={styles.rowValue}>{Math.round(tolerance)}</Text>
@@ -114,8 +116,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* スポイトの許容値。上の「許容値」とは独立して調整する。 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>スポイトの許容値</Text>
-              <Text style={styles.rowSub}>タップした色との色差しきい値（大きいほど広く消える）</Text>
+              <Text style={styles.rowLabel}>{t('settings.eyedropperTolerance')}</Text>
+              <Text style={styles.rowSub}>{t('settings.eyedropperToleranceHint')}</Text>
             </View>
             <Text style={styles.rowValue}>{Math.round(eyeTolerance)}</Text>
           </View>
@@ -130,8 +132,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* 輪郭のフェザリング */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>輪郭をなじませる</Text>
-              <Text style={styles.rowSub}>境目の1pxを半透明にして白フチを防ぎます</Text>
+              <Text style={styles.rowLabel}>{t('settings.feather')}</Text>
+              <Text style={styles.rowSub}>{t('settings.featherHint')}</Text>
             </View>
             <Switch
               value={settings.featherEdges}
@@ -145,20 +147,20 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         {/* ════════════════════════════════════════
             セクション 2: 書き出し
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>書き出し</Text>
+        <Text style={styles.sectionTitle}>{t('settings.sectionExport')}</Text>
         <Card style={styles.card} padding={0}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>保存先アルバム</Text>
+            <Text style={styles.rowLabel}>{t('settings.album')}</Text>
             <View style={styles.rowRight}>
-              <Text style={styles.rowValueMuted}>{ALBUM_NAME}</Text>
+              <Text style={styles.rowValueMuted}>{ALBUM_ID}</Text>
               <Icon name="lock" size={14} color={IOS.secondary} style={{ marginLeft: 4 }} />
             </View>
           </View>
           <Divider />
           <View style={styles.row}>
             <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>保存後に作業データを自動削除</Text>
-              <Text style={styles.rowSub}>エクスポート完了後、カット画像と作業データを削除します</Text>
+              <Text style={styles.rowLabel}>{t('settings.autoDelete')}</Text>
+              <Text style={styles.rowSub}>{t('settings.autoDeleteHint')}</Text>
             </View>
             <Switch
               value={settings.autoDeleteOnExport}
@@ -178,18 +180,18 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 style={styles.row}
                 onPress={() => {
                   Alert.alert(
-                    '作業データをすべて削除',
-                    '「最近の作業」をすべて削除し、保存されている元画像とサムネイルも消します。\n編集中の作業も対象です。\nこの操作は取り消せません。\n\n※「スタンプ抜き」アルバムに保存済みの画像は消えません。',
+                    t('settings.deleteAllData'),
+                    t('settings.deleteAllDataMessage', { album: ALBUM_ID }),
                     [
-                      { text: 'キャンセル', style: 'cancel' },
-                      { text: 'すべて削除', style: 'destructive', onPress: () => void onDeleteAllData() },
+                      { text: t('common.cancel'), style: 'cancel' },
+                      { text: t('common.deleteAll'), style: 'destructive', onPress: () => void onDeleteAllData() },
                     ],
                   );
                 }}
               >
                 <View style={styles.rowLeft}>
-                  <Text style={[styles.rowLabel, styles.dangerLabel]}>作業データをすべて削除</Text>
-                  <Text style={styles.rowSub}>「最近の作業」と元画像を全部消します（保存済みの画像は残ります）</Text>
+                  <Text style={[styles.rowLabel, styles.dangerLabel]}>{t('settings.deleteAllData')}</Text>
+                  <Text style={styles.rowSub}>{t('settings.deleteAllDataHint')}</Text>
                 </View>
                 <Icon name="delete-outline" size={20} color={IOS.danger} />
               </AnimatedPressable>
@@ -200,11 +202,11 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         {/* ════════════════════════════════════════
             セクション 2.5: 保存先の表示設定
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>保存先の表示</Text>
+        <Text style={styles.sectionTitle}>{t('settings.showDestination')}</Text>
         <Card style={styles.card} padding={0}>
           {/* グリッドの列数 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>列数</Text>
+            <Text style={styles.rowLabel}>{t('settings.columns')}</Text>
             <View style={styles.presets}>
               {([2, 3, 4] as const).map(v => (
                 <AnimatedPressable
@@ -213,7 +215,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                   onPress={() => void updateSettings({ gridColumns: v })}
                 >
                   <Text style={[styles.presetTxt, settings.gridColumns === v && styles.presetTxtOn]}>
-                    {v}列
+                    {t('settings.columnsValue', { count: v })}
                   </Text>
                 </AnimatedPressable>
               ))}
@@ -222,16 +224,16 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <Divider />
           {/* サムネの下地色: 透過PNGの見た目確認用。画像自体は加工しない。 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>背景色</Text>
+            <Text style={styles.rowLabel}>{t('settings.thumbBg')}</Text>
             <View style={styles.presets}>
               {/* 'gray' は選択肢から外した（白と市松があれば足りるため）。
                   ThumbBg 型自体には残してあるので、PolygonEditor の作業用背景
                   「灰」は引き続き使える。保存済みの 'gray' は下の useThumbBg で
                   白に寄せるので、この3択のどれも選択中に見えない状態にはならない。*/}
               {([
-                { val: 'checker', label: '市松'  },
-                { val: 'white',   label: '白'   },
-                { val: 'black',   label: '黒'   },
+                { val: 'checker', label: t('colors.checker') },
+                { val: 'white',   label: t('colors.white') },
+                { val: 'black',   label: t('colors.black') },
               ] as const).map(({ val, label }) => (
                 <AnimatedPressable
                   key={val}
@@ -245,20 +247,44 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               ))}
             </View>
           </View>
+          <Divider />
+          {/* 表示言語。'auto' は端末の言語に追従する。
+              切り替えると i18n のモジュール状態が更新され、useT() を使っている
+              画面がその場で描き直される（アプリの再起動は不要）。*/}
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{t('settings.language')}</Text>
+            <View style={styles.presets}>
+              {([
+                { val: 'auto', label: t('settings.languageAuto') },
+                { val: 'ja',   label: '日本語' },
+                { val: 'en',   label: 'English' },
+              ] as const).map(({ val, label }) => (
+                <AnimatedPressable
+                  key={val}
+                  style={[styles.presetBtn, settings.language === val && styles.presetBtnOn]}
+                  onPress={() => void updateSettings({ language: val })}
+                >
+                  <Text style={[styles.presetTxt, settings.language === val && styles.presetTxtOn]}>
+                    {label}
+                  </Text>
+                </AnimatedPressable>
+              ))}
+            </View>
+          </View>
         </Card>
 
         {/* ════════════════════════════════════════
             セクション 2.8: 分割線の色
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>分割線の色</Text>
+        <Text style={styles.sectionTitle}>{t('settings.splitLineColor')}</Text>
         <Card style={styles.card} padding={0}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>境界線の色</Text>
+            <Text style={styles.rowLabel}>{t('settings.boundaryColor')}</Text>
             <View style={styles.presets}>
               {([
-                { val: '#007AFF' as SplitLineColor, label: '青' },
-                { val: '#FF9500' as SplitLineColor, label: 'オレンジ' },
-                { val: '#FF3B30' as SplitLineColor, label: '赤' },
+                { val: '#007AFF' as SplitLineColor, label: t('colors.blue') },
+                { val: '#FF9500' as SplitLineColor, label: t('colors.orange') },
+                { val: '#FF3B30' as SplitLineColor, label: t('colors.red') },
               ]).map(({ val, label }) => {
                 const isOn = (settings.splitLineColor ?? '#007AFF') === val;
                 return (
@@ -281,27 +307,27 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         {/* ════════════════════════════════════════
             セクション 3: このアプリ
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>このアプリについて</Text>
+        <Text style={styles.sectionTitle}>{t('settings.sectionAbout')}</Text>
         <Card style={styles.card} padding={0}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>バージョン</Text>
+            <Text style={styles.rowLabel}>{t('settings.version')}</Text>
             <Text style={styles.rowValueMuted}>{APP_VERSION}</Text>
           </View>
           <Divider />
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>アルバム名（内部）</Text>
-            <Text style={styles.rowValueMuted}>{ALBUM_NAME}</Text>
+            <Text style={styles.rowLabel}>{t('settings.albumInternal')}</Text>
+            <Text style={styles.rowValueMuted}>{ALBUM_ID}</Text>
           </View>
           <Divider />
           {/* 使い方: ホームから移動。既存の row スタイルをそのまま流用 */}
           <AnimatedPressable style={styles.row} onPress={onHowTo} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>使い方</Text>
+            <Text style={styles.rowLabel}>{t('settings.howTo')}</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
           <Divider />
           {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>チュートリアルをもう一度見る</Text>
+            <Text style={styles.rowLabel}>{t('settings.replayTutorial')}</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
         </Card>
@@ -360,6 +386,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 13,
     minHeight: 50,
+    // 英語はラベルもボタンも日本語より長く、1行に収まらないと右端が
+    // 画面外へ切れてしまう（「Boundary line color」＋色3つで実際に切れていた）。
+    // 折り返しを許可して、入らない場合はコントロールを次の行へ落とす。
+    flexWrap: 'wrap',
+    rowGap: 8,
   },
   rowLeft: {
     flex: 1,
@@ -369,7 +400,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  rowLabel:     { fontSize: 16, color: IOS.label },
+  // flexShrink: ラベル側を先に縮める。ボタンは縮むと文字が切れるので固定。
+  rowLabel:     { fontSize: 16, color: IOS.label, flexShrink: 1, marginRight: 12 },
   dangerLabel:  { color: IOS.danger },
   rowSub:       { fontSize: 12, color: IOS.secondary, marginTop: 2 },
   rowValue:     { fontSize: 22, fontWeight: '600', color: IOS.blue, minWidth: 36, textAlign: 'right' },
@@ -386,6 +418,9 @@ const styles = StyleSheet.create({
   presets: {
     flexDirection: 'row',
     gap: 6,
+    // 折り返して2行目に落ちたときは右寄せにして、行の右端に揃える。
+    marginLeft: 'auto',
+    flexShrink: 0,
   },
   presetBtn: {
     paddingVertical: 5,

@@ -22,6 +22,30 @@ export type ThumbBg = 'white' | 'gray' | 'checker' | 'black';
 
 export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 
+/**
+ * アプリアイコン。'auto' は時間帯に合わせて切り替える。
+ * それ以外を選んだ場合は自動判定を使わず固定する。
+ */
+export type AppIconSetting = 'auto' | 'day' | 'night' | 'sleep';
+
+/**
+ * 起動アニメーション。'auto' は時間帯に合わせて選び、'off' は演出なしで
+ * すぐホームへ入る。それ以外は毎回そのパターンを固定で再生する
+ * (通常はレア枠の 'drop' も、明示指定なら毎回出る)。
+ *
+ * 値は splash 側の SplashAnimationType と揃えてある。ずれるとコンパイル
+ * エラーになるよう、splash/patterns/index.ts で相互チェックしている。
+ */
+export type SplashAnimationSetting =
+  | 'auto'
+  | 'off'
+  | 'fly'
+  | 'peel'
+  | 'cross'
+  | 'sleep'
+  | 'shake'
+  | 'drop';
+
 export interface AppSettings {
   tolerance: number;
   /**
@@ -84,6 +108,10 @@ export interface AppSettings {
    * 無くても（下の loadSettings のマージで）端末の言語で表示される。
    */
   language: LanguageSetting;
+  /** ホーム画面のアプリアイコン。既定は時間帯連動。 */
+  appIcon: AppIconSetting;
+  /** 起動アニメーションの演出。既定は時間帯連動。 */
+  splashAnimation: SplashAnimationSetting;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -104,6 +132,8 @@ export const DEFAULTS: AppSettings = {
   albumName: null,
   albumNameHistory: [],
   language: 'auto',
+  appIcon: 'auto',
+  splashAnimation: 'auto',
 };
 
 /** 設定を読み込む。失敗時はデフォルト値を返す（UI がクラッシュしないよう）。*/

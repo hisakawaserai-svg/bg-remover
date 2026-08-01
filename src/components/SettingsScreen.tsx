@@ -34,6 +34,8 @@ import OnboardingScreen from './OnboardingScreen';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
 import Divider from './ui/Divider';
+import SelectRow from './ui/SelectRow';
+import type { AppIconSetting, SplashAnimationSetting } from '../settings/store';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
 
@@ -274,6 +276,43 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               ))}
             </View>
           </View>
+        </Card>
+
+        {/* ════════════════════════════════════════
+            セクション 2.7: 見た目(アイコン / 起動演出)
+            選択肢が多いので、行を押すと下から選択肢が出る形にする。
+        ════════════════════════════════════════ */}
+        <Text style={styles.sectionTitle}>{t('settings.sectionAppearance')}</Text>
+        <Card style={styles.card} padding={0}>
+          <SelectRow<AppIconSetting>
+            label={t('settings.appIcon')}
+            sub={t('settings.appIconHint')}
+            value={settings.appIcon}
+            options={[
+              { value: 'auto',  label: t('settings.optionAuto') },
+              { value: 'day',   label: t('settings.iconDay') },
+              { value: 'night', label: t('settings.iconNight') },
+              { value: 'sleep', label: t('settings.iconSleep') },
+            ]}
+            onChange={v => void updateSettings({ appIcon: v })}
+          />
+          <Divider />
+          <SelectRow<SplashAnimationSetting>
+            label={t('settings.splashAnimation')}
+            sub={t('settings.splashAnimationHint')}
+            value={settings.splashAnimation}
+            options={[
+              { value: 'auto',  label: t('settings.optionAuto') },
+              { value: 'fly',   label: t('settings.splashFly') },
+              { value: 'peel',  label: t('settings.splashPeel') },
+              { value: 'cross', label: t('settings.splashCross') },
+              { value: 'sleep', label: t('settings.splashSleep') },
+              { value: 'shake', label: t('settings.splashShake') },
+              { value: 'drop',  label: t('settings.splashDrop') },
+              { value: 'off',   label: t('settings.optionOff') },
+            ]}
+            onChange={v => void updateSettings({ splashAnimation: v })}
+          />
         </Card>
 
         {/* ════════════════════════════════════════

@@ -19,37 +19,71 @@ import {
   Oval,
   Path,
 } from '@shopify/react-native-skia';
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+
+/** 翼の回転軸(肩の位置)。100×100 基準。 */
+const WING_ORIGIN = { x: 64, y: 46 };
 
 interface Props {
   variant: 'day' | 'night' | 'sleep';
   /** 描画ボックスの一辺(px)。内部は 100×100 基準を size に拡縮 */
   size?: number;
+  /**
+   * 翼の角度(ラジアン)。渡すと羽ばたく。省略時は従来どおり静止。
+   * SplashAnimationView から Reanimated の SharedValue を渡して使う。
+   */
+  wingAngle?: SharedValue<number>;
+  /**
+   * 背景の丸・太陽・月・星・Zzz を描くか。既定 true(＝従来どおり)。
+   * false にするとキャラ単体になる。スプラッシュのように背景を呼び出し側が
+   * 持つ場合、シーン円が色の付いた円盤として残ってしまうため。
+   */
+  showScene?: boolean;
+  /**
+   * 目を閉じるか。既定は variant==='sleep' のとき閉じる(＝従来どおり)。
+   * 配色(variant)を変えずに「起きる」だけを表現したい時に明示指定する。
+   */
+  eyesClosed?: boolean;
 }
 
-export default function BirdMascot({ variant, size = 120 }: Props) {
+export default function BirdMascot({
+  variant,
+  size = 120,
+  wingAngle,
+  showScene = true,
+  eyesClosed,
+}: Props) {
   const k = size / 100; // 100基準 → 実サイズ
   const isDay = variant === 'day';
   const isNight = variant === 'night';
   const isSleep = variant === 'sleep';
+  const closed = eyesClosed ?? isSleep;
+  // wingAngle 未指定なら常に 0＝無回転。Hook は条件分岐せず常に呼ぶ。
+  const wingTransform = useDerivedValue(
+    () => [{ rotate: wingAngle?.value ?? 0 }],
+    [wingAngle],
+  );
 
   return (
     <Canvas style={{ width: size, height: size }}>
       <Group transform={[{ scale: k }]}>
         {/* ─ 背景の丸(シーン) ─ */}
-        <Circle
-          cx={50}
-          cy={50}
-          r={48}
-          color={
-            isDay
-              ? '#BFE6FF'
-              : isNight
-              ? '#1E2A55'
-              : '#B8B5E8'
-          }
-        />
+        {showScene && (
+          <Circle
+            cx={50}
+            cy={50}
+            r={48}
+            color={
+              isDay
+                ? '#BFE6FF'
+                : isNight
+                ? '#1E2A55'
+                : '#B8B5E8'
+            }
+          />
+        )}
 
-        {isDay ? (
+        {!showScene ? null : isDay ? (
           <Circle cx={78} cy={24} r={11} color="#FFD23F" />
         ) : isNight ? (
           <>
@@ -98,10 +132,12 @@ export default function BirdMascot({ variant, size = 120 }: Props) {
         />
         {/* ふわふわの白い体(＝頭一体型の丸) */}
         <Oval x={21} y={23} width={58} height={62} color="#FFFFFF" />
-        {/* 翼: 体の右側にうっすら黒 */}
-        <Oval x={61} y={44} width={18} height={32} color="#D8D8DC" />
+        {/* 翼: 体の右側にうっすら黒。肩(WING_ORIGIN)を軸に回せるよう Group で包む */}
+        <Group transform={wingTransform} origin={WING_ORIGIN}>
+          <Oval x={61} y={44} width={18} height={32} color="#D8D8DC" />
+        </Group>
         {/* 黒目2点 */}
-        {isSleep ? (
+        {closed ? (
           <>
             {/* 閉じた目 */}
             <Path
@@ -128,7 +164,7 @@ export default function BirdMascot({ variant, size = 120 }: Props) {
         {/* 三角くちばし(オレンジ) */}
         <Path
           path={
-            isSleep
+            closed
               ? "M47 55 L53 55 L50 58 Z"
               : "M47 54 L53 54 L50 60 Z"
           }

@@ -123,6 +123,9 @@ import SettingsScreen from './src/components/SettingsScreen';
 import SavedScreen    from './src/components/SavedScreen';
 import HowToScreen   from './src/components/HowToScreen';
 import OnboardingScreen from './src/components/OnboardingScreen';
+import SplashAnimationView from './src/components/SplashAnimationView';
+import type { SplashAnimationType } from './src/components/splash/types';
+import { applyAppIcon, resolveAppIcon } from './src/appIcon';
 import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
@@ -154,6 +157,11 @@ type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editin
 
 // DEFAULT_TOLERANCE は設定ロード前の初期値としてのみ使用。
 // processImage 内では appSettings.tolerance を参照する。
+// 起動スプラッシュの演出パターン。undefined = 時間帯から自動選択。
+// 'fly' | 'sleep' | 'drop' | 'cross' | 'peel' を入れると1種類に固定して確認できる。
+// 4種を順に見比べたい時は SplashAnimationView の DEBUG_LOOP_PATTERNS を使う。
+const SPLASH_ANIMATION: SplashAnimationType | undefined = undefined;
+
 const DEFAULT_TOLERANCE = 30;
 const DEFAULT_ROWS = 4;
 
@@ -189,6 +197,11 @@ export default function App() {
   const { width: winW, height: winH } = useWindowDimensions();
   const [splitMode, setSplitMode] = useState<SplitMode>('auto');
   const [appState,  setAppState]  = useState<AppState>('idle');
+  // 起動スプラッシュ。毎回表示し、約1.2秒後に本編へ進む。
+  // AppState には足さない: appState は編集フローの戻り先(prevStateRef など)に
+  // 使われており、スプラッシュを混ぜると戻る導線の分岐が増えるため。
+  const [splashDone, setSplashDone] = useState(false);
+  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
   // 設定画面を開く直前の state を退避し、閉じた時に元の画面へ戻すために使う
   const prevStateRef = useRef<AppState>('idle');
   // 使い方(howto)画面の戻り先。prevStateRef を上書きすると設定→使い方→戻る後に
@@ -253,6 +266,14 @@ export default function App() {
   // App.tsx 側での useState / loadSettings / saveSettings は不要になった。
   const { settings: appSettings, loaded: settingsLoaded, updateSettings } = useSettings();
   const thumbBg = useThumbBg();
+
+  // ── アプリアイコン ─────────────────────────────────────────────────────────
+  // 設定のロード完了時と、設定変更時に反映する。'auto' の場合は起動時点の
+  // 時間帯で決まる（起動中に日付が変わっても切り替えない）。
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void applyAppIcon(resolveAppIcon(appSettings.appIcon));
+  }, [settingsLoaded, appSettings.appIcon]);
 
   // ── セッション管理 ─────────────────────────────────────────────────────────
   // sessions: ホーム一覧に表示するセッション配列（updatedAt 降順）
@@ -1044,6 +1065,23 @@ export default function App() {
     prevStateRef.current = appState;
     setAppState('saved');
   }, [appState]);
+
+  // ── 起動スプラッシュ ────────────────────────────────────────────────────
+  // どの画面より先に判定する。表示中も設定・セッションのロードは裏で進む。
+  // 設定が 'off' の場合は出さずにそのままホームへ。設定のロード前は
+  // DEFAULTS('auto')で始まるので、初回フレームからスプラッシュが出る。
+  if (!splashDone && appSettings.splashAnimation !== 'off') {
+    return (
+      <>
+        <StatusBar hidden />
+        <SplashAnimationView
+          animationType={SPLASH_ANIMATION}
+          setting={appSettings.splashAnimation}
+          onFinish={handleSplashFinish}
+        />
+      </>
+    );
+  }
 
   // ── ポリゴン編集の準備中 ────────────────────────────────────────────────
   // 他のどの画面より先に判定する。ここで返さないと前の画面が描かれ続けて、

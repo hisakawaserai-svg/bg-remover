@@ -8,10 +8,32 @@
 import UIKit
 import UniformTypeIdentifiers
 
+/// 共有シートから画像を受け取り、App Group へ置いて本体アプリを起動するだけの画面。
+///
+/// 【責務をここまでに限定する】
+/// 画像の変換（PNG/HEIC/WEBP）も背景除去も、この Extension ではやらない。
+/// Extension はメモリ上限が厳しく（約120MB）、重い処理を持たせると落ちる。
+/// 受け取った生データをそのまま置き、あとは本体アプリに任せる。
 class ShareViewController: UIViewController {
+
+    /// App Group の識別子。entitlements に書いてあるものと一致させること。
+    private static let appGroupID = "group.com.sera.bgremover.app"
+
+    /// App Group に置くファイル名。
+    /// **拡張子は付けない。** 受け取る画像は HEIC/JPEG/PNG などまちまちで、
+    /// 変換は本体アプリ側（第3段階）で決める。ここで .png などと名乗ると
+    /// 中身と食い違うファイルができる。
+    private static let sharedFileName = "share_input"
+
+    /// 本体アプリを起動する URL。ホストアプリの Info.plist に
+    /// CFBundleURLTypes として登録済み。
+    private static let hostAppURL = URL(string: "bgremover://share")
 
     private let imageView = UIImageView()
     private let titleLabel = UILabel()
+
+    /// 受け取った画像の生データ。変換せずそのまま保持する。
+    private var sharedImageData: Data?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -74,6 +96,11 @@ class ShareViewController: UIViewController {
         imageView.backgroundColor = .secondarySystemBackground
         imageView.layer.cornerRadius = 16
         imageView.clipsToBounds = true
+        // 縦長の画像でも自然に見せるため、高さを固定せず余白を全部もらう。
+        // 固定値だと縦長画像が枠の中で小さく縮んでしまう。
+        // 優先度を下げて、タイトルとボタンを配置した残りに伸び縮みさせる。
+        imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
 
 
         // キャンセル
@@ -139,12 +166,18 @@ class ShareViewController: UIViewController {
 
         view.addSubview(stack)
 
+        // 上下に貼り付けて、余った縦幅を imageView に吸わせる。
+        // 中央寄せ（centerY）＋画像の高さ固定だと、縦長画像が小さく表示され、
+        // 画面下部も余ってしまうため。
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(
-                equalTo: view.centerXAnchor
+            stack.topAnchor.constraint(
+                equalTo: closeButton.bottomAnchor,
+                constant: 20
             ),
-            stack.centerYAnchor.constraint(
-                equalTo: view.centerYAnchor
+
+            stack.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -20
             ),
 
             stack.leadingAnchor.constraint(
@@ -157,8 +190,9 @@ class ShareViewController: UIViewController {
                 constant: -30
             ),
 
-            imageView.heightAnchor.constraint(
-                equalToConstant: 250
+            // ボタンは高さを持たないと潰れるので明示する。
+            buttonStack.heightAnchor.constraint(
+                equalToConstant: 50
             )
         ])
     }
@@ -185,17 +219,20 @@ class ShareViewController: UIViewController {
                 options: nil
             ) { item, error in
 
-                guard let url = item as? URL else {
+                guard let url = item as? URL,
+                      let data = try? Data(contentsOf: url) else {
                     return
                 }
 
+                // 変換はしない。受け取ったバイト列をそのまま持っておき、
+                // 「透過する」を押したときに App Group へ書き出す。
+                let image = UIImage(data: data)
 
-                if let data = try? Data(contentsOf: url),
-                   let image = UIImage(data: data) {
-
-                    DispatchQueue.main.async {
-                        self.imageView.image = image
-                    }
+                DispatchQueue.main.async {
+                    // 保持と表示はどちらもメインで行い、removeTapped との
+                    // 読み書きスレッドを揃える。
+                    self.sharedImageData = data
+                    self.imageView.image = image
                 }
             }
         }
@@ -216,11 +253,58 @@ class ShareViewController: UIViewController {
 
 
     @objc private func removeTapped() {
+        guard let data = sharedImageData,
+              let container = FileManager.default.containerURL(
+                  forSecurityApplicationGroupIdentifier: Self.appGroupID
+              )
+        else {
+            // 画像が取れていない / App Group が効いていない。
+            // 何もできないが、共有シートは閉じる（開いたままだと操作不能に見える）。
+            print("[ShareExtension] データまたは App Group を取得できませんでした")
+            closeExtension()
+            return
+        }
 
-        print("透過開始")
+        let destination = container.appendingPathComponent(Self.sharedFileName)
 
-        // ここに後で
-        // App Group保存
-        // 本体アプリ起動
+        do {
+            // .atomic は既存ファイルを上書きする。事前の removeItem は不要。
+            // 「2回目の共有で copyItem が必ず失敗する」問題もこれで起きない。
+            try data.write(to: destination, options: .atomic)
+        } catch {
+            print("[ShareExtension] 保存に失敗:", error)
+            closeExtension()
+            return
+        }
+
+        openHostApp()
+    }
+
+
+    /// 本体アプリを起動する。
+    ///
+    /// Extension からは UIApplication.shared を触れないので extensionContext.open を使う。
+    /// 起動の成否に関わらず、最後は必ず Extension を閉じる。
+    private func openHostApp() {
+        guard let url = Self.hostAppURL else {
+            closeExtension()
+            return
+        }
+
+        extensionContext?.open(url) { [weak self] success in
+            if !success {
+                print("[ShareExtension] 本体アプリの起動に失敗しました:", url)
+            }
+            self?.closeExtension()
+        }
+    }
+
+
+    /// Extension を正常終了して共有シートを閉じる。
+    private func closeExtension() {
+        extensionContext?.completeRequest(
+            returningItems: nil,
+            completionHandler: nil
+        )
     }
 }

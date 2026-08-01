@@ -59,6 +59,9 @@ import type { Polygon } from './src/components/PolygonEditor';
 // ── サムネイル一時ファイル書き出し ────────────────────────────────────────────
 import RNFS from 'react-native-fs';
 
+// -- 画像を PNG に変換するユーティリティ関数をインポート --
+import { convertToPng } from './src/imaging/convertToPng';
+
 /**
  * Skia SkImage の PNG バイナリを一時ファイルに書き出し、file:// URI を返す。
  * ファイル名は呼び出しごとに一意にする（Date.now + random）。
@@ -385,6 +388,9 @@ export default function App() {
 
     const pickedUri = result.assets[0].uri;
 
+    // PNGへ統一
+    const pngUri = await convertToPng(pickedUri);
+
     // 画像選択直後にセッションを作成（step='picked'）
     // ここで保存しておくことで、アプリを閉じても「選んだ画像」がホーム一覧に残る
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -392,7 +398,7 @@ export default function App() {
 
     // ピッカーの一時ファイル(cache)は OS に消され得るため、永続ディレクトリへコピーして
     // その URI を保存・処理に使う。これをしないと再開時に元画像が消えて無限ローディングになる。
-    const uri = await persistSourceImage(pickedUri, id);
+    const uri = await persistSourceImage(pngUri, id);
     await upsertSession({ id, imageUri: uri, step: 'picked', updatedAt: Date.now() });
     void reloadSessions(); // UI を非同期で更新（processImage と並行してよい）
 

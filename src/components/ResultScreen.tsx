@@ -532,7 +532,7 @@ export default function ResultScreen({
           ) : (
             /* ── 通常モード: スライダー + アクション + 保存 ── */
             <>
-              {/* リセット / 手動分割 */}
+              {/* 手動分割 */}
               <View style={styles.actionRow}>
                 <AnimatedPressable
                   style={styles.actionBtn}

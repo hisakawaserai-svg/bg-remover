@@ -14,6 +14,20 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- Share Extension から本体アプリを起動するためのスキーム。
+			     bgremover://share を extensionContext.open() で開く。
+			     ここに登録が無いと open() が失敗してアプリが起動しない。 -->
+			<key>CFBundleURLName</key>
+			<string>com.sera.bgremover.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bgremover</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>

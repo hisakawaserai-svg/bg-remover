@@ -28,8 +28,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       in: window,
       launchOptions: launchOptions
     )
+    
+    processShareInput()
 
     return true
+  }
+  
+  // Share Extensionから渡された画像を確認する
+  // React Nativeへ通知後に削除する
+  func processShareInput(){
+    guard let containerURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: "group.com.sera.bgremover.app"
+    ) else {
+        return
+    }
+
+    let shareURL = containerURL.appendingPathComponent("share_input")
+
+    if FileManager.default.fileExists(atPath: shareURL.path) {
+      
+      print("Share input found:", shareURL)
+      
+      // ここでReact Nativeへ渡す準備をする
+      // 次の段階で実装
+      
+      // 通知成功後に削除
+      // try? FileManager.default.removeItem(at: shareURL)
+    } else {
+      print("Share input not found")
+    }
   }
 }
 

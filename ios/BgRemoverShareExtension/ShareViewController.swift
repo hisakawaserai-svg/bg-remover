@@ -8,6 +8,14 @@
 import UIKit
 import UniformTypeIdentifiers
 
+/// UIApplication の open(_:options:completionHandler:) を呼ぶためのプロトコル。
+/// Extension では UIApplication.shared を参照できないので、レスポンダチェーンで
+/// 取り出したインスタンスをこの型に見立てて呼ぶ。
+@objc private protocol URLOpening {
+    @objc(openURL:options:completionHandler:)
+    func open(_ url: URL, options: [String: Any], completionHandler: ((Bool) -> Void)?)
+}
+
 /// 共有シートから画像を受け取り、App Group へ置いて本体アプリを起動するだけの画面。
 ///
 /// 【責務をここまでに限定する】
@@ -31,6 +39,10 @@ class ShareViewController: UIViewController {
 
     private let imageView = UIImageView()
     private let titleLabel = UILabel()
+    private let descriptionLabel = UILabel()
+
+    private let removeButton = UIButton(type: .system)
+    private let activityIndicator = UIActivityIndicatorView(style: .medium)
 
     /// 受け取った画像の生データ。変換せずそのまま保持する。
     private var sharedImageData: Data?
@@ -42,74 +54,96 @@ class ShareViewController: UIViewController {
         loadSharedImage()
     }
 
-
-    /// 端末の言語が日本語か。
     ///
     /// Locale.current.language は iOS 16 以降。このターゲットの Deployment Target は
     /// アプリ本体に合わせて 15.1 なので、15 でも動く languageCode を使う
     /// （iOS 16 で deprecated だが動作は同じ）。
-    private var isJapanese: Bool {
-        if #available(iOS 16.0, *) {
-            return Locale.current.language.languageCode?.identifier == "ja"
-        }
-        return Locale.current.languageCode == "ja"
-    }
-
     private func setupUI() {
-        view.backgroundColor = .systemBackground
-
-        // アプリ名
-        titleLabel.text = isJapanese
-        ? "スタンプ抜き"
-        : "Sticker Cutout"
-
-        titleLabel.font = .boldSystemFont(ofSize: 28)
-        titleLabel.textAlignment = .center
+        view.backgroundColor = .systemGroupedBackground
 
         // ×ボタン
-        let closeButton = UIButton(type: .close)
+        let closeButton = UIButton(type: .system)
 
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.setImage(
+            UIImage(systemName: "xmark.circle.fill"),
+            for: .normal
+        )
+
+        closeButton.tintColor = .secondaryLabel
+
+        closeButton.imageView?.contentMode = .scaleAspectFit
 
         closeButton.addTarget(
             self,
             action: #selector(cancelTapped),
             for: .touchUpInside
         )
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(closeButton)
 
-        NSLayoutConstraint.activate([
-            closeButton.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: 15
-            ),
 
-            closeButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -20
-            )
-        ])
-      
+
+        // タイトル
+        titleLabel.text = NSLocalizedString(
+            "background_title",
+            comment: ""
+        )
+
+        titleLabel.font = .boldSystemFont(ofSize: 22)
+        titleLabel.textAlignment = .center
+
+
+
+        // 説明文
+        descriptionLabel.text = NSLocalizedString(
+            "background_description",
+            comment: ""
+        )
+
+        descriptionLabel.font = .systemFont(ofSize: 15)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.textAlignment = .center
+
+
+
         // 画像
         imageView.contentMode = .scaleAspectFit
         imageView.backgroundColor = .secondarySystemBackground
-        imageView.layer.cornerRadius = 16
+        imageView.layer.cornerRadius = 20
         imageView.clipsToBounds = true
-        // 縦長の画像でも自然に見せるため、高さを固定せず余白を全部もらう。
-        // 固定値だと縦長画像が枠の中で小さく縮んでしまう。
-        // 優先度を下げて、タイトルとボタンを配置した残りに伸び縮みさせる。
-        imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
-        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+
+
+
+        // メインボタン
+        var config = UIButton.Configuration.filled()
+
+        config.title = NSLocalizedString(
+            "remove_button",
+            comment: ""
+        )
+
+        config.cornerStyle = .medium
+        config.imagePadding = 8
+
+        removeButton.configuration = config
+
+        removeButton.addTarget(
+            self,
+            action: #selector(removeTapped),
+            for: .touchUpInside
+        )
+
 
 
         // キャンセル
         let cancelButton = UIButton(type: .system)
 
         cancelButton.setTitle(
-            isJapanese
-            ? "キャンセル"
-            : "Cancel",
+            NSLocalizedString(
+                "cancel_button",
+                comment: ""
+            ),
             for: .normal
         )
 
@@ -120,81 +154,80 @@ class ShareViewController: UIViewController {
         )
 
 
-        // 透過する
-        let removeButton = UIButton(type: .system)
 
-        removeButton.setTitle(
-            isJapanese
-            ? "透過する"
-            : "Remove Background",
-            for: .normal
-        )
-
-        removeButton.backgroundColor = .systemBlue
-        removeButton.setTitleColor(.white, for: .normal)
-        removeButton.layer.cornerRadius = 14
-
-        removeButton.addTarget(
-            self,
-            action: #selector(removeTapped),
-            for: .touchUpInside
-        )
-
-
+        // ボタン縦配置
         let buttonStack = UIStackView(
             arrangedSubviews: [
-                cancelButton,
-                removeButton
+                removeButton,
+                cancelButton
             ]
         )
 
-        buttonStack.axis = .horizontal
-        buttonStack.spacing = 20
-        buttonStack.distribution = .fillEqually
+        buttonStack.axis = .vertical
+        buttonStack.spacing = 12
+
+
 
         let stack = UIStackView(
             arrangedSubviews: [
                 titleLabel,
+                descriptionLabel,
                 imageView,
                 buttonStack
             ]
         )
 
         stack.axis = .vertical
-        stack.spacing = 30
+        stack.spacing = 20
+
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(stack)
 
-        // 上下に貼り付けて、余った縦幅を imageView に吸わせる。
-        // 中央寄せ（centerY）＋画像の高さ固定だと、縦長画像が小さく表示され、
-        // 画面下部も余ってしまうため。
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(
-                equalTo: closeButton.bottomAnchor,
-                constant: 20
-            ),
+          closeButton.topAnchor.constraint(
+              equalTo: view.safeAreaLayoutGuide.topAnchor,
+              constant: 15
+          ),
 
-            stack.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -20
-            ),
+          closeButton.trailingAnchor.constraint(
+              equalTo: view.trailingAnchor,
+              constant: -20
+          ),
 
-            stack.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
-                constant: 30
-            ),
+          closeButton.widthAnchor.constraint(
+              equalToConstant: 44
+          ),
 
-            stack.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -30
-            ),
+          closeButton.heightAnchor.constraint(
+              equalToConstant: 44
+          ),
 
-            // ボタンは高さを持たないと潰れるので明示する。
-            buttonStack.heightAnchor.constraint(
-                equalToConstant: 50
-            )
-        ])
+          stack.topAnchor.constraint(
+              equalTo: closeButton.bottomAnchor,
+              constant: 20
+          ),
+
+          stack.bottomAnchor.constraint(
+              equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+              constant: -20
+          ),
+
+          stack.leadingAnchor.constraint(
+              equalTo: view.leadingAnchor,
+              constant: 30
+          ),
+
+          stack.trailingAnchor.constraint(
+              equalTo: view.trailingAnchor,
+              constant: -30
+          ),
+
+
+          removeButton.heightAnchor.constraint(
+              equalToConstant: 50
+          )
+      ])
     }
 
 
@@ -283,20 +316,60 @@ class ShareViewController: UIViewController {
 
     /// 本体アプリを起動する。
     ///
-    /// Extension からは UIApplication.shared を触れないので extensionContext.open を使う。
-    /// 起動の成否に関わらず、最後は必ず Extension を閉じる。
+    /// 起動の成否に関わらず、最後は必ず Extension を閉じる
+    /// （閉じないと共有シートが残って操作不能に見える）。
     private func openHostApp() {
         guard let url = Self.hostAppURL else {
             closeExtension()
             return
         }
 
+        // まず正規の API を試す。
+        NSLog("[ShareExtension] open を試行: %@", url.absoluteString)
         extensionContext?.open(url) { [weak self] success in
+            guard let self else { return }
+            NSLog("[ShareExtension] extensionContext.open の結果: %@", success ? "成功" : "失敗")
             if !success {
-                print("[ShareExtension] 本体アプリの起動に失敗しました:", url)
+                // Share Extension では extensionContext.open が効かないことがある。
+                // 実機で起動しないことを確認済み（URLスキーム自体は
+                // simctl openurl で開けるので、スキーム登録の問題ではない）。
+                _ = self.openViaResponderChain(url)
             }
-            self?.closeExtension()
+            self.closeExtension()
         }
+    }
+
+
+    /// レスポンダチェーンを辿って UIApplication を見つけ、URL を開く。
+    ///
+    /// Extension では UIApplication.shared を直接参照できない（コンパイルエラー）ため、
+    /// チェーン上のインスタンスを取り出して openURL: を呼ぶ。
+    /// extensionContext.open が動かない場合の控え。
+    @discardableResult
+    private func openViaResponderChain(_ url: URL) -> Bool {
+        let selector = NSSelectorFromString("openURL:")
+        var responder: UIResponder? = self
+
+        while let current = responder {
+            if current.responds(to: selector) && !(current is UIViewController) {
+                // 旧 openURL: は最近の iOS では無反応なので、現行の3引数版を先に試す。
+                // perform は2引数までなので @objc プロトコル経由で呼ぶ。
+                if let opener = current as? URLOpening {
+                    NSLog("[ShareExtension] 3引数版 open を呼ぶ: %@", String(describing: type(of: current)))
+                    opener.open(url, options: [:]) { ok in
+                        NSLog("[ShareExtension] 3引数版 open の結果: %@", ok ? "成功" : "失敗")
+                    }
+                    return true
+                }
+                NSLog("[ShareExtension] 旧 openURL: を呼ぶ: %@", String(describing: type(of: current)))
+                _ = current.perform(selector, with: url)
+                return true
+            }
+            responder = current.next
+        }
+
+        NSLog("[ShareExtension] レスポンダチェーンに UIApplication が見つかりませんでした")
+        return false
     }
 
 

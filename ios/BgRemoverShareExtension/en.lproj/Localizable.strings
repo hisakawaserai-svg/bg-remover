@@ -1,0 +1,13 @@
+/* 
+  Localizable.strings
+  BgRemover
+
+  Created by h S. on 2026/08/01.
+  
+*/
+
+"background_title" = "Remove Background";
+"background_description" = "Remove the background from this image";
+"remove_button" = "Remove Background";
+"cancel_button" = "Cancel";
+"processing" = "Processing...";

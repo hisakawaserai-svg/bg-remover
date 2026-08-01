@@ -6,7 +6,7 @@
   
 */
 
-"background_title" = "背景を透明化";
+"background_title" = "スタンプ抜き";
 "background_description" = "この画像の背景を削除します";
 "remove_button" = "透過する";
 "cancel_button" = "キャンセル";

@@ -65,24 +65,26 @@ class ShareViewController: UIViewController {
         let closeButton = UIButton(type: .system)
 
         closeButton.setImage(
-            UIImage(systemName: "xmark.circle.fill"),
+            UIImage(
+                systemName: "xmark.circle.fill"
+            ),
             for: .normal
         )
 
-        closeButton.tintColor = .secondaryLabel
+        closeButton.tintColor = .tertiaryLabel
 
-        closeButton.imageView?.contentMode = .scaleAspectFit
+        closeButton.contentHorizontalAlignment = .fill
+        closeButton.contentVerticalAlignment = .fill
 
         closeButton.addTarget(
             self,
             action: #selector(cancelTapped),
             for: .touchUpInside
         )
+
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(closeButton)
-
-
 
         // タイトル
         titleLabel.text = NSLocalizedString(
@@ -92,8 +94,6 @@ class ShareViewController: UIViewController {
 
         titleLabel.font = .boldSystemFont(ofSize: 22)
         titleLabel.textAlignment = .center
-
-
 
         // 説明文
         descriptionLabel.text = NSLocalizedString(
@@ -152,8 +152,6 @@ class ShareViewController: UIViewController {
             action: #selector(cancelTapped),
             for: .touchUpInside
         )
-
-
 
         // ボタン縦配置
         let buttonStack = UIStackView(

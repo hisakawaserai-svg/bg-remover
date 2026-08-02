@@ -13,6 +13,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  // 画面状態の AppState 型と名前がぶつかるので別名で入れる。
+  AppState as RNAppState,
   Image,
   PermissionsAndroid,
   Platform,
@@ -24,7 +26,7 @@ import {
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { consumeSharedImage } from './src/share/sharedInput';
+import { consumeSharedImage, onShareSheetClosed } from './src/share/sharedInput';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 
@@ -263,6 +265,9 @@ function AppScreens() {
   const [currentImageUri, setCurrentImageUri] = useState('');
   // 保存完了画面に渡す保存枚数
   const [savedCount, setSavedCount] = useState(0);
+  // 保存完了画面に見せるカットのローカル PNG。CameraRoll の ph:// は
+  // 透過が白で潰れることがあるため、表示と共有にはこちらを使う。
+  const [savedLocalUris, setSavedLocalUris] = useState<string[]>([]);
 
   // ── アプリ設定 ─────────────────────────────────────────────────────────────
   // SettingsContext から取得する。AsyncStorage のロード・保存は Context が担当。
@@ -580,19 +585,45 @@ function AppScreens() {
     }
   }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t]);
 
-  // ── 共有シートから渡された画像の引き取り（起動時1回だけ）───────────────────
+  // ── 共有シートから渡された画像の引き取り ─────────────────────────────────
   // Share Extension が App Group に置いた画像があれば、画像選択と同じ流れへ流す。
-  // 起動時のみの確認で足りる（Extension は本体アプリを URL スキームで起動するため、
-  // 常駐中に共有された場合も再起動扱いで前面に来る）。
-  const sharedChecked = useRef(false);
+  //
+  // 起動時だけでは足りない。アプリが動いたまま共有された場合（自分の共有シートから
+  // 自分の Extension に渡した場合を含む）プロセスは起動し直されないので、
+  // 前面に戻ってきた時にも確認する。画像は引き取った時点で App Group から消えるので、
+  // 二重に走っても2回処理されることはない。
+  const consumingShareRef = useRef(false);
   useEffect(() => {
-    if (sharedChecked.current) return;
-    sharedChecked.current = true; // StrictMode 等の二重実行で二度読みしない
-    void (async () => {
-      const uri = await consumeSharedImage();
-      if (uri) await startWithImage(uri);
-    })();
-    // 起動時に1回だけ動かす。startWithImage は毎レンダリング作り直されるので依存に入れない。
+    const pickUpSharedImage = async () => {
+      if (consumingShareRef.current) return; // 取得中の再入を防ぐ
+      consumingShareRef.current = true;
+      try {
+        const uri = await consumeSharedImage();
+        if (uri) await startWithImage(uri);
+      } finally {
+        consumingShareRef.current = false;
+      }
+    };
+
+    void pickUpSharedImage(); // 起動時
+    const sub = RNAppState.addEventListener('change', next => {
+      if (next === 'active') void pickUpSharedImage(); // 前面に戻った時
+    });
+    // アプリ内の共有シートから自分の Extension に渡した場合はここだけが手掛かり。
+    // Extension の書き込みとシートが閉じるのが前後することがあるので、
+    // 空振りしたら一度だけ間を置いて見直す。
+    const unsubscribeShare = onShareSheetClosed(() => {
+      void (async () => {
+        await pickUpSharedImage();
+        setTimeout(() => { void pickUpSharedImage(); }, 800);
+      })();
+    });
+    return () => {
+      sub.remove();
+      unsubscribeShare();
+    };
+    // マウント時に1度だけ購読する。startWithImage は毎レンダリング作り直されるので
+    // 依存に入れない（入れると購読し直しになる）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -807,7 +838,7 @@ function AppScreens() {
         return Skia.Image.MakeImageFromEncoded(data)!;
       }));
 
-      const { count, album } = await saveSkImages(skImages, await ensureAlbumName());
+      const { count, paths } = await saveSkImages(skImages, await ensureAlbumName());
       skImages.forEach(img => img.dispose());
 
       // 書き出し完了 → step を 'done' に更新
@@ -838,6 +869,9 @@ function AppScreens() {
       }
 
       setSavedCount(count);
+      // 書き出した実ファイル（EXPORT_DIR 配下）を渡す。セッションのサムネとは別物なので
+      // autoDeleteOnExport で消えることもない。
+      setSavedLocalUris(paths);
       setAppState('done');
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
@@ -930,6 +964,29 @@ function AppScreens() {
     if (latest.keyConfig?.rows) setConfirmRows(latest.keyConfig.rows);
     if (latest.keyConfig?.cols) setConfirmCols(latest.keyConfig.cols);
     setConfirmBounds(latest.autoData?.bounds ?? null);
+
+    // ── 書き出し済み（step='done'）── 保存完了画面へ直行 ──────────────────────
+    // 作業が完了しているセッションで分割結果を開いても「もう一度保存する」しか
+    // することがないので、最後に見た画面（保存完了）へ戻す。
+    // removeBackground を走らせる必要がないぶん、再開も速い。
+    const doneCount = latest.autoData?.cells?.length ?? latest.polygons?.length ?? 0;
+    if (latest.step === 'done' && doneCount > 0) {
+      setCurrentImageUri(latest.imageUri);
+      setSavedCount(doneCount);
+      // 書き出し用ファイル(EXPORT_DIR)は次の書き出しで消えるので、再開時はセッションが
+      // 持つカットのサムネを使う。こちらも file:// の PNG なので透過は保たれる。
+      // autoDeleteOnExport で実ファイルが消えている場合があるため存在確認する
+      // （残っていなければ空 → 保存完了画面が CameraRoll へフォールバックする）。
+      const savedPaths = await Promise.all(
+        (latest.autoData?.cells ?? []).map(async c => {
+          const path = c.thumbPath.startsWith('file://') ? c.thumbPath.slice(7) : c.thumbPath;
+          return (await RNFS.exists(path)) ? c.thumbPath : null;
+        }),
+      );
+      setSavedLocalUris(savedPaths.filter((u): u is string => u !== null));
+      setAppState('done');
+      return;
+    }
 
     // ── 自動モードで autoData（カット一覧）が保存済みの場合 ──────────────────
     // doSplit を再実行せず、保存済みセルを復元して ResultScreen を直接開く。
@@ -1371,7 +1428,7 @@ function AppScreens() {
           polygons={polygons}
           onBack={() => goToEditor('editing')}
           onRequestSave={requestSave}
-          onSave={async (count: number) => {
+          onSave={async (count: number, paths: string[]) => {
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」
             // できるよう頂点を残す。done セッションを再開しても復元できる。
@@ -1396,6 +1453,7 @@ function AppScreens() {
               void reloadSessions();
             }
             setSavedCount(count);
+            setSavedLocalUris(paths);
             setAppState('done');
           }}
         />
@@ -1410,6 +1468,7 @@ function AppScreens() {
         <StatusBar barStyle="dark-content" backgroundColor={IOS.bg} />
         <SaveCompleteScreen
           savedCount={savedCount}
+          localUris={savedLocalUris}
           onNewImage={pickImage}
           onSaved={goToSaved}
           onHome={reset}

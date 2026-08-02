@@ -5,7 +5,7 @@
  *   <ImagePreviewModal uris={uris} initial={idx} onClose={() => setIdx(null)} />
  *
  * 特徴:
- *   - 市松背景で透過部分を視認
+ *   - 背景は設定「背景色」に連動（市松/白/黒）。サムネのグリッドと同じ見え方になる
  *   - 左右スワイプ / ボタンで前後に移動（1枚ならナビ非表示）
  *   - 画像タップ / ✕ボタン / OS バックボタンで閉じる
  *   - key={uri} で URI 変更時に Image 再マウント → 白化防止
@@ -24,33 +24,14 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './AnimatedPressable';
+import CheckerboardBg from './CheckerboardBg';
+import { shareImages } from '../../share/shareImages';
+import { resolvePhUri } from '../../imaging/resolvePhUri';
+import { useThumbBg } from '../../hooks/useThumbBg';
 
-// ── 市松背景 ──────────────────────────────────────────────────────────────────
+// 市松のタイルサイズ。
 // TILE=60 で典型画面(390×844)→ 7×15 = 105 View。size*2 にすると ~20,000 View でフリーズ。
 const TILE = 60;
-
-function CheckerBg({ width, height }: { width: number; height: number }) {
-  const cols = Math.ceil(width  / TILE);
-  const rows = Math.ceil(height / TILE);
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {Array.from({ length: rows }, (_, r) => (
-        <View key={r} style={{ flexDirection: 'row' }}>
-          {Array.from({ length: cols }, (_, c) => (
-            <View
-              key={c}
-              style={{
-                width: TILE,
-                height: TILE,
-                backgroundColor: (r + c) % 2 === 0 ? '#444444' : '#222222',
-              }}
-            />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -64,6 +45,7 @@ interface Props {
 
 export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props) {
   const { width: w, height: h } = useWindowDimensions();
+  const bg = useThumbBg();
   const [idx, setIdx] = useState(initial);
   const total = uris.length;
   const scrollRef = useRef<ScrollView>(null);
@@ -80,6 +62,23 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ph:// は表示するとアルファが白へ潰れ、共有ではリンク扱いになる。
+  // 今見ている1枚だけ実ファイルへ解決する（全件やると重い）。
+  const [resolved, setResolved] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const uri = uris[idx];
+    if (!uri || resolved[uri]) return;
+    let alive = true;
+    void (async () => {
+      const path = await resolvePhUri(uri);
+      if (alive && path !== uri) setResolved(prev => ({ ...prev, [uri]: path }));
+    })();
+    return () => { alive = false; };
+  }, [idx, uris, resolved]);
+
+  /** 表示・共有に使う URI。解決済みならそちらを優先する。 */
+  const displayUri = (uri: string) => resolved[uri] ?? uri;
+
   const goTo = useCallback((newIdx: number) => {
     const clamped = Math.max(0, Math.min(newIdx, total - 1));
     setIdx(clamped);
@@ -90,8 +89,10 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.bg}>
 
-        {/* 市松背景 */}
-        <CheckerBg width={w} height={h} />
+        {/* 背景（設定「背景色」に連動）。グリッドのサムネと同じ CheckerboardBg を使う。 */}
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <CheckerboardBg mode={bg} tile={TILE} width={w} height={h} />
+        </View>
 
         {/* 画像ページ群: 左右スワイプ対応。各ページタップで閉じる */}
         <ScrollView
@@ -114,8 +115,8 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
             >
               {/* key={uri} で URI が変わるたびに Image を再マウント → 白化・キャッシュ誤表示を防ぐ */}
               <Image
-                key={uri}
-                source={{ uri }}
+                key={displayUri(uri)}
+                source={{ uri: displayUri(uri) }}
                 style={{ width: w, height: h }}
                 resizeMode="contain"
                 onError={() => {}}
@@ -127,6 +128,14 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
         {/* ✕ 閉じるボタン */}
         <AnimatedPressable style={styles.closeBtn} onPress={onClose}>
           <Icon name="close" size={26} color="#FFF" />
+        </AnimatedPressable>
+
+        {/* 共有（今表示している1枚）。閉じるボタンの隣に置く。 */}
+        <AnimatedPressable
+          style={styles.shareBtn}
+          onPress={() => void shareImages([displayUri(uris[idx])])}
+        >
+          <Icon name="ios-share" size={22} color="#FFF" />
         </AnimatedPressable>
 
         {/* 前後ナビ: 複数画像のときだけ表示 */}
@@ -172,6 +181,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 999,
     padding: 6,
+  },
+  // 閉じるボタンの左隣。背景が白でも読めるよう暗いチップにする。
+  shareBtn: {
+    position: 'absolute',
+    top: 52,
+    right: 70,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 999,
+    padding: 8,
   },
   navRow: {
     position: 'absolute',

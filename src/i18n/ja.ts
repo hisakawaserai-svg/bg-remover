@@ -47,6 +47,7 @@ const ja = {
     deleteAll: 'すべて削除',
     allow: '許可',
     preview: 'プレビュー',
+    share: '共有する',
     unknownError: '不明なエラー',
   },
 
@@ -172,6 +173,7 @@ const ja = {
     selectedCount: { one: '{count}枚選択中', other: '{count}枚選択中' },
     mergeCount: { one: '{count}枚を合体する', other: '{count}枚を合体する' },
     needTwo: '2枚以上選択してください',
+    shareCount: { one: '{count}枚を共有する', other: '{count}枚を共有する' },
     needAdjacent: 'すき間なく隣り合う2枚を選んでください',
     polygonCannotMerge: 'ポリゴン編集済みのカットは合体できません',
     confirmTitle: '確認',

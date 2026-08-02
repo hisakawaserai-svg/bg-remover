@@ -1,4 +1,4 @@
-import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
+import { Skia, ColorType, AlphaType, FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
@@ -78,6 +78,36 @@ export async function persistSourceImage(srcUri: string, id: string): Promise<st
 export interface SaveResult {
   count: number;
   album: string;
+  /**
+   * 書き出した PNG のローカルパス（file:// URI）。
+   *
+   * ギャラリー保存後もファイルを消さずに残す。保存完了画面の表示と共有に使う。
+   * CameraRoll が返す ph:// は
+   *   - 表示時にアルファが白へ潰れる（背景色設定が効かないように見える）
+   *   - 共有シートがファイルではなくリンクとして扱う（「N Links」になる）
+   * ため、書き出した実ファイルを持っておく必要がある。
+   */
+  paths: string[];
+}
+
+/**
+ * 書き出した PNG を保存完了画面まで残しておくディレクトリ。
+ * Caches 配下なので OS に消されても構わない（消えたら CameraRoll へフォールバックする）。
+ */
+export const EXPORT_DIR = `${RNFS.CachesDirectoryPath}/exports`;
+
+/**
+ * 書き出し用ディレクトリを空にして作り直す。
+ * 前回の書き出しぶんが残っていると、保存完了画面に古い画像が混ざるため
+ * 各書き出しの先頭で必ず呼ぶ。
+ */
+async function prepareExportDir(): Promise<void> {
+  try {
+    if (await RNFS.exists(EXPORT_DIR)) await RNFS.unlink(EXPORT_DIR);
+  } catch (e) {
+    console.warn('[imaging] failed to clear export dir', e);
+  }
+  await RNFS.mkdir(EXPORT_DIR);
 }
 
 // Uint8Array を base64 文字列に変換（RNFS の base64 書き込み用）。
@@ -111,25 +141,28 @@ export async function saveCells(
 ): Promise<SaveResult> {
   const bytesList = exportCells(rgba, srcW, bboxes);
   const stamp = Date.now();
+  const paths: string[] = [];
+
+  await prepareExportDir();
 
   for (let i = 0; i < bytesList.length; i++) {
-    // 1) いったんCachesに一時PNGファイルを書く（CameraRollはファイルパスを要求するため）。
+    // 1) 書き出し用ディレクトリに PNG を書く（CameraRollはファイルパスを要求するため）。
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
-    const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
-    await RNFS.writeFile(tmpPath, bytesToBase64(bytesList[i]), 'base64');
+    const outPath = `${EXPORT_DIR}/${name}`;
+    await RNFS.writeFile(outPath, bytesToBase64(bytesList[i]), 'base64');
 
     // 2) アルバム指定でフォトライブラリ/ギャラリーへ保存（iOS/Android共通）。
-    await CameraRoll.saveAsset(`file://${tmpPath}`, {
+    await CameraRoll.saveAsset(`file://${outPath}`, {
       type: 'photo',
       album,
     });
 
-    // 3) 一時ファイルは掃除（保存はギャラリー側に残る）。
-    await RNFS.unlink(tmpPath).catch(() => {});
+    // 3) 保存後もファイルは残す。保存完了画面の表示と共有がこれを使う。
+    paths.push(`file://${outPath}`);
   }
 
   console.log(`[SAVED] ${bytesList.length} images → album "${album}"`);
-  return { count: bytesList.length, album };
+  return { count: bytesList.length, album, paths };
 }
 
 // ── PolygonEditor 向け保存ユーティリティ ──────────────────────────────────────
@@ -227,7 +260,10 @@ export async function savePolygons(
   album: string,
 ): Promise<SaveResult> {
   const stamp = Date.now();
+  const paths: string[] = [];
   let count = 0;
+
+  await prepareExportDir();
 
   for (let i = 0; i < polygons.length; i++) {
     const masked = cropAndMask(rgba, srcW, srcH, polygons[i].points);
@@ -254,15 +290,15 @@ export async function savePolygons(
     if (resized !== withMargin) resized.dispose();
 
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
-    const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
-    await RNFS.writeFile(tmpPath, bytesToBase64(bytes), 'base64');
-    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album });
-    await RNFS.unlink(tmpPath).catch(() => {});
+    const outPath = `${EXPORT_DIR}/${name}`;
+    await RNFS.writeFile(outPath, bytesToBase64(bytes), 'base64');
+    await CameraRoll.saveAsset(`file://${outPath}`, { type: 'photo', album });
+    paths.push(`file://${outPath}`);
     count++;
   }
 
   console.log(`[SAVED] ${count} polygons → album "${album}"`);
-  return { count, album };
+  return { count, album, paths };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,7 +309,10 @@ export async function savePolygons(
  */
 export async function saveSkImages(images: SkImage[], album: string): Promise<SaveResult> {
   const stamp = Date.now();
+  const paths: string[] = [];
   let count = 0;
+
+  await prepareExportDir();
 
   for (let i = 0; i < images.length; i++) {
     const resized = resizeImage(images[i], TARGET_SIZE);
@@ -281,15 +320,16 @@ export async function saveSkImages(images: SkImage[], album: string): Promise<Sa
     if (resized !== images[i]) resized.dispose();
 
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
-    const tmpPath = `${RNFS.CachesDirectoryPath}/${name}`;
-    await RNFS.writeFile(tmpPath, bytesToBase64(bytes), 'base64');
-    await CameraRoll.saveAsset(`file://${tmpPath}`, { type: 'photo', album });
-    await RNFS.unlink(tmpPath).catch(() => {});
+    const outPath = `${EXPORT_DIR}/${name}`;
+    await RNFS.writeFile(outPath, bytesToBase64(bytes), 'base64');
+    await CameraRoll.saveAsset(`file://${outPath}`, { type: 'photo', album });
+    // 保存後も消さない。保存完了画面の表示と共有がこのファイルを使う。
+    paths.push(`file://${outPath}`);
     count++;
   }
 
   console.log(`[SAVED] ${count} images → album "${album}"`);
-  return { count, album };
+  return { count, album, paths };
 }
 
 /**
@@ -318,10 +358,13 @@ export function addMarginToImage(image: SkImage, ratio = OUTPUT_MARGIN_RATIO): S
 
   const paint = Skia.Paint();
   paint.setAntiAlias(true);
-  canvas.drawImageRect(
+  // 等倍配置なので補間は効かないが、サンプリング指定は resizeImage と揃えておく。
+  canvas.drawImageRectOptions(
     image,
     Skia.XYWHRect(0, 0, w, h),
     Skia.XYWHRect(mx, my, w, h),
+    FilterMode.Linear,
+    MipmapMode.None,
     paint,
   );
 
@@ -343,10 +386,17 @@ function resizeImage(image: SkImage, size: number): SkImage {
   const dstH = h * scale;
   const paint = Skia.Paint();
   paint.setAntiAlias(true);
-  canvas.drawImageRect(
+  // 【drawImageRect ではなく drawImageRectOptions を使う】
+  // drawImageRect は SkSamplingOptions() の既定 = ニアレストネイバーで拡縮する。
+  // paint.setAntiAlias(true) は図形の縁にしか効かず、画像のサンプリングには無関係なので、
+  // これだけだと拡大時に階段状（ガビガビ）になる。書き出しは 500px へ拡大することが
+  // 多いので影響が大きい。Linear を明示して補間させる。
+  canvas.drawImageRectOptions(
     image,
     Skia.XYWHRect(0, 0, w, h),
     Skia.XYWHRect((size - dstW) / 2, (size - dstH) / 2, dstW, dstH),
+    FilterMode.Linear,
+    MipmapMode.None,
     paint,
   );
 

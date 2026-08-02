@@ -35,6 +35,7 @@ import { useThumbBg } from '../hooks/useThumbBg';
 import type { Cell } from '../cellTypes';
 import type { BBox } from '../imaging';
 import { useT } from '../i18n';
+import { shareImages } from '../share/shareImages';
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
 
@@ -403,6 +404,18 @@ export default function ResultScreen({
     exitSelectingMode();
   };
 
+  // ── 共有 ─────────────────────────────────────────────────────────────────
+  // カットのサムネはリサイズなしのフル解像度 透過 PNG なので、書き出し直さず
+  // その URI をそのまま共有シートへ渡す。
+  // 選択は解除しない（共有をキャンセルした時に選び直しになるのを避ける）。
+  const handleSharePress = async () => {
+    const uris = [...selectedArr]
+      .sort((a, b) => a - b) // 表示順（カット番号順）で渡す
+      .map(i => cells[i]?.thumbUri)
+      .filter((u): u is string => !!u);
+    await shareImages(uris);
+  };
+
   // ── ヘッダー ──────────────────────────────────────────────────────────────
   const header = (
     <AppHeader
@@ -519,6 +532,17 @@ export default function ResultScreen({
                   {selectedArr.length >= 2
                     ? t('result.mergeCount', { count: selectedArr.length })
                     : t('result.needTwo')}
+                </Text>
+              </AnimatedPressable>
+              {/* 共有は合体と違って隣接や kind の制約がないので、選択中なら常に押せる。 */}
+              <AnimatedPressable
+                style={styles.shareBtn}
+                onPress={() => void handleSharePress()}
+                pressedScale={0.97}
+              >
+                <Icon name="ios-share" size={18} color={colors.accent} style={{ marginRight: spacing.xs }} />
+                <Text style={styles.shareBtnTxt}>
+                  {t('result.shareCount', { count: selectedArr.length })}
                 </Text>
               </AnimatedPressable>
               <AnimatedPressable
@@ -772,6 +796,20 @@ const styles = StyleSheet.create({
   },
 
   // ── キャンセルボタン ──────────────────────────────────────────────────────
+  shareBtn: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.card,
+  },
+  shareBtnTxt: {
+    ...typography.headline,
+    color: colors.accent,
+  },
   cancelBtn: {
     borderRadius: radius.md,
     paddingVertical: spacing.lg,

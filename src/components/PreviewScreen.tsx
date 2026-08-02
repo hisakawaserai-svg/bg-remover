@@ -24,7 +24,7 @@ import AppHeader from './ui/AppHeader';
 import CheckerboardBg from './ui/CheckerboardBg';
 import ImageZoomModal from './ui/ImageZoomModal';
 import { useThumbBg } from '../hooks/useThumbBg';
-import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
+import { Skia, ColorType, AlphaType, FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import { savePolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
 import { useT } from '../i18n';
@@ -40,7 +40,8 @@ interface Props {
   bgResult: RemoveBgResult;
   polygons: Polygon[];
   onBack: () => void;             // 編集に戻る（polygons はApp側で保持済み）
-  onSave: (count: number) => void; // 保存完了後に App.tsx の state を 'done' へ
+  /** 保存完了後に App.tsx の state を 'done' へ。paths は書き出した PNG の file:// URI。 */
+  onSave: (count: number, paths: string[]) => void;
   onRequestSave: () => Promise<boolean>; // 保存前の権限確認。App.tsx の requestSave をそのまま渡してもらう
 }
 
@@ -108,7 +109,15 @@ function buildThumbnail(
   c.clear(Skia.Color('transparent'));
   const paint = Skia.Paint();
   paint.setAntiAlias(true);
-  c.drawImageRect(img, Skia.XYWHRect(0, 0, cropW, cropH), Skia.XYWHRect(0, 0, dstW, dstH), paint);
+  // 既定のサンプリング（ニアレスト）だと縮小時にジャギーが出るので Linear を明示する。
+  c.drawImageRectOptions(
+    img,
+    Skia.XYWHRect(0, 0, cropW, cropH),
+    Skia.XYWHRect(0, 0, dstW, dstH),
+    FilterMode.Linear,
+    MipmapMode.None,
+    paint,
+  );
   const thumb = surf.makeImageSnapshot();
   const b64   = thumb.encodeToBase64();
 
@@ -150,8 +159,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
     setIsSaving(true);
     try {
       const { rgba, width, height } = bgResult;
-      const { count } = await savePolygons(rgba, width, height, polygons, await ensureAlbumName());
-      onSave(count);
+      const { count, paths } = await savePolygons(rgba, width, height, polygons, await ensureAlbumName());
+      onSave(count, paths);
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
       Alert.alert(t('preview.saveErrorTitle'), describeSaveError(e));
@@ -231,6 +240,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
         visible={zoomUri != null}
         uri={zoomUri ?? ''}
         onClose={() => setZoomUri(null)}
+        showShare // 開くのはカット画像なので共有できる
+        useBgSetting // 透過画像なので、サムネと同じ「背景色」設定で見せる
       />
     </Screen>
   );

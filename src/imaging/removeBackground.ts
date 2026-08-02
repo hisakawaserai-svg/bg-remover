@@ -1,4 +1,4 @@
-import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
+import { Skia, ColorType, AlphaType, FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { t } from '../i18n';
 
@@ -97,10 +97,14 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
     const canvas = surface.getCanvas();
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
-    canvas.drawImageRect(
+    // 既定のサンプリングはニアレストなので、縮小するとジャギーが乗ったまま
+    // 以降の背景判定・書き出しに使われる。Linear を明示して補間させる。
+    canvas.drawImageRectOptions(
       image,
       Skia.XYWHRect(0, 0, origW, origH),
       Skia.XYWHRect(0, 0, newW, newH),
+      FilterMode.Linear,
+      MipmapMode.None,
       paint,
     );
     processedImage = surface.makeImageSnapshot();

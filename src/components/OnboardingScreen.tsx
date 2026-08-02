@@ -27,7 +27,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withRepeat,
   Easing,
   SharedValue,
   ReduceMotion,
@@ -49,9 +48,16 @@ const SLIDE_Y = 28;
 const STEP_DURATIONS = [12000, 13000, 11000, 11000];
 
 /**
- * ProgressSegment — 動画(ストーリーズ)風プログレスバーの1ステップ分。
- * done=済(満タン) / active=再生中(progress に追従して 0→1 ループ) / それ以外=空。
+ * ProgressSegment — プログレスバーの1ステップ分。
+ * done=済(満タン) / active=再生中(progress に追従して 0→1、満ちたら止まる) / それ以外=空。
  * 伸びは scaleX(transformOrigin:left)のみ＝白化回避。
+ *
+ * 【ループさせない理由】
+ * 以前はデモのループに合わせてバーも 0→1 を繰り返していたが、これはストーリーズの
+ * 作法そのもので「時間が来たら次に進む」と読める。実際には自動進行しない
+ * （下の onMomentumEnd 参照）ので、見た目の約束と挙動が食い違っていた。
+ * 1周で満タンのまま止めると「このステップのデモは一通り流れた」の意味になり、
+ * 進むのは「次へ」だけ、という実際の作りと一致する。
  */
 function ProgressSegment({ progress, active, done }: {
   progress: SharedValue<number>; active: boolean; done: boolean;
@@ -129,17 +135,15 @@ export default function OnboardingScreen({ onComplete }: Props) {
   // 動画風プログレス: 表示中ステップだけ 0→1 をループ。ステップが変わると頭出しし直す。
   const progress = useSharedValue(0);
   useEffect(() => {
+    // ステップを変えたら頭出しし、1周ぶんだけ伸ばして満タンで止める。
+    // 中身のデモ（各 Step コンポーネント）は従来どおりループし続ける。
     progress.value = 0;
-    progress.value = withRepeat(
-      withTiming(1, { duration: STEP_DURATIONS[currentIndex] ?? 12000, easing: Easing.linear, reduceMotion: ReduceMotion.Never }),
-      -1,
-      false,
-      undefined,
-      // 【重要】withRepeat 自身にも指定が要る。withTiming 側だけだと
-      // OSの「視差効果を減らす/アニメーションを減らす」でループが無効化され、
-      // 1周しただけで止まる（説明用のアニメなので必ず動かす）。
-      ReduceMotion.Never,
-    );
+    progress.value = withTiming(1, {
+      duration: STEP_DURATIONS[currentIndex] ?? 12000,
+      easing: Easing.linear,
+      // OSの「視差効果を減らす/アニメーションを減らす」でも進捗表示は動かす。
+      reduceMotion: ReduceMotion.Never,
+    });
   }, [currentIndex, progress]);
 
   const goTo = (index: number) => {

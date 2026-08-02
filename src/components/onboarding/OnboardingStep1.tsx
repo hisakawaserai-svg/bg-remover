@@ -22,6 +22,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import BirdMascot from './BirdMascot';
 import SpeechBubble from './SpeechBubble';
 import TouchIndicator from './TouchIndicator';
 import { shared, COLORS, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from './shared';
@@ -44,6 +45,11 @@ const GRID = [0, 1, 2, 3, 4, 5];
 const SELECTED_CELL = 1;
 const CELL_TINTS = ['#FFD9C2', '#C2E0FF', '#D6F5DD', '#FFE3F0', '#E5DBFF', '#FFF2C2'];
 const GRID_GUTTER = 6;
+
+// 選択するセルだけは「次のステップで加工される画像」そのものを見せる。
+// step2 のプレビューと絵が違うと、選んだ写真と処理される写真が別物に見えるため、
+// 地色(#1C1C1E)も 2体(day/night)の並びも step2 の previewBox に合わせている。
+const PICKED_BG = '#1C1C1E';
 
 // 文言は描画時に t() で解決する（下の useT 参照）。
 
@@ -194,10 +200,24 @@ export default function OnboardingStep1({ active = true }: { active?: boolean })
             {GRID.map(i => (
               <View
                 key={i}
-                style={[s.cell, { backgroundColor: CELL_TINTS[i], width: cellSize, height: cellSize }]}
+                style={[
+                  s.cell,
+                  {
+                    backgroundColor: i === SELECTED_CELL ? PICKED_BG : CELL_TINTS[i],
+                    width: cellSize,
+                    height: cellSize,
+                  },
+                ]}
               >
                 {i === SELECTED_CELL && (
                   <>
+                    {/* step2 で分割される画像と同じ絵。セル幅に対して2体が収まる大きさにする。 */}
+                    {cellSize > 0 && (
+                      <View style={s.pickedBirds}>
+                        <BirdMascot variant="day" size={cellSize * 0.46} />
+                        <BirdMascot variant="night" size={cellSize * 0.46} />
+                      </View>
+                    )}
                     <Animated.View style={[s.cellCheck, checkStyle]}>
                       <Icon name="check" size={14} color="#FFF" />
                     </Animated.View>
@@ -248,6 +268,14 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   hiddenMascot: { opacity: 0 },
+
+  // 選択セルの中身(step2 のプレビューと同じ 2体並び)
+  pickedBirds: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   titleBar: {
     flexDirection: 'row',

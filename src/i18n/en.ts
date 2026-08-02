@@ -35,6 +35,7 @@ const en: typeof ja = {
     deleteAll: 'Delete All',
     allow: 'Allow',
     preview: 'Preview',
+    share: 'Share',
     unknownError: 'Unknown error',
   },
 
@@ -150,6 +151,7 @@ const en: typeof ja = {
     selectedCount: { one: '{count} selected', other: '{count} selected' },
     mergeCount: { one: 'Merge {count} piece', other: 'Merge {count} pieces' },
     needTwo: 'Select at least two pieces',
+    shareCount: { one: 'Share {count} piece', other: 'Share {count} pieces' },
     needAdjacent: 'Select two pieces that are directly adjacent',
     polygonCannotMerge: 'Cutouts edited with polygons cannot be merged',
     confirmTitle: 'Confirm',

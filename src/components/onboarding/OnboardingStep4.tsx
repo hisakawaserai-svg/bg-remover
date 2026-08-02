@@ -188,8 +188,8 @@ export default function OnboardingStep4({ active = true }: { active?: boolean })
             <Text style={s.subTxt}>{t('saveComplete.checkDestination')}</Text>
           </Animated.View>
           <Animated.View style={[s.lineBtn, btn2Style]}>
-            <Text style={s.lineTxt}>{t('saveComplete.openLineMaker')}</Text>
-            <Icon name="open-in-new" size={16} color="#FFF" />
+            <Text style={s.lineTxt}>{t('result.shareCount', { count: 2 })}</Text>
+            <Icon name="ios-share" size={16} color="#FFF" />
           </Animated.View>
         </View>
       </Animated.View>

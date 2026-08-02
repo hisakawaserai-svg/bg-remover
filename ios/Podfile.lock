@@ -2155,6 +2155,28 @@ PODS:
     - ReactNativeDependencies
     - RNWorklets
     - Yoga
+  - RNShare (12.3.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - RNWorklets (0.10.0):
     - hermes-engine
     - RCTRequired
@@ -2313,6 +2335,7 @@ DEPENDENCIES:
   - RNFS (from `../node_modules/react-native-fs`)
   - RNGoogleMobileAds (from `../node_modules/react-native-google-mobile-ads`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
+  - RNShare (from `../node_modules/react-native-share`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2489,6 +2512,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-google-mobile-ads"
   RNReanimated:
     :path: "../node_modules/react-native-reanimated"
+  RNShare:
+    :path: "../node_modules/react-native-share"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
   Yoga:
@@ -2580,9 +2605,10 @@ SPEC CHECKSUMS:
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNGoogleMobileAds: 10d1a7a38343f18a98f08624c15ced3b0796e603
   RNReanimated: a9bf68fb5f19ce1c363b7d1413dcf8ee323185b8
+  RNShare: 7344a3a7d4e5df58c356ad0f79e4a3ef1325c635
   RNWorklets: ae7f2b95d75b903387e6359583f2fd67bc9a93ff
   Yoga: fe50ab299e578f397fef753cf309c6703a4db29b
 
-PODFILE CHECKSUM: 280ef2e4ee4035ba5504989c76cdde007f73a795
+PODFILE CHECKSUM: c609eebd80a7f4a24a12ccc16d508c76774f375a
 
 COCOAPODS: 1.16.2

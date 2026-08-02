@@ -9,8 +9,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Linking,
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -21,6 +19,7 @@ import { AnimatedPressable } from './ui/AnimatedPressable';
 import ImagePreviewModal from './ui/ImagePreviewModal';
 import CheckerboardBg from './ui/CheckerboardBg';
 import { useThumbBg } from '../hooks/useThumbBg';
+import { shareImages } from '../share/shareImages';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
@@ -31,23 +30,20 @@ import AdBanner from '../ads/AdBanner';
 // グリッドの最大表示枚数
 const MAX_GRID = 9;
 
-// ── LINE スタンプ Maker を開く ─────────────────────────────────────────────────
-
-async function openLineStickerMaker() {
-  const appScheme = Platform.OS === 'android'
-    ? 'linestickercreator://'
-    : 'linestickercreator://';
-  const storeUrl = Platform.OS === 'android'
-    ? 'https://play.google.com/store/apps/details?id=com.linecorp.usersticker'
-    : 'https://apps.apple.com/app/line-sticker-maker/id1239684967';
-  const canOpen = await Linking.canOpenURL(appScheme).catch(() => false);
-  Linking.openURL(canOpen ? appScheme : storeUrl);
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
   savedCount: number;
+  /**
+   * 書き出したカットのローカル PNG（file:// URI）。
+   *
+   * 表示には CameraRoll の ph:// ではなくこちらを優先する。iOS は ph:// を
+   * PHImageManager 経由で読むため**アルファが白で潰れた画像が返る**ことがあり、
+   * そうなると裏の市松/黒背景が見えず「背景色設定が効かない」状態になる。
+   * 元の PNG を直接読めば透過が保たれる。
+   * 渡されなかった場合だけ従来どおり CameraRoll から引く。
+   */
+  localUris?: string[];
   onNewImage: () => void;
   onSaved: () => void;
   onHome: () => void;
@@ -56,7 +52,7 @@ interface Props {
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, onHome, onSettings }: Props) {
+export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, onSaved, onHome, onSettings }: Props) {
   const { t } = useT();
   const { albumName } = useAlbumName();
   const bg = useThumbBg();
@@ -71,6 +67,13 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
   // ここは「今保存した先」だけを見ればよいので現在名で引く（履歴は使わない）。
   // 履歴をまたいで集めるのは「保存先」画面（SavedScreen）の役目。
   useEffect(() => {
+    // ローカル PNG がある場合は CameraRoll を引かない（透過が保たれ、取得も速い）。
+    if (localUris?.length) {
+      setAllUris(localUris);
+      setThumbUris(localUris.slice(0, MAX_GRID));
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const result = await CameraRoll.getPhotos({
@@ -95,6 +98,9 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
   // マウント時1回だけ実行
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** 拡大プレビューと共有に渡す URI 一覧。 */
+  const previewUris = allUris;
 
   const overflow = savedCount > MAX_GRID ? savedCount - MAX_GRID : 0;
 
@@ -171,18 +177,29 @@ export default function SaveCompleteScreen({ savedCount, onNewImage, onSaved, on
           <Text style={styles.subBtnTxt}>{t('saveComplete.checkDestination')}</Text>
         </AnimatedPressable>
 
-        {/* LINE スタンプ Maker */}
-        <AnimatedPressable style={styles.lineBtn} onPress={openLineStickerMaker} pressedScale={0.97}>
-          <Text style={styles.lineBtnTxt}>{t('saveComplete.openLineMaker')}</Text>
-          <Icon name="open-in-new" size={16} color="#FFF" />
-        </AnimatedPressable>
+        {/* 共有。LINE スタンプ Maker を開くボタンはここに置いていたが、
+            共有シートの中に LINE スタンプ Maker が出るので導線が重複していた。
+            共有のほうが行き先を選べるぶん上位互換なので、こちらへ入れ替えた。
+            表示できる画像が取れなかった場合は押しても意味がないので隠す。 */}
+        {previewUris.length > 0 && (
+          <AnimatedPressable
+            style={styles.shareBtn}
+            onPress={() => void shareImages(previewUris)}
+            pressedScale={0.97}
+          >
+            <Text style={styles.shareBtnTxt}>
+              {t('result.shareCount', { count: previewUris.length })}
+            </Text>
+            <Icon name="ios-share" size={16} color="#FFF" />
+          </AnimatedPressable>
+        )}
 
       </View>
 
       {/* 拡大プレビュー */}
       {previewIdx !== null && (
         <ImagePreviewModal
-          uris={allUris}
+          uris={previewUris}
           initial={previewIdx}
           onClose={() => setPreviewIdx(null)}
         />
@@ -295,7 +312,7 @@ const styles = StyleSheet.create({
   },
   subBtnTxt: { fontSize: 15, fontWeight: '600', color: IOS.blue },
 
-  lineBtn: {
+  shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -304,5 +321,5 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
   },
-  lineBtnTxt: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  shareBtnTxt: { fontSize: 15, fontWeight: '700', color: '#FFF' },
 });

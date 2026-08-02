@@ -44,7 +44,10 @@ import {
   Path,
   Circle,
   Group,
-  Rect,     // 下地レイヤーの単色塗り・市松タイルに使用
+  Rect,     // 下地レイヤーの単色塗り・市松に使用
+  ImageShader,
+  FilterMode,
+  MipmapMode,
   Skia,
   ColorType,
   AlphaType,
@@ -312,6 +315,29 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   // ── Refs (PanResponder クロージャから最新値を読む) ─────────────────────
   const zoomRef       = useRef(zoom);       zoomRef.current       = zoom;
+
+  // ── ジェスチャー中のズーム更新を 1フレーム1回にまとめる ─────────────────────
+  //
+  // onPanResponderMove はタッチイベントごと（60〜120Hz）に来る。そのたびに setZoom
+  // すると同じ数だけ再レンダーが走り、指を動かしている間ずっと重くなる。
+  // ズーム値そのものは zoomRef に即時反映し（同じジェスチャー中の計算はこれを読む）、
+  // React への反映だけを requestAnimationFrame でまとめる。
+  const pendingZoomRef = useRef<ZoomState | null>(null);
+  const zoomRafRef     = useRef<number | null>(null);
+  const scheduleZoom = useCallback((next: ZoomState) => {
+    zoomRef.current = next;      // 後続の計算がすぐ読めるよう先に入れる
+    pendingZoomRef.current = next;
+    if (zoomRafRef.current != null) return; // このフレームぶんは予約済み
+    zoomRafRef.current = requestAnimationFrame(() => {
+      zoomRafRef.current = null;
+      const pending = pendingZoomRef.current;
+      pendingZoomRef.current = null;
+      if (pending) setZoom(pending);
+    });
+  }, []);
+  useEffect(() => () => {
+    if (zoomRafRef.current != null) cancelAnimationFrame(zoomRafRef.current);
+  }, []);
   const polygonsRef   = useRef(polygons);   polygonsRef.current   = polygons;
   const selectedIdRef = useRef(selectedId); selectedIdRef.current = selectedId;
   const appModeRef    = useRef(appMode);    appModeRef.current    = appMode;
@@ -924,7 +950,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         // 焦点固定: ピンチ開始中点が画面上で動かないよう tx/ty を補正
         const focalX = (gPinchMidX.current - tx0) / s0;
         const focalY = (gPinchMidY.current - ty0) / s0;
-        setZoom(clampZoom({
+        scheduleZoom(clampZoom({
           scale: newScale,
           tx: gPinchMidX.current - focalX * newScale,
           ty: gPinchMidY.current - focalY * newScale,
@@ -943,7 +969,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         }
         if (gPhase.current === 'pan') {
           const { scale, tx, ty } = gStartZoom.current;
-          setZoom(clampZoom({ scale, tx: tx + gs.dx, ty: ty + gs.dy },
+          scheduleZoom(clampZoom({ scale, tx: tx + gs.dx, ty: ty + gs.dy },
             canvasSizeRef.current.w, canvasSizeRef.current.h,
             imageWRef.current * dsRef.current, imageHRef.current * dsRef.current));
         }
@@ -1105,26 +1131,28 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     });
   }, [polygons, ds]);
 
-  // 市松タイルを useMemo でキャッシュ: canvasSize/bgMode が変わらない限り毎レンダーで再生成しない。
-  // ドラッグ中は canvasSize も bgMode も変化しないのでキャッシュがヒットし続ける。
+  // ── 市松の下地 ────────────────────────────────────────────────────────────
+  //
+  // 【1タイル1ノードにしない】
+  // 以前はタイルを <Rect> の配列で描いていた。20px タイルだと画面サイズによっては
+  // 700個近いノードになり、useMemo で配列をキャッシュしても**再レンダーのたびに
+  // React がその全ノードを差分計算する**。ドラッグ中は setZoom / setPolygons が
+  // タッチイベントごとに走るので、このコストが毎フレーム乗ってラグの主因になっていた。
+  //
+  // 2×2 の画像をリピート描画するシェーダに変えて、ノード数を 1 にする。
+  // 拡大は Nearest にしないとタイルの境目がぼけるので明示する。
   const CHECKER_TILE = 20;
-  const checkerTiles = useMemo(() => {
-    if (bgMode !== 'checker') return null;
-    const cols = Math.ceil(canvasSize.w / CHECKER_TILE);
-    const rows = Math.ceil(canvasSize.h / CHECKER_TILE);
-    const tiles: React.ReactElement[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const light = (r + c) % 2 === 0;
-        tiles.push(
-          <Rect key={`${r}-${c}`} x={c * CHECKER_TILE} y={r * CHECKER_TILE}
-            width={CHECKER_TILE} height={CHECKER_TILE}
-            color={light ? '#CCCCCC' : '#999999'} />,
-        );
-      }
-    }
-    return tiles;
-  }, [bgMode, canvasSize]);
+  const checkerImage = useMemo(() => {
+    // 2×2 の市松（左上と右下が明、残りが暗）。
+    const light = [0xCC, 0xCC, 0xCC, 0xFF];
+    const dark  = [0x99, 0x99, 0x99, 0xFF];
+    const px = new Uint8Array([...light, ...dark, ...dark, ...light]);
+    return Skia.Image.MakeImage(
+      { width: 2, height: 2, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Opaque },
+      Skia.Data.fromBytes(px),
+      2 * 4,
+    );
+  }, []);
 
   const groupTransform = [
     { translateX: zoom.tx },
@@ -1212,8 +1240,21 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           {bgMode === 'black' && (
             <Rect x={0} y={0} width={canvasSize.w} height={canvasSize.h} color="#000000" />
           )}
-          {/* 市松はドラッグ中にも canvasSize/bgMode が変わらないため useMemo でキャッシュ済み */}
-          {checkerTiles}
+          {/* 市松: タイルを並べず、2×2 の画像をリピートするシェーダ1枚で塗る（ノード数 1）。
+              transform の scale でタイルの見かけの大きさを決める。 */}
+          {bgMode === 'checker' && checkerImage && (
+            <Rect x={0} y={0} width={canvasSize.w} height={canvasSize.h}>
+              <ImageShader
+                image={checkerImage}
+                tx="repeat"
+                ty="repeat"
+                fit="none"
+                transform={[{ scale: CHECKER_TILE }]}
+                // タイルの境目をぼかさない。
+                sampling={{ filter: FilterMode.Nearest, mipmap: MipmapMode.None }}
+              />
+            </Rect>
+          )}
 
           <Group transform={groupTransform}>
             {/* 背景除去済み画像 */}

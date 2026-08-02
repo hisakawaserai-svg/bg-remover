@@ -11,3 +11,6 @@
 "remove_button" = "Remove Background";
 "cancel_button" = "Cancel";
 "processing" = "Processing...";
+"saved_title" = "Image Saved";
+"open_app_manually" = "Open Sticker Cutout to continue removing the background.";
+"ok_button" = "OK";

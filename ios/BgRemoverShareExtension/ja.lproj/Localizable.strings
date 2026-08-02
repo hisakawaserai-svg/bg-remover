@@ -11,3 +11,6 @@
 "remove_button" = "透過する";
 "cancel_button" = "キャンセル";
 "processing" = "処理中...";
+"saved_title" = "画像を保存しました";
+"open_app_manually" = "「スタンプ抜き」を開くと、続きから背景を削除できます。";
+"ok_button" = "OK";

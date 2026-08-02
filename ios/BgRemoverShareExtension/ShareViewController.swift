@@ -11,9 +11,18 @@ import UniformTypeIdentifiers
 /// UIApplication の open(_:options:completionHandler:) を呼ぶためのプロトコル。
 /// Extension では UIApplication.shared を参照できないので、レスポンダチェーンで
 /// 取り出したインスタンスをこの型に見立てて呼ぶ。
+///
+/// **`as?` でキャストしてはいけない。** UIApplication はこのプロトコルへの準拠を
+/// 宣言していないので、@objc プロトコルの conformance チェックは必ず失敗して nil になる
+/// （セレクタ自体は実装されているのに呼べない、という以前のバグの原因）。
+/// responds(to:) でセレクタの実在を確かめてから unsafeBitCast で見立てる。
 @objc private protocol URLOpening {
     @objc(openURL:options:completionHandler:)
-    func open(_ url: URL, options: [String: Any], completionHandler: ((Bool) -> Void)?)
+    func open(
+        _ url: URL,
+        options: [UIApplication.OpenExternalURLOptionsKey: Any],
+        completionHandler: ((Bool) -> Void)?
+    )
 }
 
 /// 共有シートから画像を受け取り、App Group へ置いて本体アプリを起動するだけの画面。
@@ -307,33 +316,41 @@ class ShareViewController: UIViewController {
             closeExtension()
             return
         }
-
+      NSLog("[ShareExtension] 保存完了")
         openHostApp()
     }
 
 
     /// 本体アプリを起動する。
     ///
-    /// 起動の成否に関わらず、最後は必ず Extension を閉じる
-    /// （閉じないと共有シートが残って操作不能に見える）。
+    /// 【extensionContext.open は使わない】
+    /// Apple のドキュメントどおり、この API を実装しているのは Today と iMessage の
+    /// Extension Point だけで、Share Extension（com.apple.share-services）では
+    /// URL スキームでもユニバーサルリンクでも必ず false が返る。
+    /// 呼ぶだけ無駄なうえ、完了ハンドラの中で Extension を閉じていたせいで
+    /// 後続の起動処理まで潰れていたので、経路ごと削除した。
+    ///
+    /// 【残る手段はレスポンダチェーンだけ】
+    /// Share Extension から Containing App を自動起動する公式な方法は存在しない。
+    /// 起動に失敗した場合は「アプリを開いてください」と案内して閉じる。
+    /// 画像は App Group に置いてあるので、ユーザーが手でアプリを開けば
+    /// 起動時の引き取り処理が拾って同じ結果になる（機能は壊れない）。
     private func openHostApp() {
         guard let url = Self.hostAppURL else {
-            closeExtension()
+            showOpenAppManually()
             return
         }
 
-        // まず正規の API を試す。
-        NSLog("[ShareExtension] open を試行: %@", url.absoluteString)
-        extensionContext?.open(url) { [weak self] success in
+        openViaResponderChain(url) { [weak self] success in
             guard let self else { return }
-            NSLog("[ShareExtension] extensionContext.open の結果: %@", success ? "成功" : "失敗")
-            if !success {
-                // Share Extension では extensionContext.open が効かないことがある。
-                // 実機で起動しないことを確認済み（URLスキーム自体は
-                // simctl openurl で開けるので、スキーム登録の問題ではない）。
-                _ = self.openViaResponderChain(url)
+
+            if success {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    self.closeExtension()
+                }
+            } else {
+                self.showOpenAppManually()
             }
-            self.closeExtension()
         }
     }
 
@@ -341,33 +358,61 @@ class ShareViewController: UIViewController {
     /// レスポンダチェーンを辿って UIApplication を見つけ、URL を開く。
     ///
     /// Extension では UIApplication.shared を直接参照できない（コンパイルエラー）ため、
-    /// チェーン上のインスタンスを取り出して openURL: を呼ぶ。
-    /// extensionContext.open が動かない場合の控え。
+    /// チェーン上のインスタンスを取り出して open を呼ぶ。
+    /// 呼ぶ先の open(_:options:completionHandler:) は UIApplication の**公開 API** で、
+    /// 非公開なのは「Extension から UIApplication に手を伸ばす」経路のほうだけ。
+    /// 将来 Apple にこの経路を塞がれても false が返るだけで、呼び出し側が
+    /// 手動起動の案内に切り替わるようにしてある。
     @discardableResult
-    private func openViaResponderChain(_ url: URL) -> Bool {
-        let selector = NSSelectorFromString("openURL:")
-        var responder: UIResponder? = self
+    private func openViaResponderChain(_ url: URL,
+      completion: @escaping (Bool) -> Void
+    ) -> Bool {
+        // 旧 openURL: は現在の iOS では無反応なので、3引数版のセレクタで探す。
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
+        var responder: UIResponder? = self.next
 
-        while let current = responder {
-            if current.responds(to: selector) && !(current is UIViewController) {
-                // 旧 openURL: は最近の iOS では無反応なので、現行の3引数版を先に試す。
-                // perform は2引数までなので @objc プロトコル経由で呼ぶ。
-                if let opener = current as? URLOpening {
-                    NSLog("[ShareExtension] 3引数版 open を呼ぶ: %@", String(describing: type(of: current)))
-                    opener.open(url, options: [:]) { ok in
-                        NSLog("[ShareExtension] 3引数版 open の結果: %@", ok ? "成功" : "失敗")
-                    }
-                    return true
-                }
-                NSLog("[ShareExtension] 旧 openURL: を呼ぶ: %@", String(describing: type(of: current)))
-                _ = current.perform(selector, with: url)
-                return true
-            }
-            responder = current.next
-        }
+      while let current = responder {
+
+          if current is UIScene {
+              responder = current.next
+              continue
+          }
+          if current.responds(to: selector) {
+              let opener = unsafeBitCast(current, to: URLOpening.self)
+              let options: [UIApplication.OpenExternalURLOptionsKey: Any] = [:]
+              NSLog(
+                  "[ShareExtension] open を呼ぶ: %@",
+                  String(describing: type(of: current))
+              )
+              opener.open(url, options: [:]) { success in
+                  NSLog("[ShareExtension] open結果: %@", success ? "成功" : "失敗")
+                  completion(success)
+              }
+              return true
+          }
+          responder = current.next
+      }
 
         NSLog("[ShareExtension] レスポンダチェーンに UIApplication が見つかりませんでした")
         return false
+    }
+
+
+    /// 自動起動できなかったときの案内。
+    /// 画像は保存済みなので、アプリを開けば続きから処理される。
+    private func showOpenAppManually() {
+        let alert = UIAlertController(
+            title: NSLocalizedString("saved_title", comment: ""),
+            message: NSLocalizedString("open_app_manually", comment: ""),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(
+            title: NSLocalizedString("ok_button", comment: ""),
+            style: .default
+        ) { [weak self] _ in
+            self?.closeExtension()
+        })
+        present(alert, animated: true)
     }
 
 

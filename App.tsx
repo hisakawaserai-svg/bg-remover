@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
 import { launchImageLibrary } from 'react-native-image-picker';
+import { consumeSharedImage } from './src/share/sharedInput';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 
@@ -407,8 +408,14 @@ function AppScreens() {
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel || !result.assets?.[0]?.uri) return;
 
-    const pickedUri = result.assets[0].uri;
+    await startWithImage(result.assets[0].uri);
+  };
 
+  /**
+   * 選んだ／共有された画像1枚から処理を開始する。
+   * ピッカー経由でも共有シート経由でも、ここから先は完全に同じ扱いにする。
+   */
+  const startWithImage = async (pickedUri: string) => {
     // PNGへ統一
     const pngUri = await convertToPng(pickedUri);
 
@@ -572,6 +579,22 @@ function AppScreens() {
       void reloadSessions();
     }
   }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t]);
+
+  // ── 共有シートから渡された画像の引き取り（起動時1回だけ）───────────────────
+  // Share Extension が App Group に置いた画像があれば、画像選択と同じ流れへ流す。
+  // 起動時のみの確認で足りる（Extension は本体アプリを URL スキームで起動するため、
+  // 常駐中に共有された場合も再起動扱いで前面に来る）。
+  const sharedChecked = useRef(false);
+  useEffect(() => {
+    if (sharedChecked.current) return;
+    sharedChecked.current = true; // StrictMode 等の二重実行で二度読みしない
+    void (async () => {
+      const uri = await consumeSharedImage();
+      if (uri) await startWithImage(uri);
+    })();
+    // 起動時に1回だけ動かす。startWithImage は毎レンダリング作り直されるので依存に入れない。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── カット合体: 選択した auto セル群を 1 枚に結合 ──────────────────────────
   // 選択セルの bbox を包含する最小矩形を元画像から切り出して新しいセルを作る。

@@ -353,6 +353,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [eyeBusy, setEyeBusy] = useState(false);
   // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
   const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
+  // 透過強度パネルは既定で畳んでおく。開きっぱなしだと画像の上側を覆って
+  // そこを編集できなくなるため、必要な時だけ開く。
+  const [retransOpen, setRetransOpen] = useState(false);
+  // 下部のツール説明・ズームバーごと、重なるものを一時的に全部隠す。
+  // 画像の端を直したい時に「どかす手段」が無いと詰むので用意する。
+  const [chromeHidden, setChromeHidden] = useState(false);
   // initialPolygons がある（セッション復元）場合はそれを初期値にする。
   // ない場合は空配列（drawモードでタップするごとに addRect で追加される）。
   const [polygons,   setPolygons]   = useState<Polygon[]>(initialPolygons ?? []);
@@ -1425,12 +1431,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
         {/* 透過強度 + 再適用。親が onRetransparent を渡した画面（セル編集）だけ出す。
             元画像の該当セル範囲から作り直すので、消えすぎも消え足りないも直せる。 */}
-        {onRetransparent && (
+        {onRetransparent && retransOpen && !chromeHidden && (
           <View style={styles.retransWrap} pointerEvents="box-none">
             <View style={styles.retransCard}>
               <View style={styles.retransHead}>
                 <Text style={styles.retransTitle}>{t('editor.retransTitle')}</Text>
-                <Text style={styles.retransValue}>{Math.round(cellTol)}</Text>
+                <View style={styles.retransHeadRight}>
+                  <Text style={styles.retransValue}>{Math.round(cellTol)}</Text>
+                  <AnimatedPressable onPress={() => setRetransOpen(false)} pressedScale={0.9}>
+                    <Icon name="close" size={18} color="rgba(255,255,255,0.8)" />
+                  </AnimatedPressable>
+                </View>
               </View>
               <View style={styles.retransRow}>
                 <Text style={styles.retransEnd}>{t('granularity.weak')}</Text>
@@ -1448,7 +1459,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               </View>
               <AnimatedPressable
                 style={styles.retransApply}
-                onPress={() => onRetransparent(cellTol)}
+                onPress={() => { onRetransparent(cellTol); setRetransOpen(false); }}
                 pressedScale={0.96}
               >
                 <Icon name="auto-fix-high" size={16} color="#FFF" />
@@ -1489,13 +1500,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         {/* 現在のツールの説明。常時出す。
             アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
             画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。*/}
-        <ToolHint
-          icon={TOOL_HINTS[appMode].icon}
-          title={t(TOOL_HINTS[appMode].titleKey)}
-          desc={t(TOOL_HINTS[appMode].descKey)}
-          // ズームバー（高さ約40 + 下余白8）のぶん上へ逃がす。
-          bottom={ZOOM_BAR_H + 16}
-        />
+        {!chromeHidden && (
+          <ToolHint
+            icon={TOOL_HINTS[appMode].icon}
+            title={t(TOOL_HINTS[appMode].titleKey)}
+            desc={t(TOOL_HINTS[appMode].descKey)}
+            // ズームバー（高さ約40 + 下余白8）のぶん上へ逃がす。
+            bottom={ZOOM_BAR_H + 16}
+          />
+        )}
 
         {/* ── フローティング上部: 下地切替 ── */}
         <View style={styles.floatingTop} pointerEvents="box-none">
@@ -1548,12 +1561,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           >
             <Icon name="colorize" size={22} color="#FFF" />
           </AnimatedPressable>
+          {/* 透過強度パネルの開閉。既定は閉じていて画像を覆わない。 */}
+          {onRetransparent && (
+            <AnimatedPressable
+              style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
+              disabled={eyeBusy}
+              onPress={() => { setRetransOpen(o => !o); setChromeHidden(false); }}
+            >
+              <Icon name="tune" size={22} color="#FFF" />
+            </AnimatedPressable>
+          )}
+          {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
+          <AnimatedPressable
+            style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
+            disabled={eyeBusy}
+            onPress={() => setChromeHidden(h => !h)}
+          >
+            <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
+          </AnimatedPressable>
         </View>
 
         {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
             ズーム操作を横1列にまとめる。スライダーは対数目盛りで、
             ×1/×2/×4/×8/×12 の目盛りに吸い付く。細かく詰めたい時は連続値、
             決め打ちしたい時は目盛り、と両方できる。 */}
+        {!chromeHidden && (
         <View style={styles.zoomBar} pointerEvents="box-none">
           <View style={styles.zoomRow}>
             <AnimatedPressable
@@ -1617,6 +1649,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             </AnimatedPressable>
           </View>
         </View>
+        )}
       </View>
 
       {/* ── 下部コントロールバー: undo / redo / 削除 / 保存 ── */}
@@ -1854,6 +1887,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   retransHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  retransHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   retransTitle: { color: '#FFF', fontSize: 13, fontWeight: '600' },
   retransValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
   retransRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

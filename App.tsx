@@ -589,6 +589,9 @@ function AppScreens() {
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
         multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
+        // 手動分割したカットも再開後に編集し直せるよう、位置と形を残す。
+        srcBBox: cell.kind === 'poly' ? cell.srcBBox : undefined,
+        polygon: cell.kind === 'poly' ? cell.polygon : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -708,6 +711,9 @@ function AppScreens() {
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
         multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
+        // 手動分割したカットも再開後に編集し直せるよう、位置と形を残す。
+        srcBBox: cell.kind === 'poly' ? cell.srcBBox : undefined,
+        polygon: cell.kind === 'poly' ? cell.polygon : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -764,9 +770,10 @@ function AppScreens() {
   const handleCellEditConfirm = useCallback(async (polygons: Polygon[]) => {
     if (editingCellIdx === null || !bgResult) return;
     const editedCell = cells[editingCellIdx];
-    if (editedCell?.kind !== 'auto') return;
-
-    const { bbox } = editedCell;
+    if (!editedCell) return;
+    // auto は bbox、手動分割済みは srcBBox。どちらも元画像上の矩形。
+    const bbox = editedCell.kind === 'auto' ? editedCell.bbox : editedCell.srcBBox;
+    if (!bbox) return;
     const subW = bbox.maxX - bbox.minX + 1;
     const subH = bbox.maxY - bbox.minY + 1;
 
@@ -800,9 +807,23 @@ function AppScreens() {
       raw.dispose();
       const thumbUri = await saveThumbToFile(img);
       img.dispose();
-      return { kind: 'poly' as const, rgba: cropped, w: cw, h: ch, thumbUri };
+      // 後から編集し直せるように、元画像上の位置とポリゴンを残す。
+      // tight は subRgba 内の座標なので、bbox の分だけ足して元画像座標にする。
+      const srcBBox = {
+        minX: bbox.minX + tight.minX,
+        minY: bbox.minY + tight.minY,
+        maxX: bbox.minX + tight.maxX,
+        maxY: bbox.minY + tight.maxY,
+        area: cw * ch,
+      };
+      // ポリゴンは切り出し原点（tight の左上）基準へ移す。再編集で開いた時に
+      // そのまま initialPolygons として使える。
+      const polygon = p.points.map(
+        ([px, py]) => [px - tight.minX, py - tight.minY] as [number, number],
+      );
+      return { kind: 'poly' as const, rgba: cropped, w: cw, h: ch, thumbUri, srcBBox, polygon };
     }));
-    const newCells = cellOrNulls.filter(Boolean) as Array<{ kind: 'poly'; rgba: Uint8Array; w: number; h: number; thumbUri: string }>;
+    const newCells = cellOrNulls.filter(Boolean) as Array<Extract<Cell, { kind: 'poly' }>>;
 
     // ポリゴンがなければ元のセルを維持してプレビューに戻る
     const replacement = newCells.length > 0 ? newCells : [editedCell];
@@ -835,6 +856,9 @@ function AppScreens() {
         bbox: cell.kind === 'auto' ? cell.bbox : undefined,
         thumbPath: cell.thumbUri,
         multipleObjects: cell.kind === 'auto' ? cell.multipleObjects : undefined,
+        // 手動分割したカットも再開後に編集し直せるよう、位置と形を残す。
+        srcBBox: cell.kind === 'poly' ? cell.srcBBox : undefined,
+        polygon: cell.kind === 'poly' ? cell.polygon : undefined,
       }));
       await upsertSession({
         id: currentSessionId,
@@ -1073,8 +1097,14 @@ function AppScreens() {
             if (savedCell.kind === 'auto' && savedCell.bbox) {
               return { kind: 'auto' as const, bbox: savedCell.bbox, thumbUri, multipleObjects: savedCell.multipleObjects };
             }
-            // poly セル: rgba なしで復元（export 時は thumbUri から再読み込み）
-            return { kind: 'poly' as const, thumbUri };
+            // poly セル: rgba なしで復元（export 時は thumbUri から再読み込み）。
+            // srcBBox/polygon があれば、再開後もこのカットを編集し直せる。
+            return {
+              kind: 'poly' as const,
+              thumbUri,
+              srcBBox: savedCell.srcBBox,
+              polygon: savedCell.polygon,
+            };
           }),
         );
 
@@ -1349,8 +1379,12 @@ function AppScreens() {
         // どちらも PolygonEditor へ入るので goToEditor 経由（ローディングを挟む）
         onManualSplit={() => goToEditor('editing')}
         onEditCell={(i) => {
-          // poly セル（セッション復元 or 編集済み）はセル編集不可
-          if (cells[i]?.kind !== 'auto') return;
+          // auto セルはそのまま、手動分割済み(poly)でも srcBBox があれば開ける。
+          // srcBBox が無いのは旧バージョンで作られたカットだけで、その場合は
+          // 元画像のどこだったか復元できないため開かない。
+          const c = cells[i];
+          if (!c) return;
+          if (c.kind === 'poly' && !c.srcBBox) return;
           goToEditor('cell_editing', i);
         }}
         onMerge={handleMerge}
@@ -1361,12 +1395,18 @@ function AppScreens() {
   // ── 合体ブロック手動分割: セル切り出し画像を PolygonEditor に渡して編集 ──
   if (appState === 'cell_editing' && bgResult && editingCellIdx !== null) {
     const editedCell = cells[editingCellIdx];
-    if (editedCell?.kind === 'auto') {
-      const { bbox } = editedCell;
+    // 手動分割済みのカットは srcBBox（元画像上の位置）を使って同じ土俵に載せる。
+    // 開いた時にはマスク前の矩形が出るので、ポリゴンを引き直して切り直せる。
+    const bbox = editedCell?.kind === 'auto' ? editedCell.bbox : editedCell?.srcBBox;
+    if (editedCell && bbox) {
       // 透過強度を変えていれば元画像から作り直したもの、そうでなければ従来どおり
       // bgResult から切り出したものが返る（確定時と同じヘルパを通す）。
       const subBgResult = buildCellRgba(bbox);
       if (!subBgResult) return null;
+      // 前回のポリゴンがあれば復元して開く（形の作り直しではなく調整で済む）。
+      const initialPolys = editedCell.kind === 'poly' && editedCell.polygon
+        ? [{ id: 0, points: editedCell.polygon }]
+        : undefined;
       return (
         <>
           <StatusBar hidden />
@@ -1375,6 +1415,7 @@ function AppScreens() {
             displayW={winW}
             displayH={winH}
             onPreview={handleCellEditConfirm}
+            initialPolygons={initialPolys}
             onBack={() => {
               setEditingCellIdx(null);
               // 透過強度はセルごとの調整なので、抜ける時に必ず捨てる。

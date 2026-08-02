@@ -50,6 +50,13 @@ export interface SavedCell {
   thumbPath: string;
   /** 1カット内に複数の絵が含まれる（合体候補）。auto セルのみ。*/
   multipleObjects?: boolean;
+  /**
+   * poly セルの元画像内矩形。再開後も手動分割したカットを編集し直せるようにする。
+   * 旧バージョンで保存したセッションには無いので optional。
+   */
+  srcBBox?: { minX: number; minY: number; maxX: number; maxY: number; area: number };
+  /** poly セルの切り出しポリゴン（srcBBox の左上を原点とする座標）。*/
+  polygon?: Array<[number, number]>;
 }
 
 export interface StickerSession {

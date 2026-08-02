@@ -39,6 +39,7 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import Slider from '@react-native-community/slider';
 import ImageZoomModal from './ui/ImageZoomModal';
+import TouchLoupe from './ui/TouchLoupe';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {
   Canvas,
@@ -434,6 +435,37 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * ブラシの線が出ていた。UI操作中はキャンバス側が一切反応しないようにする。
    */
   const uiInteractingRef = useRef(false);
+
+  /**
+   * ルーペの表示位置。指で隠れている編集位置を隅で拡大表示するために使う。
+   * 3ツール共通で、ドラッグ中だけ出して離したら消す。
+   * 画像座標で持つのは軌跡と同じ理由（表示座標だとズーム変更でズレる）。
+   */
+  const [loupe, setLoupe] = useState<{
+    img: { x: number; y: number };
+    touch: { x: number; y: number };
+  } | null>(null);
+  const loupeRafRef = useRef<number | null>(null);
+  const loupePendingRef = useRef<typeof loupe>(null);
+  /** タッチ位置(表示座標)からルーペを更新する。毎イベント setState しない。 */
+  const showLoupe = useCallback((lx: number, ly: number) => {
+    const z = zoomRef.current;
+    const { x, y } = localToImage(lx, ly, z);
+    loupePendingRef.current = { img: { x, y }, touch: { x: lx, y: ly } };
+    if (loupeRafRef.current != null) return;
+    loupeRafRef.current = requestAnimationFrame(() => {
+      loupeRafRef.current = null;
+      setLoupe(loupePendingRef.current);
+    });
+  }, []);
+  const hideLoupe = useCallback(() => {
+    loupePendingRef.current = null;
+    if (loupeRafRef.current != null) {
+      cancelAnimationFrame(loupeRafRef.current);
+      loupeRafRef.current = null;
+    }
+    setLoupe(null);
+  }, []);
   // ブラシ半径は画像の短辺に対する割合で決める。こうしないと、大きなシートでは
   // 太すぎ、小さな画像では細すぎ、という状態になる。
   // スライダーは直径で扱う（「3px の線を直す」という感覚に合わせる）。
@@ -964,6 +996,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       // （grant で即実行すると、見回すためのパン開始で誤って色が消える）。
       if (appModeRef.current === 'draw' || appModeRef.current === 'eyedropper') {
         gPhase.current = 'pending';
+        // スポイトは押した瞬間に色が決まるので、押している間だけでも
+        // 「どこを吸うのか」を見せる価値がある。
+        if (appModeRef.current === 'eyedropper') showLoupe(lx, ly);
         return;
       }
 
@@ -974,6 +1009,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const { x, y } = localToImage(lx, ly, z);
         strokeImgRef.current = [[x, y]];
         flushStroke();
+        showLoupe(lx, ly);
         return;
       }
 
@@ -1073,6 +1109,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       if (gPhase.current === 'drag_vertex') {
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
+        // 頂点は指の真下に来るので、掴んでいる間はルーペで位置を見せる。
+        showLoupe(lx, ly);
         const z  = zoomRef.current;
         const imgX = (lx - z.tx) / z.scale / dsRef.current;
         const imgY = (ly - z.ty) / z.scale / dsRef.current;
@@ -1200,6 +1238,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const { x, y } = localToImage(lx, ly, z);
         strokeImgRef.current.push([x, y]);
         flushStroke();
+        showLoupe(lx, ly);
         return;
       }
 
@@ -1339,6 +1378,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         }
       }
 
+      hideLoupe();
       gPhase.current = 'idle';
     },
 
@@ -1359,6 +1399,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       // 中断されると緑の円が残り続け、ズームを動かすと一緒に動いていた。
       strokeImgRef.current = [];
       setStrokePts([]);
+      hideLoupe();
       gPhase.current             = 'idle';
     },
   })).current;
@@ -1734,6 +1775,22 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               />
             </View>
           </View>
+        )}
+
+        {/* ルーペ。3ツール共通で、ドラッグ中だけ出す。
+            画面隅に固定し、指がその隅に来た時だけ反対側へ逃がす。
+            指に追従させると、ルーペ自体が編集対象を隠してしまう。 */}
+        {!chromeHidden && (
+          <TouchLoupe
+            image={skImage}
+            ds={ds}
+            point={loupe?.img ?? null}
+            touch={loupe?.touch ?? null}
+            canvasW={canvasSize.w}
+            checkerImage={bgMode === 'checker' ? checkerImage : null}
+            checkerTile={CHECKER_TILE}
+            brushRadius={appMode === 'restore' ? brushRadius : undefined}
+          />
         )}
 
         {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、

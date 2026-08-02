@@ -359,9 +359,17 @@ function AppScreens() {
     applyEdits([...editsRef.current, head], rest);
   }, [applyEdits]);
 
-  /** 元画像の状態（自動背景除去も含めて全部）まで戻す。 */
+  /**
+   * 手を加える前 ＝「自動背景除去だけ済んだ状態」へ戻す。
+   *
+   * 操作列の先頭は必ず autoBg（背景除去そのもの）なので、それだけ残して
+   * 以降のスポイトを捨てる。全部消すと背景が戻ってしまい、リセットのたびに
+   * 背景除去をやり直す羽目になっていた。
+   * 背景除去そのものを取り消したい場合は undo で先頭まで戻せる。
+   */
   const resetEdits = useCallback(() => {
-    applyEdits([], []);
+    const first = editsRef.current[0];
+    applyEdits(first?.kind === 'autoBg' ? [first] : [], []);
   }, [applyEdits]);
 
 
@@ -1328,6 +1336,18 @@ function AppScreens() {
               setAppState('preview');
             }}
             onSettings={() => goToSettings()}
+            // スポイトはセルの切り出し座標で来るので、元画像の座標へ戻して積む。
+            // 操作列は常に元画像1枚に対するものなので、bbox の分だけずらさないと
+            // 別の場所の色が抜ける。
+            onEyedrop={(x, y, tolerance, feather) =>
+              pushEdit({ kind: 'eyedrop', x: x + bbox.minX, y: y + bbox.minY, tolerance, feather })}
+            onUndoEdit={undoEdit}
+            onRedoEdit={redoEdit}
+            // 先頭の autoBg はここからは取り消させない。セル編集中に背景除去まで
+            // 巻き戻ると、編集対象のセルの前提そのものが崩れるため。
+            canUndoEdit={edits.length > 1}
+            canRedoEdit={redoSteps.length > 0}
+            bgVersion={bgVersion}
           />
         </>
       );

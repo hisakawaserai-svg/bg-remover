@@ -140,7 +140,7 @@ const en: typeof ja = {
     rePickImage: 'Choose a different image',
     resetTitle: 'Reset Edits',
     resetMessage:
-      'Undoes the automatic background removal and every eyedropper tap, restoring the original image.\nThis cannot be undone.',
+      'Undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
   },
 
   result: {
@@ -174,7 +174,7 @@ const en: typeof ja = {
     uncoveredProceed: 'Continue anyway',
     resetTitle: 'Reset Edits',
     resetMessage:
-      'Clears the polygons and undoes the automatic background removal and eyedropper taps, restoring the original image.\nThis cannot be undone.',
+      'Clears the polygons and undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
     loadFailed: 'Failed to load the image',
   },
 

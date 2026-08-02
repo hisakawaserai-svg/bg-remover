@@ -570,7 +570,29 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 先に処理が走ってしまい、「一瞬で終わったように見える」状態になっていた。
    * 待ち時間を固定で入れるのではなく、実際の処理が終わったら解除する。
    */
-  const pendingHeavyRef = useRef<(() => void) | null>(null);
+  /**
+   * 重い同期処理を「ローディングを描いてから」実行する。
+   *
+   * 以前は useEffect（eyeBusy を依存）から実行していたが、依存の変化と
+   * クリーンアップのタイミングに結果が左右され、実行されないことがあった
+   * （＝復元ブラシが何も起きない）。状態更新のあと rAF を2つ挟むだけの形に
+   * 戻し、実行経路を1本にする。1つ目でコミット、2つ目で描画が乗る。
+   * 待ち時間は固定せず、処理が終わったら解除する。
+   */
+  const runHeavy = useCallback((work: () => void) => {
+    eyeBusyRef.current = true;
+    setEyeBusy(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        work();
+      } finally {
+        // 例外が出ても必ず解除する（漏らすと以後スポイト・復元が死ぬ）。
+        eyeBusyRef.current = false;
+        setEyeBusy(false);
+        setRipple(null);
+      }
+    }));
+  }, []);
 
   const onUndoEditRef = useRef(onUndoEdit); onUndoEditRef.current = onUndoEdit;
   const onRedoEditRef = useRef(onRedoEdit); onRedoEditRef.current = onRedoEdit;
@@ -659,44 +681,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
     ));
   }, []);
-
-  /**
-   * 予約された重い処理を、ローディング表示が描画された後に実行する。
-   *
-   * useEffect はコミット後に走るので、ここまで来ればオーバーレイは
-   * ビューツリーに乗っている。さらに rAF を1つ挟んで実際に描画が
-   * 走る猶予を与えてから、同期処理へ入る。
-   */
-  useEffect(() => {
-    if (!eyeBusy) return;
-    const work = pendingHeavyRef.current;
-    if (!work) return;
-    pendingHeavyRef.current = null;
-    const id = requestAnimationFrame(() => {
-      try {
-        work();
-      } finally {
-        // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
-        eyeBusyRef.current = false;
-        setEyeBusy(false);
-        // タップ表示を明示的に消す。残すと波紋の View が出しっぱなしになる。
-        setRipple(null);
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [eyeBusy]);
-
-  /**
-   * UI操作中フラグの保険。
-   *
-   * onSlidingComplete は基本必ず来るが、万一取りこぼすとフラグが立ちっぱなしに
-   * なり、キャンバスが一切反応しなくなる（＝操作不能）。モードやパネルの
-   * 表示が切り替わる＝スライダーから手が離れているので、そこで必ず下ろす。
-   */
-  useEffect(() => {
-    uiInteractingRef.current = false;
-    setBrushSliding(false);
-  }, [appMode, chromeHidden, retransOpen]);
 
   // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
   useEffect(() => {
@@ -1342,18 +1326,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 && !eyeBusyRef.current) {
               // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
               // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
-              eyeBusyRef.current = true;
               setPast(p => [...p, { kind: 'edit' }]);
               setFuture([]);
               setRipple({ x: gStartLX.current, y: gStartLY.current });
               startRipple();
-              // 実処理は「表示が確定してから」走らせる。ここで直接呼ぶと、
-              // 重い同期処理が描画コミットより先に走り、ローディングが
-              // 出ないまま終わったように見える。予約だけしておき、
-              // eyeBusy の描画が済んだ後に useEffect 側から実行する。
-              pendingHeavyRef.current = () =>
-                onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
-              setEyeBusy(true);
+              const tol = eyeTolRef.current;
+              const fth = featherRef.current;
+              runHeavy(() => onEyedropRef.current?.(x, y, tol, fth));
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
@@ -1370,11 +1349,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         if (pts.length > 0 && onRestoreRef.current) {
           setPast(p => [...p, { kind: 'edit' }]);
           setFuture([]);
-          // スポイトと同じく、表示が確定してから重い処理に入る。
-          pendingHeavyRef.current = () =>
-            onRestoreRef.current?.(pts, brushRadiusRef.current);
-          eyeBusyRef.current = true;
-          setEyeBusy(true);
+          const radius = brushRadiusRef.current;
+          runHeavy(() => onRestoreRef.current?.(pts, radius));
         }
       }
 
@@ -1855,9 +1831,52 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               </AnimatedPressable>
             ))}
           </View>
-          {/* 現在倍率。常時表示。編集中は今どれだけ拡大しているかを常に確認したい。 */}
-          <View style={styles.zoomBadge} pointerEvents="none">
+          {/* 倍率とズーム操作は隣り合わせに置く。数値だけ離れた場所にあると
+              「今いくつか」と「どう変えるか」が結びつかない。 */}
+          <View style={styles.zoomTopRow}>
             <Text style={styles.zoomBadgeTxt}>×{zoom.scale.toFixed(1)}</Text>
+            <View style={styles.zoomSliderWrap}>
+              {/* 目盛り。どこが ×1/×2/×4/×8/×16/×24 かを示す。 */}
+              <View style={styles.zoomTicks} pointerEvents="none">
+                {ZOOM_PRESETS.map(p => (
+                  <View key={p} style={[styles.zoomTickCol, { left: `${zoomToSlider(p) * 100}%` }]}>
+                    <View style={styles.zoomTick} />
+                    <Text style={styles.zoomTickTxt}>{p}</Text>
+                  </View>
+                ))}
+              </View>
+              <Slider
+                style={styles.zoomSlider}
+                minimumValue={0}
+                maximumValue={1}
+                value={sliderV}
+                onSlidingStart={() => {
+                  zoomDraggingRef.current = true;
+                  uiInteractingRef.current = true;
+                  discardStroke();
+                }}
+                onValueChange={v => {
+                  setSliderV(v);
+                  setZoomScale(sliderToZoom(v));
+                }}
+                onSlidingComplete={v => {
+                  const near = ZOOM_PRESETS.find(
+                    p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
+                  const finalV = near !== undefined ? zoomToSlider(near) : v;
+                  setSliderV(finalV);
+                  setZoomScale(near !== undefined ? near : sliderToZoom(v));
+                  zoomDraggingRef.current = false;
+                  uiInteractingRef.current = false;
+                  discardStroke();
+                }}
+                minimumTrackTintColor={IOS.blue}
+                maximumTrackTintColor="rgba(255,255,255,0.28)"
+                thumbTintColor="#FFF"
+              />
+            </View>
+            <AnimatedPressable style={styles.zoomResetBtn} onPress={resetZoom} pressedScale={0.9}>
+              <Icon name="refresh" size={17} color="#FFF" />
+            </AnimatedPressable>
           </View>
         </View>
 
@@ -1914,50 +1933,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
           </AnimatedPressable>
 
-          {/* ── ズーム（縦）──
-              以前は画面下に横並びで置いていたが、ツール説明・ブラシ設定と
-              下側に集中して窮屈だった。ツール群を上へ寄せ、空いた右端の縦方向に
-              移す。同じ列に並べているので、画面が短い端末でも重なりようがない。 */}
-          {!chromeHidden && (
-            <>
-              <View style={styles.floatDivider} />
-              <View style={styles.vzoomBox}>
-                <Slider
-                  style={styles.vzoomSlider}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={sliderV}
-                  onSlidingStart={() => {
-                    zoomDraggingRef.current = true;
-                    uiInteractingRef.current = true;
-                    discardStroke();
-                  }}
-                  onValueChange={v => {
-                    setSliderV(v);
-                    setZoomScale(sliderToZoom(v));
-                  }}
-                  onSlidingComplete={v => {
-                    // 目盛りの近くで離したらぴったりの倍率へ寄せる。
-                    const near = ZOOM_PRESETS.find(
-                      p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
-                    const finalV = near !== undefined ? zoomToSlider(near) : v;
-                    setSliderV(finalV);
-                    setZoomScale(near !== undefined ? near : sliderToZoom(v));
-                    zoomDraggingRef.current = false;
-                    uiInteractingRef.current = false;
-                    discardStroke();
-                  }}
-                  minimumTrackTintColor={IOS.blue}
-                  maximumTrackTintColor="rgba(255,255,255,0.28)"
-                  thumbTintColor="#FFF"
-                />
-              </View>
-              {/* 全体表示に戻す */}
-              <AnimatedPressable style={styles.floatBtnSmall} onPress={resetZoom} pressedScale={0.9}>
-                <Icon name="refresh" size={18} color="#FFF" />
-              </AnimatedPressable>
-            </>
-          )}
         </View>
 
         {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
@@ -2119,6 +2094,7 @@ const styles = StyleSheet.create({
     position:  'absolute',
     right:     8,
     top:       8,
+    alignItems: 'flex-end',
   },
 
   // ── フローティングボタン群 (キャンバス右端縦並び) ─────────────────────────
@@ -2127,7 +2103,7 @@ const styles = StyleSheet.create({
     right: 8,
     // 下側（ツール説明・ブラシ設定）が混み合っていたので上へ寄せ、
     // 空いた右端の縦方向にズームを入れる。右上の下地切替と被らない位置から。
-    top: 76,
+    top: 128,
     alignItems: 'center',
     // 縦に全部積むので、画面の短い端末（iPhone SE 等）でも収まるよう詰める。
     // ボタン自体は 44pt を維持する（これ以上小さくすると押しにくい）。
@@ -2158,48 +2134,60 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
     marginVertical: 2,
   },
-  // 小さめの丸ボタン（全体表示）。ツールボタンより控えめにする。
-  floatBtnSmall: {
-    width: 36, height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(30,30,30,0.72)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
-  },
-  /**
-   * 縦ズームスライダー。
-   * Slider は縦向きを持たないので、横向きのまま -90度 回して縦にする。
-   * 箱の幅・高さと、中のスライダーの幅・高さを入れ替えた関係にしてある。
-   */
-  vzoomBox: {
-    width: 44,
-    height: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: 'rgba(30,30,30,0.72)',
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
-  },
-  vzoomSlider: {
-    width: 92,
-    height: 40,
-    transform: [{ rotate: '-90deg' }],
-  },
-
-  // ── 倍率バッジ ────────────────────────────────────────────────────────────
-  zoomBadge: {
+  // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
+  zoomTopRow: {
     marginTop: 6,
-    alignSelf: 'flex-end',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(30,30,30,0.72)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(30,30,30,0.78)',
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.15)',
   },
+  zoomSliderWrap: {
+    width: 150,
+    height: 34,
+    justifyContent: 'center',
+  },
+  zoomSlider: { width: '100%', height: 30 },
+  // 目盛り。トラックの下に細い線と数字を置く。
+  // つまみ半径ぶんトラックが内側に寄るので、左右に同じだけ余白を取る。
+  zoomTicks: {
+    position: 'absolute',
+    left: 10, right: 10,
+    bottom: 0, height: 12,
+  },
+  zoomTickCol: {
+    position: 'absolute',
+    alignItems: 'center',
+    marginLeft: -6,
+    width: 12,
+  },
+  zoomTick: {
+    width: 1,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  zoomTickTxt: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 8,
+    lineHeight: 9,
+  },
+  zoomResetBtn: {
+    width: 30, height: 30,
+    borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+
+  // ── 倍率バッジ ────────────────────────────────────────────────────────────
   zoomBadgeTxt: {
     color: '#FFF',
     fontSize: 13,
+    minWidth: 42,
     fontVariant: ['tabular-nums'],  // 倍率が動いても幅が揺れないようにする
   },
   // ── 透過強度パネル（セル編集のみ）─────────────────────────────────────────

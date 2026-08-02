@@ -52,6 +52,11 @@ const en: typeof ja = {
     coarse: 'Coarse',
     medium: 'Medium',
     fine: 'Fine',
+    // Ticks for the tolerance sliders. Opposite in meaning to "split detail"
+    // (higher tolerance removes more = stronger), so the wording is kept separate.
+    weak: 'Weak',
+    normal: 'Normal',
+    strong: 'Strong',
     label: 'Split detail',
     hint: 'Use finer if cutouts merge together',
   },
@@ -206,10 +211,10 @@ const en: typeof ja = {
   settings: {
     title: 'Settings',
     sectionTransparency: 'Transparency',
-    autoTolerance: 'Auto-removal tolerance',
-    autoToleranceHint: 'Color-difference threshold from the background (higher removes more)',
-    eyedropperTolerance: 'Eyedropper tolerance',
-    eyedropperToleranceHint: 'Color-difference threshold from the tapped color (higher erases more)',
+    autoTolerance: 'Auto-removal strength',
+    autoToleranceHint: 'Stronger removes colors further from the background. Raise it if background remains, lower it if artwork is eaten away.',
+    eyedropperTolerance: 'Eyedropper strength',
+    eyedropperToleranceHint: 'Stronger erases a wider range around the tapped color.',
     feather: 'Soften edges',
     featherHint: 'Makes the 1px border semi-transparent to prevent white fringing',
     fillTextHoles: 'Remove background inside letters',

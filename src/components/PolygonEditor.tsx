@@ -66,8 +66,16 @@ import { useSettings } from '../settings/SettingsContext';
 /** 四角の初期サイズ: 画像短辺の何割か */
 const RECT_RATIO     = 0.30;
 const ZOOM_MIN       = 1;
-const ZOOM_MAX       = 6;
+/**
+ * 最大倍率。髪の毛・白い輪郭・小さい穴・ギザギザを直すのに 6 倍では足りなかった。
+ *
+ * 倍率は描画の変換行列を変えるだけなので、上げても描画コストは増えない
+ * （画像テクスチャは同じものを使い回す）。
+ */
+const ZOOM_MAX       = 12;
 const ZOOM_STEP      = 0.5; // ボタン1回分のズーム量
+/** 倍率プリセット。長い階段を押し続けずに目的の倍率へ一息で飛ぶ。 */
+const ZOOM_PRESETS   = [1, 2, 4, 8, 12] as const;
 // キャンバスの余白（表示px）。画像が枠にぴったり付いて窮屈だったので全体的に広げた。
 // 上は下地切替(市松/白/黒)のセグメント、右はフローティングボタン、
 // 下はツール説明のピルが乗るので、その分も見込んで確保する。
@@ -76,8 +84,16 @@ const PAD_R = 76; // 右余白（フローティングボタン分を含む）
 const PAD_T = 56; // 上余白（下地切替セグメントの下）
 const PAD_B = 56; // 下余白（ツール説明ピルの上）
 const PAN_THRESHOLD  = 8;          // この距離(表示px)を超えたらパンとみなす
-const VERTEX_HIT_PX  = 20;         // 頂点ヒット判定半径(表示px)
-const EDGE_HIT_PX    = 15;         // 辺ヒット判定距離(表示px)
+const VERTEX_HIT_PX  = 20;         // 頂点ヒット判定半径(表示px, 等倍時)
+const EDGE_HIT_PX    = 15;         // 辺ヒット判定距離(表示px, 等倍時)
+/**
+ * ヒット判定半径の倍率補正。
+ *
+ * しきい値は表示px固定なので、拡大するほど「画像上で指せる範囲」が実質狭くなり、
+ * せっかく拡大したのに頂点を掴みづらくなる。かといって倍率に正比例で広げると
+ * 高倍率で隣の頂点まで拾ってしまう。平方根で緩やかに縮めて折り合いをつける。
+ */
+const hitRadius = (basePx: number, scale: number) => basePx / Math.sqrt(scale);
 const LONG_PRESS_MS  = 500;        // 長押し判定時間(ms)
 
 // ── 型 ─────────────────────────────────────────────────────────────────────
@@ -459,6 +475,38 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     });
   }, []);
 
+  /**
+   * 倍率を直接指定する（プリセット・リセット共用）。
+   * stepZoom と同じく表示領域の中心を焦点にして、見ている場所を保つ。
+   */
+  const setZoomScale = useCallback((target: number) => {
+    setZoom(prev => {
+      const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, target));
+      if (newScale === prev.scale) return prev;
+      const focalX = canvasSizeRef.current.w / 2;
+      const focalY = canvasSizeRef.current.h / 2;
+      const ratio  = newScale / prev.scale;
+      return clampZoom({
+        scale: newScale,
+        tx: focalX - (focalX - prev.tx) * ratio,
+        ty: focalY - (focalY - prev.ty) * ratio,
+      }, canvasSizeRef.current.w, canvasSizeRef.current.h,
+         imageWRef.current * dsRef.current, imageHRef.current * dsRef.current);
+    });
+  }, []);
+
+  /**
+   * 全体表示へ戻す。等倍にしたうえで clampZoom に中央へ寄せさせる。
+   * 「拡大しすぎた」「画像がどこかへ行った」ときの復帰専用。
+   */
+  const resetZoom = useCallback(() => {
+    setZoom(clampZoom(
+      { scale: 1, tx: 0, ty: 0 },
+      canvasSizeRef.current.w, canvasSizeRef.current.h,
+      imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
+    ));
+  }, []);
+
   // ── Undo/Redo ─────────────────────────────────────────────────────────────
 
   /** 現在の polygons を past に積んで future をクリアする */
@@ -698,7 +746,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         for (let i = 0; i < pts.length; i++) {
           const a = imageToLocal(pts[i][0], pts[i][1], z);
           const b = imageToLocal(pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1], z);
-          if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < EDGE_HIT_PX) {
+          if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < hitRadius(EDGE_HIT_PX, z.scale)) {
             insertVertex(selId, i);
             return;
           }
@@ -755,7 +803,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           const z = zoomRef.current;
           for (let i = 0; i < poly.points.length; i++) {
             const { sx, sy } = imageToLocal(poly.points[i][0], poly.points[i][1], z);
-            if (Math.hypot(lx - sx, ly - sy) < VERTEX_HIT_PX) {
+            if (Math.hypot(lx - sx, ly - sy) < hitRadius(VERTEX_HIT_PX, z.scale)) {
               // pushHistory はタップ/ドラッグを区別するため初回移動まで遅らせる（後述）
               dragVertexMovedRef.current = false; // フラグリセット
               dragPolyIdRef.current    = selId;
@@ -794,7 +842,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             const nextI = (i + 1) % pts.length;
             const a = imageToLocal(pts[i][0],    pts[i][1],    z);
             const b = imageToLocal(pts[nextI][0], pts[nextI][1], z);
-            if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < EDGE_HIT_PX) {
+            if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < hitRadius(EDGE_HIT_PX, z.scale)) {
               dragPolyIdRef.current    = selId;
               dragEdgeIndicesRef.current = [i, nextI];
               dragEdgeMovedRef.current   = false; // 最初の move まで移動なし
@@ -1373,9 +1421,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               </AnimatedPressable>
             ))}
           </View>
+          {/* 現在倍率。常時表示。編集中は今どれだけ拡大しているかを常に確認したい。 */}
+          <View style={styles.zoomBadge} pointerEvents="none">
+            <Text style={styles.zoomBadgeTxt}>×{zoom.scale.toFixed(1)}</Text>
+          </View>
         </View>
 
-        {/* ── フローティングボタン群 (右端: モード切替 + ズーム) ── */}
+        {/* ── フローティングボタン群 (右端: モード切替) ── */}
         <View style={styles.floating} pointerEvents="box-none">
           <AnimatedPressable
             style={[styles.floatBtn, appMode === 'draw' && styles.floatBtnActive]}
@@ -1396,22 +1448,46 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           >
             <Icon name="colorize" size={22} color="#FFF" />
           </AnimatedPressable>
-          {/* 区切り */}
-          <View style={styles.floatDivider} />
-          {/* ズームボタン */}
-          <AnimatedPressable
-            style={styles.floatBtn}
-            disabled={zoom.scale >= ZOOM_MAX}
-            onPress={() => stepZoom(1)}
-          >
-            <Text style={styles.floatBtnTxt}>＋</Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            style={styles.floatBtn}
-            disabled={zoom.scale <= ZOOM_MIN}
-            onPress={() => stepZoom(-1)}
-          >
-            <Text style={styles.floatBtnTxt}>－</Text>
+        </View>
+
+        {/* ── ズームバー: [−] 倍率プリセット [+] と全体表示 ──
+            ズーム操作をここ1箇所にまとめる。以前は右端の縦カラムに [+]/[−] だけが
+            あり、目的の倍率まで階段を何度も押す必要があった。 */}
+        <View style={styles.zoomBar} pointerEvents="box-none">
+          <View style={styles.zoomRow}>
+            <AnimatedPressable
+              style={styles.zoomStepBtn}
+              disabled={zoom.scale <= ZOOM_MIN}
+              onPress={() => stepZoom(-1)}
+            >
+              <Text style={styles.zoomStepTxt}>－</Text>
+            </AnimatedPressable>
+            {ZOOM_PRESETS.map(p => {
+              // 現在倍率にいちばん近いプリセットを選択中として光らせる。
+              const on = ZOOM_PRESETS.reduce((best, c) =>
+                Math.abs(c - zoom.scale) < Math.abs(best - zoom.scale) ? c : best) === p;
+              return (
+                <AnimatedPressable
+                  key={p}
+                  style={[styles.zoomPreset, on && styles.zoomPresetOn]}
+                  onPress={() => setZoomScale(p)}
+                  pressedScale={0.9}
+                >
+                  <Text style={[styles.zoomPresetTxt, on && styles.zoomPresetTxtOn]}>×{p}</Text>
+                </AnimatedPressable>
+              );
+            })}
+            <AnimatedPressable
+              style={styles.zoomStepBtn}
+              disabled={zoom.scale >= ZOOM_MAX}
+              onPress={() => stepZoom(1)}
+            >
+              <Text style={styles.zoomStepTxt}>＋</Text>
+            </AnimatedPressable>
+          </View>
+          {/* 全体表示に戻す。拡大しすぎた・画像がどこかへ行った時の復帰専用。 */}
+          <AnimatedPressable style={styles.zoomResetBtn} onPress={resetZoom} pressedScale={0.9}>
+            <Icon name="refresh" size={20} color="#FFF" />
           </AnimatedPressable>
         </View>
       </View>
@@ -1595,11 +1671,60 @@ const styles = StyleSheet.create({
   },
   floatBtnDisabled: { opacity: 0.3 },
   floatBtnTxt: { fontSize: 20, color: '#FFF' },
-  floatDivider: {
-    width: 28,
-    height: 0.5,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    marginVertical: 2,
+
+  // ── 倍率バッジ / ズームバー ────────────────────────────────────────────────
+  zoomBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-end',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  zoomBadgeTxt: {
+    color: '#FFF',
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],  // 倍率が動いても幅が揺れないようにする
+  },
+  zoomBar: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 8,
+    alignItems: 'center',
+    gap: 6,
+  },
+  zoomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  zoomStepBtn: {
+    width: 34, height: 30,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  zoomStepTxt: { fontSize: 18, color: '#FFF' },
+  zoomPreset: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  zoomPresetOn: { backgroundColor: IOS.blue },
+  zoomPresetTxt: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
+  zoomPresetTxtOn: { color: '#FFF', fontWeight: '600' },
+  zoomResetBtn: {
+    width: 36, height: 36,
+    borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
 
   // draw モードのオーバーレイヒント（iOS のトースト風）

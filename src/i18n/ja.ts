@@ -66,6 +66,11 @@ const ja = {
     coarse: '粗い',
     medium: '中',
     fine: '細かい',
+    // 許容値スライダー用の目盛り。「分割の細かさ」とは意味の向きが逆なので語彙を分ける
+    // （許容値は大きいほど広く抜ける＝強い。細かい/粗いで言うと逆さまになる）。
+    weak: '弱',
+    normal: '標準',
+    strong: '強',
     label: '分割の細かさ',
     hint: '合体するなら細かく',
   },
@@ -233,10 +238,10 @@ const ja = {
   settings: {
     title: '設定',
     sectionTransparency: '透過設定',
-    autoTolerance: '自動除去の許容値',
-    autoToleranceHint: '背景色との色差しきい値（大きいほど広く抜ける）',
-    eyedropperTolerance: 'スポイトの許容値',
-    eyedropperToleranceHint: 'タップした色との色差しきい値（大きいほど広く消える）',
+    autoTolerance: '自動除去の強さ',
+    autoToleranceHint: '強いほど、背景に近い色まで広く抜けます。背景が残るなら強く、絵が欠けるなら弱く。',
+    eyedropperTolerance: 'スポイトの強さ',
+    eyedropperToleranceHint: '強いほど、タップした色に近い範囲まで広く消えます。',
     feather: '輪郭をなじませる',
     featherHint: '境目の1pxを半透明にして白フチを防ぎます',
     fillTextHoles: '文字の穴を透過する',

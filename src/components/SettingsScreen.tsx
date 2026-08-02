@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
-import ToleranceSlider from './ui/ToleranceSlider';
+import ToleranceSlider, { STRENGTH_SNAPS } from './ui/ToleranceSlider';
 import AppHeader from './ui/AppHeader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -117,6 +117,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <ToleranceSlider
             bare
             showLabel={false}
+            snaps={STRENGTH_SNAPS}
             value={tolerance}
             onChange={setTolerance}
             onComplete={v => void updateSettings({ tolerance: v })}
@@ -134,6 +135,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <ToleranceSlider
             bare
             showLabel={false}
+            snaps={STRENGTH_SNAPS}
             value={eyeTolerance}
             onChange={setEyeTolerance}
             onComplete={v => void updateSettings({ eyedropperTolerance: v })}

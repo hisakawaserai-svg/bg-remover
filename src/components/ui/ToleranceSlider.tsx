@@ -40,6 +40,20 @@ const SNAPS: Snap[] = [
   { value: 50, labelKey: 'granularity.fine' },
 ];
 
+/**
+ * 許容値（自動除去・スポイト）用の目盛り。
+ *
+ * 既定の SNAPS は「分割の細かさ」の語彙で、値が大きいほど『細かい』。
+ * 一方この2つは値が大きいほど『広く抜ける＝強い』で、意味の向きが逆になる。
+ * 同じスライダーに『細かい』と出しながら説明文には『広く抜ける』と書いていたため、
+ * つまみを右に寄せる操作が何を強めるのか読み取れなかった。語彙を分けて解消する。
+ */
+export const STRENGTH_SNAPS: Snap[] = [
+  { value: 15, labelKey: 'granularity.weak' },
+  { value: 30, labelKey: 'granularity.normal' },
+  { value: 50, labelKey: 'granularity.strong' },
+];
+
 // Slider のつまみ半径ぶん、トラック両端は内側にオフセットしてつまみが移動する。
 // 目盛り・ラベル・つまみすべてを同じ変換 x = INSET + 比率 *(幅 - 2*INSET) に揃えるため、
 // このインセットを目盛り/ラベル帯の左右パディングとして使う（中心 v=50 で誤差ゼロ）。

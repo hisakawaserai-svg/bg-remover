@@ -198,6 +198,7 @@ const ja = {
     modeRestore: '復元ブラシ',
     modeRestoreHint: '消えすぎた部分をなぞって元に戻します',
     brushSize: 'ブラシの太さ',
+    ghost: '元画像',
     uncoveredTitle: '囲まれていない部分があります',
     uncoveredMessage: '塗りつぶされていない部分は保存されません。このまま進めますか？',
     uncoveredBack: '戻って直す',

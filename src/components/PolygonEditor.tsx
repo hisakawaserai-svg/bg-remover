@@ -69,15 +69,16 @@ import { useSettings } from '../settings/SettingsContext';
 const RECT_RATIO     = 0.30;
 const ZOOM_MIN       = 1;
 /**
- * 最大倍率。髪の毛・白い輪郭・小さい穴・ギザギザを直すのに 6 倍では足りなかった。
+ * 最大倍率。復元ブラシで1px単位を直すには 12 倍でも足りないため 24 倍まで上げた。
+ * 32倍以上は画素が大きくなりすぎて指での位置合わせと移動がかえって難しくなる。
  *
  * 倍率は描画の変換行列を変えるだけなので、上げても描画コストは増えない
  * （画像テクスチャは同じものを使い回す）。
  */
-const ZOOM_MAX       = 12;
+const ZOOM_MAX       = 24;
 const ZOOM_STEP      = 0.5; // ボタン1回分のズーム量
 /** 倍率プリセット。スライダーの目盛りと、離した時の吸い付き先を兼ねる。 */
-const ZOOM_PRESETS   = [1, 2, 4, 8, 12] as const;
+const ZOOM_PRESETS   = [1, 2, 4, 8, 16, 24] as const;
 /** ズームバーの高さ(px)。ツール説明を上へ逃がす量の計算に使う。 */
 const ZOOM_BAR_H     = 40;
 
@@ -126,9 +127,18 @@ const TOOL_HINTS: Record<AppMode, { icon: string; titleKey: TKey; descKey: TKey 
   restore: { icon: 'healing', titleKey: 'editor.modeRestore', descKey: 'editor.modeRestoreHint' },
 };
 
-/** 復元ブラシの半径（画像px）。短辺に対する割合で決め、画像サイズに追従させる。 */
-const BRUSH_SIZES = [0.01, 0.02, 0.04] as const;
-const BRUSH_MIN_PX = 4;
+/**
+ * 復元ブラシの太さ（画像px・直径）。
+ *
+ * 髪の毛・目・線の一部・文字の細い部分は数px単位で直したいので、
+ * 段階ではなく連続値にしてある。値は「画像の実ピクセル数」で、表示倍率とは
+ * 無関係（拡大しても同じ太さぶんだけ復元される）。
+ */
+const BRUSH_MIN_PX = 1;
+const BRUSH_MAX_PX = 80;
+const BRUSH_DEFAULT_PX = 8;
+/** 元画像の透かしの濃さ。濃すぎると現在の結果が読めなくなる。 */
+const GHOST_OPACITY = 0.4;
 
 /** スポイトのタップ波紋の半径(px)。 */
 const EYE_RIPPLE_R = 26;
@@ -203,6 +213,11 @@ interface Props {
    * 元画像基準への変換（セル編集の bbox 加算）は親が行う。
    */
   onRestore?: (points: Array<[number, number]>, radius: number) => void;
+  /**
+   * 元画像（透過前）の画素。bgResult と同じ寸法であること。
+   * 復元ブラシで「どこが消えたか」を透かして見せるために使う。
+   */
+  baseRgba?: Uint8Array | null;
   /** 透過強度スライダーの初期値。onRetransparent とセットで渡す。 */
   cellTolerance?: number;
   canUndoEdit?: boolean;
@@ -292,7 +307,7 @@ function distPointToSegment(
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
   const { settings } = useSettings();
@@ -309,6 +324,29 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     // bgVersion: 親が rgba の中身を作り直したときに作り直すための依存。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgResult, bgVersion]);
+
+  /**
+   * 元画像の SkImage。復元ブラシ中に下へ薄く敷いて、消えた部分を透かす。
+   * 透過結果には「元々そこに何があったか」が残っていないので、これが無いと
+   * どこを塗ればよいのか当てずっぽうになる。
+   */
+  const ghostImage = useMemo<SkImage | null>(() => {
+    if (!baseRgba) return null;
+    const data = Skia.Data.fromBytes(baseRgba);
+    return Skia.Image.MakeImage(
+      {
+        width: bgResult.width,
+        height: bgResult.height,
+        colorType: ColorType.RGBA_8888,
+        alphaType: AlphaType.Unpremul,
+      },
+      data,
+      bgResult.width * 4,
+    );
+  }, [baseRgba, bgResult.width, bgResult.height]);
+  useEffect(() => {
+    return () => { ghostImage?.dispose(); };
+  }, [ghostImage]);
 
   // スポイトを押すたびに SkImage が作り直されるので、古い方を解放する。
   // cleanup は「新しい skImage で描画がコミットされた後」に走るため、
@@ -371,15 +409,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 画像の端を直したい時に「どかす手段」が無いと詰むので用意する。
   const [chromeHidden, setChromeHidden] = useState(false);
   // 復元ブラシの太さ（BRUSH_SIZES の添字）と、なぞっている最中の軌跡（表示座標）。
-  const [brushIdx, setBrushIdx] = useState(1);
+  const [brushPx, setBrushPx] = useState(BRUSH_DEFAULT_PX);
+  // 元画像の透かし表示。復元ブラシでは既定 ON（消えた場所が見えないと塗れない）。
+  const [ghostOn, setGhostOn] = useState(true);
   const [strokePts, setStrokePts] = useState<Array<[number, number]>>([]);
   const strokeImgRef = useRef<Array<[number, number]>>([]);
   // ブラシ半径は画像の短辺に対する割合で決める。こうしないと、大きなシートでは
   // 太すぎ、小さな画像では細すぎ、という状態になる。
-  const brushRadius = Math.max(
-    BRUSH_MIN_PX,
-    Math.round(Math.min(bgResult.width, bgResult.height) * BRUSH_SIZES[brushIdx]),
-  );
+  // スライダーは直径で扱う（「3px の線を直す」という感覚に合わせる）。
+  const brushRadius = Math.max(0.5, brushPx / 2);
   const brushRadiusRef = useRef(brushRadius); brushRadiusRef.current = brushRadius;
   // initialPolygons がある（セッション復元）場合はそれを初期値にする。
   // ない場合は空配列（drawモードでタップするごとに addRect で追加される）。
@@ -450,6 +488,19 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     opacity: 1 - rippleV.value,
     transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
   }));
+  /**
+   * 描きかけの復元ストロークを捨てる。
+   *
+   * ブラシサイズを変えた時に呼ぶ。指で塗っている途中の座標を残したまま
+   * 太さだけ差し替えると、古い位置に新しい太さの円が描かれてしまう。
+   * ペイントアプリと同じく「サイズ変更＝今の軌跡は破棄して引き直し」にする。
+   */
+  const discardStroke = useCallback(() => {
+    strokeImgRef.current = [];
+    setStrokePts([]);
+    if (gPhase.current === 'restore') gPhase.current = 'idle';
+  }, []);
+
   /** タップ位置の波紋アニメを開始する（位置は呼ぶ側が setRipple 済みであること）。 */
   const startRipple = useCallback(() => {
     rippleV.value = 0;
@@ -1453,6 +1504,19 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           )}
 
           <Group transform={groupTransform}>
+            {/* 元画像の透かし。復元ブラシ中だけ、現在の画像の下に薄く敷く。
+                透過済みの部分だけがここから覗くので、消えた範囲が見える。 */}
+            {appMode === 'restore' && ghostOn && ghostImage && (
+              <Group opacity={GHOST_OPACITY}>
+                <SkiaImage
+                  image={ghostImage}
+                  x={0} y={0}
+                  width={bgResult.width * ds}
+                  height={bgResult.height * ds}
+                  fit="fill"
+                />
+              </Group>
+            )}
             {/* 背景除去済み画像 */}
             <SkiaImage
               image={skImage}
@@ -1581,20 +1645,42 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           />
         ))}
 
-        {/* ブラシの太さ。復元モードの時だけ出す。 */}
+        {/* ブラシの太さ。復元モードの時だけ出す。連続値で、現在値を px で示す。 */}
         {appMode === 'restore' && !chromeHidden && (
           <View style={styles.brushBar} pointerEvents="box-none">
-            <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
-            {BRUSH_SIZES.map((_, i) => (
-              <AnimatedPressable
-                key={i}
-                style={[styles.brushBtn, brushIdx === i && styles.brushBtnOn]}
-                onPress={() => setBrushIdx(i)}
-                pressedScale={0.9}
-              >
-                <View style={[styles.brushPreview, { width: 6 + i * 6, height: 6 + i * 6 }]} />
-              </AnimatedPressable>
-            ))}
+            <View style={styles.brushCard}>
+              <View style={styles.brushHead}>
+                <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
+                <View style={styles.brushHeadRight}>
+                  <Text style={styles.brushValue}>{Math.round(brushPx)}px</Text>
+                  {/* 元画像の透かし。消えた範囲を確認しながら塗るためのもの。 */}
+                  {ghostImage && (
+                    <AnimatedPressable
+                      style={[styles.ghostBtn, ghostOn && styles.ghostBtnOn]}
+                      onPress={() => setGhostOn(v => !v)}
+                      pressedScale={0.9}
+                    >
+                      <Icon name="layers" size={16} color="#FFF" />
+                      <Text style={styles.ghostBtnTxt}>{t('editor.ghost')}</Text>
+                    </AnimatedPressable>
+                  )}
+                </View>
+              </View>
+              <Slider
+                style={styles.brushSlider}
+                minimumValue={BRUSH_MIN_PX}
+                maximumValue={BRUSH_MAX_PX}
+                value={brushPx}
+                // ② スライダーに触れた時点で、描きかけの軌跡を必ず捨てる。
+                // 残したままサイズだけ変えると、古いタッチ座標に新しい太さの
+                // プレビューが出て「変な場所に出る」状態になる。
+                onSlidingStart={discardStroke}
+                onValueChange={setBrushPx}
+                minimumTrackTintColor={IOS.blue}
+                maximumTrackTintColor="rgba(255,255,255,0.28)"
+                thumbTintColor="#FFF"
+              />
+            </View>
           </View>
         )}
 
@@ -2049,22 +2135,31 @@ const styles = StyleSheet.create({
   },
   brushBar: {
     position: 'absolute',
-    left: 0, right: 0, bottom: ZOOM_BAR_H + 56,
-    flexDirection: 'row',
+    left: 12, right: 12, bottom: ZOOM_BAR_H + 56,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
   },
-  brushLabel: { color: '#FFF', fontSize: 12 },
-  brushBtn: {
-    width: 34, height: 34,
-    borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(30,30,30,0.72)',
+  brushCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: 'rgba(30,30,30,0.86)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
   },
-  brushBtnOn: { backgroundColor: IOS.blue, borderColor: IOS.blue },
-  brushPreview: { backgroundColor: '#FFF', borderRadius: 12 },
+  brushHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  brushHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ghostBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  ghostBtnOn: { backgroundColor: IOS.blue },
+  ghostBtnTxt: { color: '#FFF', fontSize: 11 },
+  brushLabel: { color: '#FFF', fontSize: 12 },
+  brushValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
+  brushSlider: { width: '100%', height: 30 },
 
   // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
   busyOverlay: {

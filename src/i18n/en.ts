@@ -176,6 +176,7 @@ const en: typeof ja = {
     modeRestore: 'Restore brush',
     modeRestoreHint: 'Paint over parts that were erased too much to bring them back',
     brushSize: 'Brush size',
+    ghost: 'Original',
     uncoveredTitle: 'Some areas are not enclosed',
     uncoveredMessage: 'Areas that are not filled will not be saved. Continue anyway?',
     uncoveredBack: 'Go back and fix',

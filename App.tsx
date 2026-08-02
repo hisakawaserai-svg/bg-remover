@@ -9,7 +9,7 @@
  *   各作業は StickerSession として AsyncStorage に保存し、ホームで再開できる。
  *   step: picked → keyed → done の3節目のみ記録（軽量版）。
  */
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -48,6 +48,7 @@ import {
   loadImagePixels,
   rebuildCellFromOriginal,
   isBBoxInside,
+  cropFromOriginal,
 } from './src/imaging';
 import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
@@ -767,6 +768,23 @@ function AppScreens() {
     return { rgba, width: subW, height: subH };
   }, [cellTolerance, appSettings.featherEdges, appSettings.fillTextHoles]);
 
+  /**
+   * セル編集で復元ブラシの透かしに使う、元画像の切り出し。
+   *
+   * レンダーのたびに切り出すと毎回別の配列になり、PolygonEditor 側で
+   * SkImage を作り直し続けることになる。開いているセルが変わった時だけ作る。
+   */
+  const cellBaseRgba = useMemo(() => {
+    if (appState !== 'cell_editing' || editingCellIdx === null) return null;
+    const bg = bgResult;
+    const base = baseRgbaRef.current;
+    if (!bg || !base) return null;
+    const c = cells[editingCellIdx];
+    const bb = c?.kind === 'auto' ? c.bbox : c?.srcBBox;
+    if (!bb || !isBBoxInside(bb, bg.width, bg.height)) return null;
+    return cropFromOriginal(base, bg.width, bb).rgba;
+  }, [appState, editingCellIdx, cells, bgResult]);
+
   const handleCellEditConfirm = useCallback(async (polygons: Polygon[]) => {
     if (editingCellIdx === null || !bgResult) return;
     const editedCell = cells[editingCellIdx];
@@ -1435,6 +1453,7 @@ function AppScreens() {
               points: points.map(([px, py]) => [px + bbox.minX, py + bbox.minY] as [number, number]),
               radius,
             })}
+            baseRgba={cellBaseRgba}
             onUndoEdit={undoEdit}
             onRedoEdit={redoEdit}
             // 先頭の autoBg はここからは取り消させない。セル編集中に背景除去まで
@@ -1470,6 +1489,8 @@ function AppScreens() {
           onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
           // 復元ブラシ。座標はこの画面では元画像そのものなので変換不要。
           onRestore={(points, radius) => pushEdit({ kind: 'restore', points, radius })}
+          // 復元ブラシの透かし用。この画面では元画像そのものを渡す。
+          baseRgba={baseRgbaRef.current}
           onUndoEdit={undoEdit}
           onRedoEdit={redoEdit}
           onResetEdits={resetEdits}

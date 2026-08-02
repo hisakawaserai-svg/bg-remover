@@ -319,6 +319,11 @@ function AppScreens() {
   const applyEdits = useCallback((next: EditStep[], nextRedo: EditStep[]) => {
     const base = baseRgbaRef.current;
     const bg = bgResultRef.current;
+    if (!base || !bg) {
+      // ここを通ると編集が一切反映されない（操作列だけ伸びる）。
+      // 静かに無視すると原因が分からないので必ず残す。
+      console.warn('[App] 元画像が無いため編集を適用できません', { hasBase: !!base, hasBg: !!bg });
+    }
     if (base && bg) {
       const cur = editsRef.current;
       // 追加は [...cur, step] で作るので、先頭は同じ参照のまま並ぶ。
@@ -1113,12 +1118,26 @@ function AppScreens() {
       setCells([]);
       setCurrentImageUri(latest.imageUri);
       try {
-        const result = await removeBackground(
-          latest.imageUri,
-          latest.autoData.tolerance ?? appSettings.tolerance,
-          appSettings.featherEdges,
-          appSettings.fillTextHoles,
-        );
+        // 【重要】ここで removeBackground を使うと「透過済みの画素」しか手に入らず、
+        // 元画像 baseRgbaRef が null のままになる。すると applyEdits のガード
+        // (base && bg) を通れず、スポイトも復元ブラシも何も起きない
+        // （操作は積まれ、処理中表示だけ一瞬出る）。復元ブラシの透かしも出ない。
+        // 元画像を読み込んで base として保持し、操作列を掛け直す形にする。
+        const result = await loadImagePixels(latest.imageUri);
+        baseRgbaRef.current = result.rgba.slice();
+        const resumeSteps: EditStep[] = latest.edits?.length
+          ? latest.edits
+          : [{
+              kind: 'autoBg',
+              tolerance: latest.autoData.tolerance ?? appSettings.tolerance,
+              feather: appSettings.featherEdges,
+              fillHoles: appSettings.fillTextHoles,
+            }];
+        applyEditSteps(result.rgba, result.width, result.height, resumeSteps, baseRgbaRef.current);
+        editsRef.current = resumeSteps;
+        setEdits(resumeSteps);
+        setRedoSteps([]);
+        redoStepsRef.current = [];
         setBgResult(result);
 
         // ファイルが存在するか確認し、欠損セルには 'MISSING' フラグを立てる

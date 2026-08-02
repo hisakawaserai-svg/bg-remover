@@ -139,6 +139,18 @@ const BRUSH_DEFAULT_PX = 8;
 /** 元画像の透かしの濃さ。濃すぎると現在の結果が読めなくなる。 */
 const GHOST_OPACITY = 0.4;
 
+/** 下地ごとのアイコン。現在の下地を1つのボタンで示すために使う。 */
+// 'gray' は廃止済みだが型(ThumbBg)には残っているので、念のため入れておく。
+const BG_ICONS: Record<string, string> = {
+  checker: 'grid-on',
+  white: 'wb-sunny',
+  black: 'brightness-2',
+  gray: 'grid-on',
+};
+
+/** タップ波紋のアニメ時間(ms)。処理がこれより速くても、この間は波紋を残す。 */
+const RIPPLE_MS = 420;
+
 /** スポイトのタップ波紋の半径(px)。 */
 const EYE_RIPPLE_R = 26;
 
@@ -418,6 +430,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // ツールメニューの開閉。常時6個並べると編集領域を食うので、普段は
   // 選択中の1個だけを出し、押した時だけ下へ展開する。
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
+  // 下地の選択を開いているか。普段は現在の下地のアイコン1つだけ出す。
+  const [bgPickerOpen, setBgPickerOpen] = useState(false);
   // なぞり中の軌跡。必ず「画像座標」で持つ。表示座標で持つと、ズームや
   // パンを動かした瞬間に古い座標のまま描かれ、見当違いの場所（左上など）に
   // 円が出る。画像座標なら Canvas の変換がそのまま効くのでズレようがない。
@@ -599,7 +613,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const startRipple = useCallback(() => {
     rippleV.value = 0;
     rippleV.value = withTiming(1, {
-      duration: 420,
+      duration: RIPPLE_MS,
       easing: Easing.out(Easing.quad),
       reduceMotion: ReduceMotion.Never,
     });
@@ -639,7 +653,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         clearTimeout(failsafe);
         eyeBusyRef.current = false;
         setEyeBusy(false);
-        setRipple(null);
+        // 波紋はここで即消さない。処理が速いと出た瞬間に消えて
+        // 「押せたのか分からない」状態に戻るため、アニメの尺だけ残す。
+        setTimeout(() => setRipple(null), RIPPLE_MS);
       }
     }));
   }, []);
@@ -2008,23 +2024,29 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
               <View style={styles.floatDivider} />
 
-                {/* 下地の切替。常時出しておくほどのものではないのでここへ入れる。 */}
-              <View style={styles.bgColumn}>
-                {([
-                  { mode: 'checker', icon: 'grid-on' },
-                  { mode: 'white',   icon: 'lightbulb' },
-                  { mode: 'black',   icon: 'lightbulb-outline' },
-                ] as const).map(({ mode, icon }) => (
-                  <AnimatedPressable
-                    key={mode}
-                    style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
-                    onPress={() => setBgMode(mode)}
-                    pressedScale={0.9}
-                  >
-                    <Icon name={icon} size={16} color="#FFF" />
-                  </AnimatedPressable>
-                ))}
-              </View>
+                {/* 下地の切替。まず現在の下地のアイコンだけを出し、押したら選べる。
+                  3つ常時並べると縦に伸びるうえ、普段は変えないものなので畳んでおく。 */}
+              <AnimatedPressable
+                style={[styles.floatBtn, bgPickerOpen && styles.floatBtnActive]}
+                onPress={() => setBgPickerOpen(o => !o)}
+                pressedScale={0.9}
+              >
+                <Icon name={BG_ICONS[bgMode]} size={20} color="#FFF" />
+              </AnimatedPressable>
+              {bgPickerOpen && (
+                <View style={styles.bgColumn}>
+                  {(['checker', 'white', 'black'] as const).map(mode => (
+                    <AnimatedPressable
+                      key={mode}
+                      style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
+                      onPress={() => { setBgMode(mode); setBgPickerOpen(false); }}
+                      pressedScale={0.9}
+                    >
+                      <Icon name={BG_ICONS[mode]} size={16} color="#FFF" />
+                    </AnimatedPressable>
+                  ))}
+                </View>
+              )}
 
                 {/* 再透過（セル編集の時だけ親から渡される）。 */}
               {onRetransparent && (

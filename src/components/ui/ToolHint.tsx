@@ -29,11 +29,16 @@ interface Props {
   icon: string;
   title: string;
   desc: string;
+  /**
+   * 画面下端からの距離(px)。既定 12。
+   * 下部に別のバー（ズームバーなど）を置く画面で、重ならないよう上へ逃がすために使う。
+   */
+  bottom?: number;
 }
 
-export default function ToolHint({ icon, title, desc }: Props) {
+export default function ToolHint({ icon, title, desc, bottom = 12 }: Props) {
   return (
-    <View style={styles.wrap} pointerEvents="none">
+    <View style={[styles.wrap, { bottom }]} pointerEvents="none">
       <Icon name={icon} size={15} color="#FFF" />
       <Text style={styles.title}>{title}</Text>
       <View style={styles.sep} />

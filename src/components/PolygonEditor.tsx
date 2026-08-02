@@ -36,6 +36,7 @@ import type { TKey } from '../i18n';
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
+import Slider from '@react-native-community/slider';
 import ImageZoomModal from './ui/ImageZoomModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {
@@ -74,8 +75,23 @@ const ZOOM_MIN       = 1;
  */
 const ZOOM_MAX       = 12;
 const ZOOM_STEP      = 0.5; // ボタン1回分のズーム量
-/** 倍率プリセット。長い階段を押し続けずに目的の倍率へ一息で飛ぶ。 */
+/** 倍率プリセット。スライダーの目盛りと、離した時の吸い付き先を兼ねる。 */
 const ZOOM_PRESETS   = [1, 2, 4, 8, 12] as const;
+/** ズームバーの高さ(px)。ツール説明を上へ逃がす量の計算に使う。 */
+const ZOOM_BAR_H     = 40;
+
+/**
+ * 倍率 ↔ スライダー位置(0〜1) の変換。
+ *
+ * 線形に並べると、実用上いちばん使う ×1〜×4 がトラックの左 1/4 に潰れてしまう。
+ * 対数にすると ×1→×2→×4→×8 が等間隔になり、どの倍率帯でも同じ感覚で動かせる。
+ */
+const zoomToSlider = (scale: number) =>
+  Math.log2(scale / ZOOM_MIN) / Math.log2(ZOOM_MAX / ZOOM_MIN);
+const sliderToZoom = (v: number) =>
+  ZOOM_MIN * Math.pow(ZOOM_MAX / ZOOM_MIN, v);
+/** 目盛りにこの距離（スライダー位置の単位）まで近ければ、指を離した時に吸い付く。 */
+const ZOOM_SNAP_R    = 0.035;
 // キャンバスの余白（表示px）。画像が枠にぴったり付いて窮屈だったので全体的に広げた。
 // 上は下地切替(市松/白/黒)のセグメント、右はフローティングボタン、
 // 下はツール説明のピルが乗るので、その分も見込んで確保する。
@@ -318,6 +334,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [appMode,    setAppMode]    = useState<AppMode>('move');
   // zoom は onLayout で実測サイズが確定してから clampZoom で正しく設定される
   const [zoom,       setZoom]       = useState<ZoomState>({ scale: 1, tx: 0, ty: 0 });
+  // ズームスライダーのつまみ位置(0〜1)。ドラッグ中は指の位置を正として持ち、
+  // ピンチや [＋]/[−]・全体表示で倍率が変わった時だけ倍率側から同期する
+  // （両方向に無条件で同期すると、ドラッグ中につまみが指から離れて震える）。
+  const [sliderV, setSliderV] = useState(0);
+  const zoomDraggingRef = useRef(false);
   // initialPolygons がある（セッション復元）場合はそれを初期値にする。
   // ない場合は空配列（drawモードでタップするごとに addRect で追加される）。
   const [polygons,   setPolygons]   = useState<Polygon[]>(initialPolygons ?? []);
@@ -480,20 +501,21 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * stepZoom と同じく表示領域の中心を焦点にして、見ている場所を保つ。
    */
   const setZoomScale = useCallback((target: number) => {
-    setZoom(prev => {
-      const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, target));
-      if (newScale === prev.scale) return prev;
-      const focalX = canvasSizeRef.current.w / 2;
-      const focalY = canvasSizeRef.current.h / 2;
-      const ratio  = newScale / prev.scale;
-      return clampZoom({
-        scale: newScale,
-        tx: focalX - (focalX - prev.tx) * ratio,
-        ty: focalY - (focalY - prev.ty) * ratio,
-      }, canvasSizeRef.current.w, canvasSizeRef.current.h,
-         imageWRef.current * dsRef.current, imageHRef.current * dsRef.current);
-    });
-  }, []);
+    const prev = zoomRef.current;
+    const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, target));
+    if (newScale === prev.scale) return;
+    const focalX = canvasSizeRef.current.w / 2;
+    const focalY = canvasSizeRef.current.h / 2;
+    const ratio  = newScale / prev.scale;
+    // スライダーのドラッグは毎フレーム飛んでくるので、ピンチと同じ
+    // rAF スロットル経路に載せる（setZoom 直呼びだと描画が詰まる）。
+    scheduleZoom(clampZoom({
+      scale: newScale,
+      tx: focalX - (focalX - prev.tx) * ratio,
+      ty: focalY - (focalY - prev.ty) * ratio,
+    }, canvasSizeRef.current.w, canvasSizeRef.current.h,
+       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current));
+  }, [scheduleZoom]);
 
   /**
    * 全体表示へ戻す。等倍にしたうえで clampZoom に中央へ寄せさせる。
@@ -506,6 +528,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
     ));
   }, []);
+
+  // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
+  useEffect(() => {
+    if (zoomDraggingRef.current) return;
+    setSliderV(zoomToSlider(zoom.scale));
+  }, [zoom.scale]);
 
   // ── Undo/Redo ─────────────────────────────────────────────────────────────
 
@@ -1398,6 +1426,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           icon={TOOL_HINTS[appMode].icon}
           title={t(TOOL_HINTS[appMode].titleKey)}
           desc={t(TOOL_HINTS[appMode].descKey)}
+          // ズームバー（高さ約40 + 下余白8）のぶん上へ逃がす。
+          bottom={ZOOM_BAR_H + 16}
         />
 
         {/* ── フローティング上部: 下地切替 ── */}
@@ -1450,9 +1480,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </AnimatedPressable>
         </View>
 
-        {/* ── ズームバー: [−] 倍率プリセット [+] と全体表示 ──
-            ズーム操作をここ1箇所にまとめる。以前は右端の縦カラムに [+]/[−] だけが
-            あり、目的の倍率まで階段を何度も押す必要があった。 */}
+        {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
+            ズーム操作を横1列にまとめる。スライダーは対数目盛りで、
+            ×1/×2/×4/×8/×12 の目盛りに吸い付く。細かく詰めたい時は連続値、
+            決め打ちしたい時は目盛り、と両方できる。 */}
         <View style={styles.zoomBar} pointerEvents="box-none">
           <View style={styles.zoomRow}>
             <AnimatedPressable
@@ -1462,21 +1493,45 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             >
               <Text style={styles.zoomStepTxt}>－</Text>
             </AnimatedPressable>
-            {ZOOM_PRESETS.map(p => {
-              // 現在倍率にいちばん近いプリセットを選択中として光らせる。
-              const on = ZOOM_PRESETS.reduce((best, c) =>
-                Math.abs(c - zoom.scale) < Math.abs(best - zoom.scale) ? c : best) === p;
-              return (
-                <AnimatedPressable
-                  key={p}
-                  style={[styles.zoomPreset, on && styles.zoomPresetOn]}
-                  onPress={() => setZoomScale(p)}
-                  pressedScale={0.9}
-                >
-                  <Text style={[styles.zoomPresetTxt, on && styles.zoomPresetTxtOn]}>×{p}</Text>
-                </AnimatedPressable>
-              );
-            })}
+            {/* 倍率スライダー（対数目盛り）。目盛りは ×1/×2/×4/×8/×12 で、
+                指を離した時に近ければ吸い付く。連続値でも刻みでも狙える。 */}
+            <View style={styles.zoomSliderWrap}>
+              <View style={styles.zoomTicks} pointerEvents="none">
+                {ZOOM_PRESETS.map(p => (
+                  <View
+                    key={p}
+                    style={[
+                      styles.zoomTick,
+                      // トラック両端はつまみ半径ぶん内側なので、目盛りも同じ式で置く。
+                      { left: `${zoomToSlider(p) * 100}%` },
+                    ]}
+                  />
+                ))}
+              </View>
+              <Slider
+                style={styles.zoomSlider}
+                minimumValue={0}
+                maximumValue={1}
+                value={sliderV}
+                onSlidingStart={() => { zoomDraggingRef.current = true; }}
+                onValueChange={v => {
+                  setSliderV(v);
+                  setZoomScale(sliderToZoom(v));
+                }}
+                onSlidingComplete={v => {
+                  // 目盛りの近くで離したらぴったりの倍率へ寄せる。
+                  const near = ZOOM_PRESETS.find(
+                    p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
+                  const finalV = near !== undefined ? zoomToSlider(near) : v;
+                  setSliderV(finalV);
+                  setZoomScale(near !== undefined ? near : sliderToZoom(v));
+                  zoomDraggingRef.current = false;
+                }}
+                minimumTrackTintColor={IOS.blue}
+                maximumTrackTintColor="rgba(255,255,255,0.28)"
+                thumbTintColor="#FFF"
+              />
+            </View>
             <AnimatedPressable
               style={styles.zoomStepBtn}
               disabled={zoom.scale >= ZOOM_MAX}
@@ -1711,10 +1766,24 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   zoomStepTxt: { fontSize: 18, color: '#FFF' },
-  zoomPreset: {
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderRadius: 8,
+  zoomSliderWrap: {
+    width: 150,
+    height: 30,
+    justifyContent: 'center',
+  },
+  zoomSlider: { width: '100%', height: 30 },
+  // 目盛り。トラックの裏に細い縦線を置く。
+  zoomTicks: {
+    position: 'absolute',
+    left: 10, right: 10,
+    top: 13, height: 4,
+  },
+  zoomTick: {
+    position: 'absolute',
+    width: 1.5, height: 4,
+    marginLeft: -0.75,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   // [＋] と全体表示ボタンの間の区切り。役割が違うことを示す。
   zoomSep: {
@@ -1723,9 +1792,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
-  zoomPresetOn: { backgroundColor: IOS.blue },
-  zoomPresetTxt: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
-  zoomPresetTxtOn: { color: '#FFF', fontWeight: '600' },
 
 
   // draw モードのオーバーレイヒント（iOS のトースト風）

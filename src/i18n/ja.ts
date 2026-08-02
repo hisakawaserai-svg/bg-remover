@@ -207,6 +207,8 @@ const ja = {
     resetMessage: 'ポリゴンを消し、スポイトで消した色も元に戻して、自動の背景除去だけ済んだ状態にします。\nこの操作は取り消せません。',
     retransTitle: '透過強度',
     retransApply: 'このカットに再適用',
+    eyedropDone: '💧 色を削除しました',
+    eyedropNothing: '💧 削除できる色がありません',
     eyedropBusy: '色を削除中...',
     undoBusy: '編集を戻しています...',
     redoBusy: '編集を適用しています...',

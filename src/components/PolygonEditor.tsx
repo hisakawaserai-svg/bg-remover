@@ -148,6 +148,9 @@ const BG_ICONS: Record<string, string> = {
   gray: 'grid-on',
 };
 
+/** フィードバックの表示時間(ms)。 */
+const TOAST_MS = 1600;
+
 /** タップ波紋のアニメ時間(ms)。処理がこれより速くても、この間は波紋を残す。 */
 const RIPPLE_MS = 420;
 
@@ -432,6 +435,22 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   // 下地の選択を開いているか。普段は現在の下地のアイコン1つだけ出す。
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  /**
+   * 一言フィードバック。
+   *
+   * スポイトは「押したのに何も起きない」ことがある（既に透明な場所を叩いた等）。
+   * 黙って無視すると壊れているのか区別できないので、結果を必ず言葉で返す。
+   */
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), TOAST_MS);
+  }, []);
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
   // なぞり中の軌跡。必ず「画像座標」で持つ。表示座標で持つと、ズームや
   // パンを動かした瞬間に古い座標のまま描かれ、見当違いの場所（左上など）に
   // 円が出る。画像座標なら Canvas の変換がそのまま効くのでズレようがない。
@@ -1416,13 +1435,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             const relLX = gStartLX.current + gs.dx;
             const relLY = gStartLY.current + gs.dy;
             const { x, y } = localToImage(relLX, relLY, z);
-            if (x >= 0 && x < imageWRef.current && y >= 0 && y < imageHRef.current
-                // 透過済みの場所のタップは見た目が変わらない（空振り）ので、
-                // 履歴を積まずに無視する。積むと undo が1回無反応になり、
-                // 重い rgba スナップショットの枠も無駄に消費する。
-                && !isTransparentAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y)
-                // 前のスポイトが反映され終わるまでは受け付けない（連打対策）。
-                && !eyeBusyRef.current) {
+            const inside = x >= 0 && x < imageWRef.current && y >= 0 && y < imageHRef.current;
+            // 透過済みの場所のタップは見た目が変わらない（空振り）ので、
+            // 履歴を積まずに無視する。積むと undo が1回無反応になり、
+            // 重い rgba スナップショットの枠も無駄に消費する。
+            // ただし黙って無視すると「壊れている」と区別がつかないので、
+            // 消せなかったことを必ず伝える。
+            const hasColor = inside
+              && !isTransparentAt(rgbaRef.current, imageWRef.current, imageHRef.current, x, y);
+            if (!hasColor) {
+              if (!eyeBusyRef.current) showToast(t('editor.eyedropNothing'));
+            } else if (!eyeBusyRef.current) {
               // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
               // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
               setPast(p => [...p, { kind: 'edit' }]);
@@ -1431,7 +1454,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               startRipple();
               const tol = eyeTolRef.current;
               const fth = featherRef.current;
-              runHeavy(() => onEyedropRef.current?.(x, y, tol, fth), 'editor.eyedropBusy');
+              runHeavy(() => {
+                onEyedropRef.current?.(x, y, tol, fth);
+                showToast(t('editor.eyedropDone'));
+              }, 'editor.eyedropBusy');
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
@@ -1902,6 +1928,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           />
         )}
 
+        {/* 一言フィードバック。操作の結果を必ず言葉で返す。 */}
+        {toast && (
+          <View style={styles.toastWrap} pointerEvents="none">
+            <Text style={styles.toastTxt}>{toast}</Text>
+          </View>
+        )}
+
         {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
             eyeBusy の描画が確定してから実処理に入る（下の useEffect が担保）。 */}
         {eyeBusy && (
@@ -2256,10 +2289,11 @@ const styles = StyleSheet.create({
     top:       8,
     // 「ズーム（余った幅いっぱい）｜ドロップダウン」の1行。
     // 縦に段を重ねると画像の上端がその分だけ触れなくなるので、高さは1行に抑える。
+    // 倍率・スライダー・ドロップダウンを横一列に置く。
+    // 余白を埋めるのはスライダーだけで、ドロップダウンは行の右端に収まる。
+    // space-between や絶対配置で位置を作ると、要素が増減したときにズレる。
     flexDirection: 'row',
     alignItems: 'flex-start',
-    // 左詰め。ズーム行のすぐ右にドロップダウンが並ぶ。
-    justifyContent: 'flex-start',
     gap: 8,
   },
 
@@ -2319,6 +2353,7 @@ const styles = StyleSheet.create({
   },
   // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
   zoomTopRow: {
+    flex: 1,   // 行の余白はこのまとまりが受け持つ
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -2330,7 +2365,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomSliderWrap: {
-    width: 132,
+    // 余白を実際に埋めるのはここ。倍率表示と全体表示ボタンは固定幅。
+    flex: 1,
+    minWidth: 80,
     height: 34,
     justifyContent: 'center',
   },
@@ -2443,6 +2480,25 @@ const styles = StyleSheet.create({
   brushLabel: { color: '#FFF', fontSize: 12 },
   brushValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
   brushSlider: { width: '100%', height: 30 },
+
+  // ── 一言フィードバック ────────────────────────────────────────────────────
+  toastWrap: {
+    position: 'absolute',
+    left: 0, right: 0,
+    // ツール説明やブラシ設定と重ならないよう、画面の中ほどに出す。
+    top: '46%',
+    alignItems: 'center',
+  },
+  toastTxt: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+    backgroundColor: 'rgba(20,20,20,0.86)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
 
   // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
   busyOverlay: {

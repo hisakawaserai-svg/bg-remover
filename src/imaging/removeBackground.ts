@@ -18,20 +18,44 @@ export const PEEL_MIN_CLEAR_RATIO = 0.05;
 export const PEEL_MAX_CLEAR_RATIO = 0.9;
 
 // ── 「文字の穴を透過する」（上級者向けオプション）のパラメータ ──────────────────
+//
+// 穴かどうかは単一の条件では決められない。「白いから背景」と決めつけると
+// 白いシマエナガを消し、「太いから被写体」と決めつけると太いロゴの穴を残す。
+// そこで 色・輪郭・形状 の特徴量を出してスコアにし、合計で判定する。
+//
+//   文字の穴 : 内部が均一（分散が低い）／周囲が濃い線でぐるりと閉じている
+//   白い鳥   : 羽の陰影とアンチエイリアスで内部がざらつく（分散が高い）／
+//              周囲の一部は陰影へなだらかに繋がり、強い輪郭で閉じていない
+//
 /**
- * 穴として抜いてよい「太さ」の上限。短辺に対する割合で、内接半径と比べる。
+ * 輪郭の強さは「穴の内部の平均輝度と、囲んでいる画素の輝度差」で測る。
+ * この値以上なら「はっきりした輪郭」とみなす。
  *
- * 面積ではなく太さで判定するのが要点。白い鳥のような背景色と同じ色の被写体は、
- * 面積が小さくても「太い」ので弾ける。一方、文字の内側や線の隙間は面積に関係なく
- * 細いので通る。面積上限だけの判定では両者を区別できず、被写体を消してしまう。
+ * Sobel 勾配そのものを使わない理由: 1px幅の線は左右/上下が対称になるため
+ * 中心でも隣でも勾配が打ち消し合って 0 になり、細い文字の輪郭を取り逃す。
+ * そこで打ち消しの起きないコントラストを主に使い、Sobel（sobelAt）は
+ * 補助として併用して、両者の強いほうを輪郭の強さとする。
  */
-export const HOLE_MAX_THICKNESS_RATIO = 0.015;
-/** 太さ上限の下限・上限（px）。小さい画像で0になったり、大画像で緩くなりすぎるのを防ぐ。 */
-export const HOLE_MIN_THICKNESS_PX = 3;
-export const HOLE_MAX_THICKNESS_PX = 24;
+export const EDGE_STRONG_TH = 40;
+/** 輪郭強度スコアの基準値。このコントラストで満点になる。 */
+export const EDGE_REF = 90;
+/** 内部の輝度分散スコアの基準値。これ以上ばらついていたら分散点は0。 */
+export const VAR_REF = 45;
+/** 太さスコアの基準。短辺に対する割合（この太さで0点になる）。 */
+export const HOLE_THICKNESS_REF_RATIO = 0.02;
+export const HOLE_MIN_THICKNESS_PX = 4;
+export const HOLE_MAX_THICKNESS_PX = 32;
+/** 各特徴量の重み。合計 1.0。 */
+export const HOLE_W_CLOSURE = 0.25;   // 輪郭の閉じ具合
+export const HOLE_W_EDGE = 0.10;      // 輪郭の平均強度
+export const HOLE_W_VARIANCE = 0.30;  // 内部の色分散（均一なほど穴らしい）
+export const HOLE_W_THICKNESS = 0.25; // 細いほど穴らしい
+export const HOLE_W_COLOR = 0.10;     // 背景色との近さ
+/** このスコア以上なら穴として抜く。 */
+export const HOLE_SCORE_TH = 0.70;
 /**
- * 面積の上限（画像全体に対する割合）。太さ判定に加えた二段目の保険。
- * 細長い形が延々と繋がっているケースで、広範囲が一気に消えるのを防ぐ。
+ * 面積の上限（画像全体に対する割合）。スコアとは別の最終防衛線。
+ * 万一スコアが誤っても、一度に広範囲が消えることだけは防ぐ。
  */
 export const HOLE_MAX_AREA_RATIO = 0.05;
 
@@ -492,6 +516,35 @@ function featherEdges(
 }
 
 /**
+ * 輝度マップ。穴埋めが ON のときだけ作る（O(画素数) の1パス）。
+ */
+function buildLuminance(rgba: Uint8Array, n: number): Uint8Array {
+  const lum = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    // ITU-R BT.601 の輝度。整数演算で済ませる。
+    lum[i] = (rgba[i * 4] * 77 + rgba[i * 4 + 1] * 150 + rgba[i * 4 + 2] * 29) >> 8;
+  }
+  return lum;
+}
+
+/**
+ * 1画素ぶんの Sobel 勾配強度（|gx|+|gy|）。
+ *
+ * 画像全体を先に計算すると実測で 260ms 掛かるが、実際に必要なのは
+ * 穴候補を囲むリングの画素だけで、これは全体のごく一部にすぎない。
+ * そのため配列を持たず、必要になった画素だけその場で求める。
+ */
+function sobelAt(lum: Uint8Array, i: number, x: number, y: number, w: number, h: number): number {
+  if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) return 0;
+  const tl = lum[i - w - 1], tc = lum[i - w], tr = lum[i - w + 1];
+  const ml = lum[i - 1],                      mr = lum[i + 1];
+  const bl = lum[i + w - 1], bc = lum[i + w], br = lum[i + w + 1];
+  const gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
+  const gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
+  return Math.abs(gx) + Math.abs(gy);
+}
+
+/**
  * 成分の「太さ」＝最大内接半径を測る（マンハッタン距離）。
  *
  * bbox を1px ぶん外へ広げた作業領域を作り、成分外の画素を距離0として
@@ -563,14 +616,18 @@ function componentThickness(
  * 「あ」「ロ」やロゴの内側、細い線が作る隙間がこれにあたり、そこだけ背景色が残る。
  * 皮むきパスは画像の5%以上が消えるときしか発動しないため、この手の領域には届かない。
  *
- * 残っている画素を連結成分に分け、次を全部満たす成分だけ透過する:
- *   - 成分内の全画素が推定背景色に tol 以内で一致する
- *   - 画像の端に接していない（＝囲まれた内側）
- *   - 「太さ」が上限以下（＝細い隙間であって、塊ではない）
- *   - 面積が画像全体の HOLE_MAX_AREA_RATIO 以下（二段目の保険）
+ * 残っている画素を連結成分に分け、まず前提条件（背景色に一致・画像端に接しない・
+ * 面積上限以下）で絞り、残った候補を 色/輪郭/形状 の5つの特徴量でスコアリングして
+ * 判定する。単一の条件で決めないのが要点で、どれか1つが外れても他が支える。
  *
- * 太さ判定が要になる。色と面積だけで判断すると、白背景の上の白い鳥のように
- * 「背景色と同じ色で、輪郭線に囲まれた、小さい被写体」を消してしまう。
+ *   closure   輪郭の閉じ具合。候補を囲む画素のうち、はっきりした輪郭の割合。
+ *             文字の穴は濃い線でぐるりと閉じている。鳥の白い部分は陰影へ
+ *             なだらかに繋がる箇所があり、閉じ切らない。
+ *   edge      輪郭の平均強度。線が濃いほど「囲まれている」確信が強い。
+ *   variance  内部の輝度分散。文字の穴は真っ白で均一、鳥は羽の陰影と
+ *             アンチエイリアスでばらつく。この特徴量が白同士の区別に効く。
+ *   thickness 形状の細さ。文字の穴や隙間は細い。
+ *   color     背景色との近さ。
  *
  * 返り値は新たに透過した画素数。
  */
@@ -588,10 +645,30 @@ function fillEnclosedHoles(
   const maxArea = Math.floor(pixelCount * HOLE_MAX_AREA_RATIO);
   if (maxArea < 1) return 0;
 
-  const maxThickness = Math.max(
+  const thicknessRef = Math.max(
     HOLE_MIN_THICKNESS_PX,
-    Math.min(HOLE_MAX_THICKNESS_PX, Math.round(Math.min(w, h) * HOLE_MAX_THICKNESS_RATIO)),
+    Math.min(HOLE_MAX_THICKNESS_PX, Math.round(Math.min(w, h) * HOLE_THICKNESS_REF_RATIO)),
   );
+
+  const lum = buildLuminance(rgba, pixelCount);
+
+  // 背景色との一致を1度だけ判定して表にする。
+  // BFS とリング走査で同じ画素を何度も判定するため、都度 matchesBg を呼ぶと
+  // 画素数の数倍の色比較が走って目に見えて遅くなる。比較もインラインに展開する。
+  const isBg = new Uint8Array(pixelCount);
+  const nBg = bgColors.length;
+  const bgR = new Int32Array(nBg), bgG = new Int32Array(nBg), bgB = new Int32Array(nBg);
+  for (let c = 0; c < nBg; c++) { bgR[c] = bgColors[c].r; bgG[c] = bgColors[c].g; bgB[c] = bgColors[c].b; }
+  for (let i = 0, off = 0; i < pixelCount; i++, off += 4) {
+    const r = rgba[off], g = rgba[off + 1], b = rgba[off + 2];
+    for (let c = 0; c < nBg; c++) {
+      const dr = r - bgR[c], dg = g - bgG[c], db = b - bgB[c];
+      if ((dr < 0 ? -dr : dr) <= tol && (dg < 0 ? -dg : dg) <= tol && (db < 0 ? -db : db) <= tol) {
+        isBg[i] = 1;
+        break;
+      }
+    }
+  }
 
   // 一度見た画素は再訪しない。visited とは別に持つ（採用しなかった成分も
   // 「見た」として畳んでしまうことで、全体を O(画素数) に保つ）。
@@ -599,12 +676,15 @@ function fillEnclosedHoles(
   const queue = new Int32Array(pixelCount);
   // 上限を超えた成分はどのみち不採用なので、記録は maxArea 個までで足りる。
   const component = new Int32Array(maxArea);
+  // 輪郭リングの重複計上を防ぐ印。世代番号方式にして、成分ごとの clear を省く。
+  const ringStamp = new Int32Array(pixelCount);
+  let generation = 0;
   let filled = 0;
 
   for (let start = 0; start < pixelCount; start++) {
     if (visited[start] || seen[start]) continue;
     // 背景色に一致しない画素は被写体。そこから成分を広げない。
-    if (!matchesBg(rgba, start * 4, bgColors, tol)) {
+    if (!isBg[start]) {
       seen[start] = 1;
       continue;
     }
@@ -634,15 +714,92 @@ function fillEnclosedHoles(
       for (const ni of neighbors) {
         if (ni < 0 || seen[ni] || visited[ni]) continue;
         // 背景色でない隣は成分の外（＝囲っている線）。seen は立てない。
-        if (!matchesBg(rgba, ni * 4, bgColors, tol)) continue;
+        if (!isBg[ni]) continue;
         seen[ni] = 1;
         queue[tail++] = ni;
       }
     }
 
+    // 前提条件。ここを外れたものはスコアを出すまでもない。
     if (touchesEdge || size > maxArea) continue;
-    // 太い＝被写体の可能性。文字の内側や隙間ならここを通る。
-    if (componentThickness(component, size, w) > maxThickness) continue;
+
+    // ── 特徴量を集める ────────────────────────────────────────────────
+    generation++;
+
+    // (1) 内部の輝度分散。均一なほど「塗り残した背景」らしい。
+    let sum = 0, sumSq = 0;
+    for (let i = 0; i < size; i++) {
+      const v = lum[component[i]];
+      sum += v;
+      sumSq += v * v;
+    }
+    const meanLum = sum / size;
+    const variance = Math.max(0, sumSq / size - meanLum * meanLum);
+    const sd = Math.sqrt(variance);
+
+    // (2)(3) 候補を囲む画素（リング）の輪郭強度と、そのうち強い輪郭の割合。
+    let ringCount = 0, ringStrong = 0, ringSum = 0;
+    for (let i = 0; i < size; i++) {
+      const idx = component[i];
+      const x = idx % w;
+      const y = (idx - x) / w;
+      const around = [
+        x > 0 ? idx - 1 : -1,
+        x < w - 1 ? idx + 1 : -1,
+        y > 0 ? idx - w : -1,
+        y < h - 1 ? idx + w : -1,
+      ];
+      for (const ni of around) {
+        if (ni < 0) continue;
+        // 成分内（＝背景色に一致）の隣はリングではない。
+        if (isBg[ni] && !visited[ni]) continue;
+        if (ringStamp[ni] === generation) continue; // 同じ画素を二重に数えない
+        ringStamp[ni] = generation;
+        ringCount++;
+        // 穴の内部の平均輝度との差＝コントラスト。細い線でも打ち消しが起きない。
+        // Sobel 勾配は補助的に併用し、どちらか強いほうを採る（濃淡の差が小さくても
+        // 質感の変化で囲まれている場合を拾うため）。
+        const contrast = Math.abs(lum[ni] - meanLum);
+        const nx = ni % w;
+        const sobel = sobelAt(lum, ni, nx, (ni - nx) / w, w, h) >> 3; // スケールを合わせる
+        const strength = contrast > sobel ? contrast : sobel;
+        ringSum += strength;
+        if (strength >= EDGE_STRONG_TH) ringStrong++;
+      }
+    }
+    if (ringCount === 0) continue;
+    const closure = ringStrong / ringCount;
+    const edgeMean = ringSum / ringCount;
+
+    // (4) 形状の細さ。
+    const thickness = componentThickness(component, size, w);
+
+    // (5) 背景色との近さ（成分の平均色で見る）。
+    let sr = 0, sg = 0, sb = 0;
+    for (let i = 0; i < size; i++) {
+      const off = component[i] * 4;
+      sr += rgba[off]; sg += rgba[off + 1]; sb += rgba[off + 2];
+    }
+    let colorDist = Infinity;
+    for (const bg of bgColors) {
+      const d = Math.max(
+        Math.abs(sr / size - bg.r),
+        Math.abs(sg / size - bg.g),
+        Math.abs(sb / size - bg.b),
+      );
+      if (d < colorDist) colorDist = d;
+    }
+
+    // ── スコアリング ──────────────────────────────────────────────────
+    const norm = (v: number, ref: number) => Math.min(1, Math.max(0, v / ref));
+    const score =
+      HOLE_W_CLOSURE * closure +
+      HOLE_W_EDGE * norm(edgeMean, EDGE_REF) +
+      HOLE_W_VARIANCE * (1 - norm(sd, VAR_REF)) +
+      HOLE_W_THICKNESS * (1 - norm(thickness, thicknessRef)) +
+      HOLE_W_COLOR * (1 - norm(colorDist, Math.max(1, tol)));
+
+    if (score < HOLE_SCORE_TH) continue;
 
     for (let i = 0; i < size; i++) {
       visited[component[i]] = 1;

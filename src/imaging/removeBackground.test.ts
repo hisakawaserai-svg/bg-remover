@@ -61,16 +61,28 @@ function strokeRect(
   }
 }
 
-/** 輪郭線を持つ塗りつぶし円。白い鳥の体を模したもの。 */
+/**
+ * 白い鳥の体を模した円。輪郭線に加えて、内部に羽の陰影と
+ * アンチエイリアスのゆらぎを入れる（実画像の白い被写体に近づけるため）。
+ * これが無いと内部が完全に均一になり、文字の穴と区別できない。
+ */
 function strokeCircle(
   rgba: Uint8Array,
   cx: number, cy: number, rad: number,
   c: [number, number, number],
 ) {
-  for (let y = cy - rad - 1; y <= cy + rad + 1; y++) {
-    for (let x = cx - rad - 1; x <= cx + rad + 1; x++) {
+  for (let y = cy - rad - 2; y <= cy + rad + 2; y++) {
+    for (let x = cx - rad - 2; x <= cx + rad + 2; x++) {
       const d = Math.hypot(x - cx, y - cy);
-      if (d > rad - 1.5 && d <= rad) setPixel(rgba, x, y, c);
+      if (d > rad - 1.5 && d <= rad) {
+        setPixel(rgba, x, y, c);
+      } else if (d <= rad - 1.5) {
+        // 下側ほど暗い陰影 + 細かいゆらぎ。背景(255)からのズレは tolerance 内に収める。
+        const shade = Math.round(((y - (cy - rad)) / (2 * rad)) * 26);
+        const jitter = ((x * 7 + y * 13) % 21) - 10;
+        const v = Math.max(0, Math.min(255, 255 - shade + jitter));
+        setPixel(rgba, x, y, [v, v, v]);
+      }
     }
   }
 }
@@ -142,15 +154,32 @@ describe('removeBackgroundInPlace（fillHoles=true）', () => {
     expect(alphaAt(rgba, 80, 101)).toBe(0);
   });
 
-  it('太い閉領域は面積が小さくても残す', () => {
+  it('内部がざらついた太い閉領域は残す（分散が効く）', () => {
     const rgba = makeCanvas();
-    // 内側 18x18。面積は画像の1.6%と小さいが、太さの上限（短辺の1.5%=3px）を超える。
-    strokeRect(rgba, 60, 60, 79, 79, LINE);
-    expect(18 * 18).toBeLessThan(W * H * HOLE_MAX_AREA_RATIO);
+    // 濃い枠に囲まれた太い領域だが、内部に陰影のゆらぎがある＝被写体。
+    strokeRect(rgba, 60, 60, 89, 89, LINE);
+    for (let y = 61; y <= 88; y++) {
+      for (let x = 61; x <= 88; x++) {
+        const v = 255 - (((x * 7 + y * 13) % 25) + Math.round((y - 61) / 3));
+        setPixel(rgba, x, y, [v, v, v]);
+      }
+    }
+    expect(28 * 28).toBeLessThan(W * H * HOLE_MAX_AREA_RATIO);
 
     removeBackgroundInPlace(rgba, W, H, 30, false, true);
 
-    expect(alphaAt(rgba, 70, 70)).toBe(255);
+    expect(alphaAt(rgba, 75, 75)).toBe(255);
+  });
+
+  it('内部が均一で濃い線に囲まれた太めの穴は抜ける（ロゴのO）', () => {
+    const rgba = makeCanvas();
+    // 上のテストと同じ大きさ・同じ枠だが、内部は真っ白で均一。
+    strokeRect(rgba, 60, 60, 89, 89, LINE);
+    strokeRect(rgba, 61, 61, 88, 88, LINE);
+
+    removeBackgroundInPlace(rgba, W, H, 30, false, true);
+
+    expect(alphaAt(rgba, 75, 75)).toBe(0);
   });
 
   it('背景色と一致しない内側は残す', () => {
@@ -163,7 +192,7 @@ describe('removeBackgroundInPlace（fillHoles=true）', () => {
     expect(alphaAt(rgba, 63, 63)).toBe(255);
   });
 
-  it('外側の背景の除去結果は fillHoles の有無で変わらない', () => {
+  it('白い被写体だけの画像では ON にしてもほぼ何も増えない', () => {
     const a = makeCanvas();
     const b = makeCanvas();
     strokeCircle(a, 100, 100, 25, LINE);
@@ -172,6 +201,13 @@ describe('removeBackgroundInPlace（fillHoles=true）', () => {
     removeBackgroundInPlace(a, W, H, 30, true, false);
     removeBackgroundInPlace(b, W, H, 30, true, true);
 
-    expect(Array.from(b)).toEqual(Array.from(a));
+    // ON が余分に消した画素。アンチエイリアスの粒が数点混じるのは許容し、
+    // 「体が食われていないこと」を面積比で固定する。
+    let extra = 0;
+    for (let i = 0; i < W * H; i++) {
+      if (a[i * 4 + 3] > 0 && b[i * 4 + 3] === 0) extra++;
+    }
+    const bodyArea = Math.PI * 25 * 25;
+    expect(extra / bodyArea).toBeLessThan(0.01);
   });
 });

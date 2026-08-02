@@ -123,13 +123,18 @@ const TOOL_HINTS: Record<AppMode, { icon: string; titleKey: TKey; descKey: TKey 
   move:       { icon: TOOL_ICONS.move,       titleKey: 'editor.modeMove',       descKey: 'editor.modeMoveHint' },
   draw:       { icon: TOOL_ICONS.draw,       titleKey: 'editor.modeAdd',        descKey: 'editor.modeAddHint' },
   eyedropper: { icon: TOOL_ICONS.eyedropper, titleKey: 'editor.modeEyedropper', descKey: 'editor.modeEyedropperHint' },
+  restore: { icon: 'healing', titleKey: 'editor.modeRestore', descKey: 'editor.modeRestoreHint' },
 };
+
+/** 復元ブラシの半径（画像px）。短辺に対する割合で決め、画像サイズに追従させる。 */
+const BRUSH_SIZES = [0.01, 0.02, 0.04] as const;
+const BRUSH_MIN_PX = 4;
 
 /** スポイトのタップ波紋の半径(px)。 */
 const EYE_RIPPLE_R = 26;
 
 /** eyedropper = スポイト: タップした色を透過させる（ポリゴンは操作しない） */
-type AppMode = 'draw' | 'move' | 'eyedropper';
+type AppMode = 'draw' | 'move' | 'eyedropper' | 'restore';
 
 /**
  * undo/redo の履歴エントリ。
@@ -150,7 +155,8 @@ type GesPhase =
   | 'pinch'
   | 'drag_vertex'  // 頂点ドラッグ中
   | 'drag_poly'    // ポリゴン全体移動中
-  | 'drag_edge';   // 辺の両端頂点を同時移動中
+  | 'drag_edge'    // 辺の両端頂点を同時移動中
+  | 'restore';     // 復元ブラシでなぞり中
 
 interface ZoomState { scale: number; tx: number; ty: number }
 
@@ -192,6 +198,11 @@ interface Props {
    * 実処理は親が持つ（元画像を持っているのは親のため）。
    */
   onRetransparent?: (tolerance: number) => void;
+  /**
+   * 復元ブラシの1ストローク。座標はこのエディタが表示している画像の座標系。
+   * 元画像基準への変換（セル編集の bbox 加算）は親が行う。
+   */
+  onRestore?: (points: Array<[number, number]>, radius: number) => void;
   /** 透過強度スライダーの初期値。onRetransparent とセットで渡す。 */
   cellTolerance?: number;
   canUndoEdit?: boolean;
@@ -281,7 +292,7 @@ function distPointToSegment(
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
   const { settings } = useSettings();
@@ -359,6 +370,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 下部のツール説明・ズームバーごと、重なるものを一時的に全部隠す。
   // 画像の端を直したい時に「どかす手段」が無いと詰むので用意する。
   const [chromeHidden, setChromeHidden] = useState(false);
+  // 復元ブラシの太さ（BRUSH_SIZES の添字）と、なぞっている最中の軌跡（表示座標）。
+  const [brushIdx, setBrushIdx] = useState(1);
+  const [strokePts, setStrokePts] = useState<Array<[number, number]>>([]);
+  const strokeImgRef = useRef<Array<[number, number]>>([]);
+  // ブラシ半径は画像の短辺に対する割合で決める。こうしないと、大きなシートでは
+  // 太すぎ、小さな画像では細すぎ、という状態になる。
+  const brushRadius = Math.max(
+    BRUSH_MIN_PX,
+    Math.round(Math.min(bgResult.width, bgResult.height) * BRUSH_SIZES[brushIdx]),
+  );
+  const brushRadiusRef = useRef(brushRadius); brushRadiusRef.current = brushRadius;
   // initialPolygons がある（セッション復元）場合はそれを初期値にする。
   // ない場合は空配列（drawモードでタップするごとに addRect で追加される）。
   const [polygons,   setPolygons]   = useState<Polygon[]>(initialPolygons ?? []);
@@ -410,6 +432,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   featherRef.current  = settings.featherEdges;
   // 親のコールバックは PanResponder のクロージャからも呼ぶので ref 経由で読む。
   const onEyedropRef  = useRef(onEyedrop);  onEyedropRef.current  = onEyedrop;
+  const onRestoreRef  = useRef(onRestore);  onRestoreRef.current  = onRestore;
 
   // ── スポイトのタップ波紋 ────────────────────────────────────────────────────
   // 押してから画像が更新されるまでに間があり「押せたのか分からない」ので、
@@ -427,17 +450,24 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     opacity: 1 - rippleV.value,
     transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
   }));
-  /** タップ位置に波紋を出し、描画が乗ってから run() を実行する。 */
-  const rippleThen = useCallback((lx: number, ly: number, run: () => void) => {
-    setRipple({ x: lx, y: ly });
+  /** タップ位置の波紋アニメを開始する（位置は呼ぶ側が setRipple 済みであること）。 */
+  const startRipple = useCallback(() => {
     rippleV.value = 0;
     rippleV.value = withTiming(1, {
       duration: 420,
       easing: Easing.out(Easing.quad),
       reduceMotion: ReduceMotion.Never,
     });
-    requestAnimationFrame(() => requestAnimationFrame(run));
   }, [rippleV]);
+
+  /**
+   * 重い同期処理の予約。eyeBusy を true にした描画が確定してから実行する。
+   *
+   * PanResponder の中で直接呼ぶと、setState の反映（＝ローディングの描画）より
+   * 先に処理が走ってしまい、「一瞬で終わったように見える」状態になっていた。
+   * 待ち時間を固定で入れるのではなく、実際の処理が終わったら解除する。
+   */
+  const pendingHeavyRef = useRef<(() => void) | null>(null);
 
   const onUndoEditRef = useRef(onUndoEdit); onUndoEditRef.current = onUndoEdit;
   const onRedoEditRef = useRef(onRedoEdit); onRedoEditRef.current = onRedoEdit;
@@ -548,6 +578,32 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
     ));
   }, []);
+
+  /**
+   * 予約された重い処理を、ローディング表示が描画された後に実行する。
+   *
+   * useEffect はコミット後に走るので、ここまで来ればオーバーレイは
+   * ビューツリーに乗っている。さらに rAF を1つ挟んで実際に描画が
+   * 走る猶予を与えてから、同期処理へ入る。
+   */
+  useEffect(() => {
+    if (!eyeBusy) return;
+    const work = pendingHeavyRef.current;
+    if (!work) return;
+    pendingHeavyRef.current = null;
+    const id = requestAnimationFrame(() => {
+      try {
+        work();
+      } finally {
+        // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
+        eyeBusyRef.current = false;
+        setEyeBusy(false);
+        // タップ表示を明示的に消す。残すと波紋の View が出しっぱなしになる。
+        setRipple(null);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [eyeBusy]);
 
   // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
   useEffect(() => {
@@ -845,6 +901,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
+      // 復元ブラシ: なぞり始め。指を動かすたびに軌跡を伸ばし、離した時に確定する。
+      if (appModeRef.current === 'restore') {
+        gPhase.current = 'restore';
+        const z = zoomRef.current;
+        const { x, y } = localToImage(lx, ly, z);
+        strokeImgRef.current = [[x, y]];
+        setStrokePts([[lx, ly]]);
+        return;
+      }
+
       // move モード: 選択中ポリゴンの頂点ヒット判定
       const selId = selectedIdRef.current;
       if (selId !== null) {
@@ -1059,6 +1125,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
       if (gPhase.current === 'pinch') return;
 
+      // 復元ブラシ: 指の軌跡を貯める。実際の画素書き換えは離した時に1回だけ行う
+      // （毎フレーム画像全体を作り直すと重すぎるため）。
+      if (gPhase.current === 'restore') {
+        const lx = gStartLX.current + gs.dx;
+        const ly = gStartLY.current + gs.dy;
+        const z = zoomRef.current;
+        const { x, y } = localToImage(lx, ly, z);
+        strokeImgRef.current.push([x, y]);
+        setStrokePts(p => [...p, [lx, ly]]);
+        return;
+      }
+
       // ── パン (move モードのみ) ─────────────────────────────────────────
       if (appModeRef.current === 'move') {
         if (gPhase.current === 'pending') {
@@ -1160,27 +1238,38 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
               // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
               eyeBusyRef.current = true;
-              setEyeBusy(true);   // 「色を削除中...」を出し、操作を止める
               setPast(p => [...p, { kind: 'edit' }]);
               setFuture([]);
-
-              rippleThen(gStartLX.current, gStartLY.current, () => {
-                try {
-                  onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
-                } finally {
-                  // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
-                  eyeBusyRef.current = false;
-                  setEyeBusy(false);
-                  // タップ表示を明示的に消す。以前はここが無く、波紋の View が
-                  // 出しっぱなしのまま残っていた（透明になるだけで消えていなかった）。
-                  setRipple(null);
-                }
-              });
+              setRipple({ x: gStartLX.current, y: gStartLY.current });
+              startRipple();
+              // 実処理は「表示が確定してから」走らせる。ここで直接呼ぶと、
+              // 重い同期処理が描画コミットより先に走り、ローディングが
+              // 出ないまま終わったように見える。予約だけしておき、
+              // eyeBusy の描画が済んだ後に useEffect 側から実行する。
+              pendingHeavyRef.current = () =>
+                onEyedropRef.current?.(x, y, eyeTolRef.current, featherRef.current);
+              setEyeBusy(true);
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
             handleMoveTap(gStartLX.current, gStartLY.current);
           }
+        }
+      }
+
+      // 復元ブラシ: 離した時に1回だけ親へ渡す。1ストローク＝undo 1回になる。
+      if (gPhase.current === 'restore') {
+        const pts = strokeImgRef.current;
+        strokeImgRef.current = [];
+        setStrokePts([]);
+        if (pts.length > 0 && onRestoreRef.current) {
+          setPast(p => [...p, { kind: 'edit' }]);
+          setFuture([]);
+          // スポイトと同じく、表示が確定してから重い処理に入る。
+          pendingHeavyRef.current = () =>
+            onRestoreRef.current?.(pts, brushRadiusRef.current);
+          eyeBusyRef.current = true;
+          setEyeBusy(true);
         }
       }
 
@@ -1469,8 +1558,44 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </View>
         )}
 
+        {/* なぞっている最中の軌跡。実際の書き換えは指を離した時なので、
+            ここで「どこを塗ったか」を見せないと手応えが無い。 */}
+        {appMode === 'restore' && strokePts.map(([px, py], i) => (
+          <View
+            key={i}
+            pointerEvents="none"
+            style={[
+              styles.brushDot,
+              {
+                left: px - brushRadius * ds * zoom.scale,
+                top:  py - brushRadius * ds * zoom.scale,
+                width:  brushRadius * ds * zoom.scale * 2,
+                height: brushRadius * ds * zoom.scale * 2,
+                borderRadius: brushRadius * ds * zoom.scale,
+              },
+            ]}
+          />
+        ))}
+
+        {/* ブラシの太さ。復元モードの時だけ出す。 */}
+        {appMode === 'restore' && !chromeHidden && (
+          <View style={styles.brushBar} pointerEvents="box-none">
+            <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
+            {BRUSH_SIZES.map((_, i) => (
+              <AnimatedPressable
+                key={i}
+                style={[styles.brushBtn, brushIdx === i && styles.brushBtnOn]}
+                onPress={() => setBrushIdx(i)}
+                pressedScale={0.9}
+              >
+                <View style={[styles.brushPreview, { width: 6 + i * 6, height: 6 + i * 6, borderRadius: 12 }]} />
+              </AnimatedPressable>
+            ))}
+          </View>
+        )}
+
         {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
-            表示を出してから1フレーム待って実処理へ入る（rippleThen が担保）。 */}
+            eyeBusy の描画が確定してから実処理に入る（下の useEffect が担保）。 */}
         {eyeBusy && (
           <View style={styles.busyOverlay}>
             <View style={styles.busyCard}>
@@ -1561,6 +1686,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           >
             <Icon name="colorize" size={22} color="#FFF" />
           </AnimatedPressable>
+          {/* 復元ブラシ: 消えすぎた部分を元画像から戻す。親が対応している時だけ出す。 */}
+          {onRestore && (
+            <AnimatedPressable
+              style={[styles.floatBtn, appMode === 'restore' && styles.floatBtnActive]}
+              disabled={eyeBusy}
+              onPress={() => setAppMode('restore')}
+            >
+              <Icon name="healing" size={22} color="#FFF" />
+            </AnimatedPressable>
+          )}
           {/* 透過強度パネルの開閉。既定は閉じていて画像を覆わない。 */}
           {onRetransparent && (
             <AnimatedPressable
@@ -1900,6 +2035,32 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   retransApplyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
+  // ── 復元ブラシ ────────────────────────────────────────────────────────────
+  brushDot: {
+    position: 'absolute',
+    backgroundColor: 'rgba(52,199,89,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.8)',
+  },
+  brushBar: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: ZOOM_BAR_H + 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  brushLabel: { color: '#FFF', fontSize: 12 },
+  brushBtn: {
+    width: 34, height: 34,
+    borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  brushBtnOn: { backgroundColor: IOS.blue, borderColor: IOS.blue },
+  brushPreview: { backgroundColor: '#FFF' },
 
   // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
   busyOverlay: {

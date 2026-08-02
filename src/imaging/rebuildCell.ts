@@ -13,6 +13,7 @@
  * スポイトの結果が巻き戻って見える。座標をセル内に変換し、範囲外は捨てる。
  */
 import { removeBackgroundInPlace, removeColorAt, TOLERANCE } from './removeBackground';
+import { applyRestoreStroke } from './restoreBrush';
 import type { EditStep } from '../session/types';
 import type { RemoveBgResult } from './removeBackground';
 
@@ -77,15 +78,24 @@ export function rebuildCellFromOriginal(
   // シート全体で推定するより、そのセルの実際の背景に素直に追従する。
   removeBackgroundInPlace(cell.rgba, cell.width, cell.height, tolerance, feather, fillHoles);
 
-  // スポイトを掛け直す。autoBg は上で tolerance 指定のものに置き換えたので飛ばす。
+  // スポイトと復元ブラシを掛け直す。autoBg は上で tolerance 指定のものに
+  // 置き換えたので飛ばす。
   for (const s of steps) {
-    if (s.kind !== 'eyedrop') continue;
-    const x = s.x - bbox.minX;
-    const y = s.y - bbox.minY;
-    // セルの外を狙ったスポイトは、このセルには関係ないので捨てる。
-    // クランプすると端の色を巻き込んで消してしまうため、範囲外は必ず捨てる。
-    if (x < 0 || y < 0 || x >= cell.width || y >= cell.height) continue;
-    removeColorAt(cell.rgba, cell.width, cell.height, x, y, s.tolerance, s.feather);
+    if (s.kind === 'eyedrop') {
+      const x = s.x - bbox.minX;
+      const y = s.y - bbox.minY;
+      // セルの外を狙ったスポイトは、このセルには関係ないので捨てる。
+      // クランプすると端の色を巻き込んで消してしまうため、範囲外は必ず捨てる。
+      if (x < 0 || y < 0 || x >= cell.width || y >= cell.height) continue;
+      removeColorAt(cell.rgba, cell.width, cell.height, x, y, s.tolerance, s.feather);
+    } else if (s.kind === 'restore') {
+      // 座標は元画像基準のまま渡し、bbox のぶんを offset として教える。
+      // 範囲外の点は applyRestoreStroke 側で捨てられる。
+      applyRestoreStroke(
+        cell.rgba, baseRgba, cell.width, cell.height, width, height,
+        { points: s.points, radius: s.radius }, bbox.minX, bbox.minY,
+      );
+    }
   }
 
   return cell;

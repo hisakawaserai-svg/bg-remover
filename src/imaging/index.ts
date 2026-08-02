@@ -3,6 +3,7 @@ import type { SkImage } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import { removeBackground, TOLERANCE, removeColorAt, removeBackgroundInPlace } from './removeBackground';
+import { applyRestoreStroke } from './restoreBrush';
 import type { EditStep } from '../session/types';
 import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
@@ -22,10 +23,19 @@ export function applyEditSteps(
   width: number,
   height: number,
   steps: EditStep[],
+  /**
+   * 元画像の画素。復元ブラシ(restore)だけが必要とする。
+   * 渡さない場合 restore は何もしない（元の alpha が分からないため）。
+   */
+  baseRgba?: Uint8Array | null,
 ): void {
   for (const s of steps) {
     if (s.kind === 'autoBg') {
       removeBackgroundInPlace(rgba, width, height, s.tolerance, s.feather, s.fillHoles ?? false);
+    } else if (s.kind === 'restore') {
+      if (!baseRgba) continue;
+      applyRestoreStroke(rgba, baseRgba, width, height, width, height,
+        { points: s.points, radius: s.radius });
     } else {
       removeColorAt(rgba, width, height, s.x, s.y, s.tolerance, s.feather);
     }
@@ -38,6 +48,8 @@ export type { BBox } from './splitObjects';
 export type { RemoveBgResult } from './removeBackground';
 export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
 export { rebuildCellFromOriginal, cropFromOriginal, isBBoxInside } from './rebuildCell';
+export { applyRestoreStroke, densifyStroke } from './restoreBrush';
+export type { RestoreStroke } from './restoreBrush';
 export type { CellBBox, RebuildOptions } from './rebuildCell';
 export type { UncoveredRegion } from './maskPolygon';
 

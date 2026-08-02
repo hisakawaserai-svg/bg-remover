@@ -35,7 +35,11 @@ export type EditStep =
   // 既存の保存済みセッションにはこのキーが無いため optional にしてある
   // （無い＝当時の挙動＝穴埋めなし、として正しく再現できる）。
   | { kind: 'autoBg'; tolerance: number; feather: boolean; fillHoles?: boolean }
-  | { kind: 'eyedrop'; x: number; y: number; tolerance: number; feather: boolean };
+  | { kind: 'eyedrop'; x: number; y: number; tolerance: number; feather: boolean }
+  // restore = 復元ブラシ。消えすぎた部分の alpha を元画像の値へ戻す。
+  // 1ストローク＝1ステップにしてある（点ごとに積むと undo が1画素ずつになり、
+  // 操作列も一瞬で膨れ上がるため）。座標は元画像基準。
+  | { kind: 'restore'; points: Array<[number, number]>; radius: number };
 
 /**
  * セッションに保存するカット1枚分の情報。

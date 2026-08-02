@@ -327,12 +327,12 @@ function AppScreens() {
       if (isAppend) {
         // 増えた分だけ掛ける（0件なら何もしない）。
         if (next.length > cur.length) {
-          applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length));
+          applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length), base);
         }
       } else {
         // 取り消し・リセットなど。操作は巻き戻せないので元画像から作り直す。
         bg.rgba.set(base);
-        applyEditSteps(bg.rgba, bg.width, bg.height, next);
+        applyEditSteps(bg.rgba, bg.width, bg.height, next, base);
       }
       setBgVersion(v => v + 1);
     }
@@ -484,7 +484,7 @@ function AppScreens() {
       const steps: EditStep[] = resumeEdits?.length
         ? resumeEdits
         : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
-      applyEditSteps(result.rgba, result.width, result.height, steps);
+      applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
       editsRef.current = steps;
       setEdits(steps);
       redoStepsRef.current = [];
@@ -1128,7 +1128,7 @@ function AppScreens() {
         const steps: EditStep[] = latest.edits?.length
           ? latest.edits
           : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
-        applyEditSteps(result.rgba, result.width, result.height, steps);
+        applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
         editsRef.current = steps;
         setEdits(steps);
         redoStepsRef.current = [];
@@ -1429,6 +1429,12 @@ function AppScreens() {
             // 別の場所の色が抜ける。
             onEyedrop={(x, y, tolerance, feather) =>
               pushEdit({ kind: 'eyedrop', x: x + bbox.minX, y: y + bbox.minY, tolerance, feather })}
+            // 復元ブラシ。セル内座標で来るので、元画像座標へ戻して積む。
+            onRestore={(points, radius) => pushEdit({
+              kind: 'restore',
+              points: points.map(([px, py]) => [px + bbox.minX, py + bbox.minY] as [number, number]),
+              radius,
+            })}
             onUndoEdit={undoEdit}
             onRedoEdit={redoEdit}
             // 先頭の autoBg はここからは取り消させない。セル編集中に背景除去まで
@@ -1462,6 +1468,8 @@ function AppScreens() {
           // 座標は画像ピクセル基準なのでそのまま渡せる（変換不要）。
           initialPolygons={polygons.length > 0 ? polygons : undefined}
           onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
+          // 復元ブラシ。座標はこの画面では元画像そのものなので変換不要。
+          onRestore={(points, radius) => pushEdit({ kind: 'restore', points, radius })}
           onUndoEdit={undoEdit}
           onRedoEdit={redoEdit}
           onResetEdits={resetEdits}

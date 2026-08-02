@@ -17,16 +17,6 @@ export const PEEL_MIN_CLEAR_RATIO = 0.05;
 /** 残っている前景のこの割合を超えて消すなら、背景ではなく被写体とみなして中止。 */
 export const PEEL_MAX_CLEAR_RATIO = 0.9;
 
-// ── 内側の穴埋め（文字の内側などの閉じた背景）のパラメータ ──────────────────────
-/**
- * 1つの穴として抜いてよい最大面積（画像全体に対する割合）。
- *
- * 文字の内側や細い隙間は普通これよりずっと小さい。大きめのロゴの「O」まで
- * 拾えるように 5% を取りつつ、背景色に近い大きな面を持つ被写体（白い服など）を
- * 丸ごと消してしまう暴走はこの上限で止める。
- */
-export const HOLE_MAX_AREA_RATIO = 0.05;
-
 // ── 輪郭フェザリングのパラメータ ──────────────────────────────────────────────
 /** 本体色と背景色のチャンネル差がこれ未満だと混合比の推定が不安定なので使わない。 */
 export const FEATHER_MIN_CONTRAST = 20;
@@ -182,15 +172,7 @@ export function removeBackgroundInPlace(
     );
   }
 
-  // 文字の内側のように、画像端と繋がっていない閉じた背景を拾う。
-  // 皮むきの後に置くことで、皮むき側の「境界色の偏り」判定に影響を与えない。
-  const holes = fillEnclosedHoles(rgba, visited, width, height, bgColors, tolerance);
-  if (holes > 0) {
-    console.log(`[removeBg] holes: +${holes}px`);
-  }
-
   // 輪郭を半透明化するのは alpha を落とす前（境界画素の元の色が必要なため）。
-  // 穴埋めの後に呼ぶので、穴の内側の縁も同じようにフェザリングされる。
   if (feather) {
     const softened = featherEdges(rgba, visited, width, height, bgColors);
     console.log(`[removeBg] feather: ${softened}px`);
@@ -475,95 +457,6 @@ function featherEdges(
     rgba[off] = r; rgba[off + 1] = g; rgba[off + 2] = b; rgba[off + 3] = a;
   }
   return writes.length;
-}
-
-/**
- * 閉じた背景（穴）の除去。
- *
- * 四隅からのフラッドフィルは、背景が線で囲まれていると内側へ入れない。
- * 「あ」「ロ」「ロゴのO」の内側や、細い線が作る小さな隙間がこれにあたり、
- * 従来はそこだけ背景色が残っていた。皮むきパスは画像の5%以上が消えるときしか
- * 発動しないため、この手の極小領域には届かない。
- *
- * ここでは残っている画素を連結成分に分け、次を全部満たす成分だけ透過する:
- *   - 成分内の全画素が推定背景色に tol 以内で一致する
- *     （＝抜けるのは元から背景色そのものだけ。被写体の色は対象にならない）
- *   - 画像の端に接していない（＝外側の背景ではなく、囲まれた内側）
- *   - 面積が画像全体の HOLE_MAX_AREA_RATIO 以下
- *     （背景色に近い大きな面を持つ被写体を丸ごと消さないための保険）
- *
- * 返り値は新たに透過した画素数。
- */
-function fillEnclosedHoles(
-  rgba: Uint8Array,
-  visited: Uint8Array,
-  w: number,
-  h: number,
-  bgColors: BgColor[],
-  tol: number,
-): number {
-  if (bgColors.length === 0) return 0;
-
-  const pixelCount = w * h;
-  const maxArea = Math.floor(pixelCount * HOLE_MAX_AREA_RATIO);
-  if (maxArea < 1) return 0;
-
-  // 一度見た画素は再訪しない。visited とは別に持つ（採用しなかった成分も
-  // 「見た」として畳んでしまうことで、全体を O(画素数) に保つ）。
-  const seen = new Uint8Array(pixelCount);
-  const queue = new Int32Array(pixelCount);
-  // 上限を超えた成分はどのみち不採用なので、記録は maxArea 個までで足りる。
-  const component = new Int32Array(maxArea);
-  let filled = 0;
-
-  for (let start = 0; start < pixelCount; start++) {
-    if (visited[start] || seen[start]) continue;
-    // 背景色に一致しない画素は被写体。そこから成分を広げない。
-    if (!matchesBg(rgba, start * 4, bgColors, tol)) {
-      seen[start] = 1;
-      continue;
-    }
-
-    let head = 0;
-    let tail = 0;
-    let size = 0;
-    let touchesEdge = false;
-    seen[start] = 1;
-    queue[tail++] = start;
-
-    while (head < tail) {
-      const idx = queue[head++];
-      if (size < maxArea) component[size] = idx;
-      size++;
-
-      const x = idx % w;
-      const y = (idx - x) / w;
-      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touchesEdge = true;
-
-      const neighbors = [
-        x > 0 ? idx - 1 : -1,
-        x < w - 1 ? idx + 1 : -1,
-        y > 0 ? idx - w : -1,
-        y < h - 1 ? idx + w : -1,
-      ];
-      for (const ni of neighbors) {
-        if (ni < 0 || seen[ni] || visited[ni]) continue;
-        // 背景色でない隣は成分の外（＝囲っている線）。seen は立てない。
-        if (!matchesBg(rgba, ni * 4, bgColors, tol)) continue;
-        seen[ni] = 1;
-        queue[tail++] = ni;
-      }
-    }
-
-    if (touchesEdge || size > maxArea) continue;
-
-    for (let i = 0; i < size; i++) {
-      visited[component[i]] = 1;
-    }
-    filled += size;
-  }
-
-  return filled;
 }
 
 /**

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- CFBundleIcons は書かない。ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS
+	     = YES により、Images.xcassets の AppIcon / AppIconNight / AppIconSleep から
+	     Xcode が CFBundlePrimaryIcon と CFBundleAlternateIcons を自動生成する。
+	     setAlternateIconName に渡す名前は appiconset 名そのもの。 -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -17,9 +21,6 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<!-- Share Extension から本体アプリを起動するためのスキーム。
-			     bgremover://share を extensionContext.open() で開く。
-			     ここに登録が無いと open() が失敗してアプリが起動しない。 -->
 			<key>CFBundleURLName</key>
 			<string>com.sera.bgremover.app</string>
 			<key>CFBundleURLSchemes</key>
@@ -48,7 +49,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string/>
+	<string></string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>作成したスタンプを写真アルバムに保存するために使用します。</string>
 	<key>NSPhotoLibraryUsageDescription</key>

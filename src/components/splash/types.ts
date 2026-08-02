@@ -10,11 +10,11 @@
  *   idle   … 待機(ちょこんと止まって呼吸・まばたき)
  *   notice … 気づき(背景の方をちらっと見る)
  *   action … パターン固有のアクション
- *   reveal … アクションが原因で背景が透明チェッカーへ変化
+ *   reveal … アクションが原因でスプラッシュ層が削れ、ホーム画面が現れる
  *   react  … リアクション(透明になったことに驚いて跳ねる)
  *   settle … 余韻(ゆっくり落ち着く)
  *   logo   … ロゴ(app.name の文字ロゴ)表示
- *   exit   … 全体フェードアウト → ホームへ
+ *   exit   … シマエナガが画面外へ退場 → ホームへ
  *
  * idle/notice/react/settle の動きは全パターン共通で splash/character.ts が
  * 付け足す。各パターンは自分の見せ場(enter/action)だけを書けばよい。
@@ -36,7 +36,7 @@ export interface SplashPoint {
 }
 
 /**
- * 背景の透明チェッカー化の「出方」。
+ * スプラッシュ層の削れ方(＝ホーム画面の現れ方)。
  *
  * キャラのアクションが原因で透明化が起きるように見せるため、パターンごとに
  * どこから・どう広がるかを変えられるようにしてある。
@@ -45,8 +45,8 @@ export interface SplashPoint {
  *   radial … ある一点から円状に広がる(羽ばたきの風・着地の衝撃・衝突)
  *   fade   … 全体が一様に薄れて消える(眠気が晴れる)
  *
- * いずれも progress=0 で全面シーン色、progress=1 で**全面チェッカー**になる。
- * アイコンのように色を残す指定は持たない(スプラッシュは透明になりきる)。
+ * いずれも progress=0 で全面シーン色、progress=1 で**完全に消える**。
+ * 途中で色を残す指定は持たない(ホーム画面へそのまま繋ぐため)。
  */
 export type RevealSpec =
   | {
@@ -118,7 +118,7 @@ export interface SplashPattern {
   phases: SplashPhases;
   /** 汎用の羽ばたき(振れ幅・周期)。wingAngle を持つパターンはそちらが優先。 */
   wing: { amplitudeRad: number; periodMs: number };
-  /** 背景の透明チェッカー化の出方。アクションの結果に見えるよう起点を合わせる。 */
+  /** スプラッシュ層の削れ方。アクションの結果に見えるよう起点を合わせる。 */
   reveal: RevealSpec;
   /**
    * 透明化を走らせる時間帯。省略時は reveal フェーズそのもの
@@ -133,6 +133,13 @@ export interface SplashPattern {
    * t は経過ms。位置・拡縮・回転はすべてここで決める(BirdMascot は触らない)。
    */
   birdStyle: (t: number, m: SplashMarks, l: SplashLayout) => ViewStyle;
+  /**
+   * 退場(exit フェーズ)の transform を返す **worklet**。省略時は退場しない。
+   *
+   * birdStyle の結果に**上乗せ**されるので、ここには「その場から画面外へ
+   * どう帰るか」だけを書けばよい。ロゴが消えたあとに走る。
+   */
+  exitStyle?: (t: number, m: SplashMarks, l: SplashLayout) => ViewStyle;
   /**
    * 翼の角度(ラジアン)を返す **worklet**。省略時は wing の等速羽ばたき。
    * 目をこするなど、羽ばたき以外の翼の動きを作るパターンだけ実装する。

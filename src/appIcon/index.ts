@@ -8,11 +8,10 @@
  * 時間帯の境目をスプラッシュと共有しているので、「夜は月のアイコン・
  * 起動演出も夜」のように世界観がずれない。
  *
- * ⚠ ネイティブ側の実装が別途必要:
- *   iOS は Info.plist の CFBundleAlternateIcons と setAlternateIconName、
- *   Android は activity-alias の有効/無効切り替えが要る。どちらも JS だけでは
- *   できないため、ネイティブモジュールが無い環境では applyAppIcon は何もせず
- *   false を返す(設定値の保存と表示は正しく動く)。
+ * ネイティブ側:
+ *   iOS は ios/AppIconManager.swift(setAlternateIconName)を使う。
+ *   Android の activity-alias 切り替えは未実装なので、モジュールが無い環境では
+ *   applyAppIcon は何もせず false を返す(設定値の保存と表示は正しく動く)。
  */
 import { NativeModules } from 'react-native';
 import { scheduleFor } from '../components/splash/patterns';
@@ -21,29 +20,33 @@ import type { AppIconSetting } from '../settings/store';
 /** 実際に適用するアイコンの種類。BirdMascot の variant と同じ区分。 */
 export type AppIconName = 'day' | 'night' | 'sleep';
 
-/** 設定値と現在時刻から、表示すべきアイコンを決める。 */
-export function resolveAppIcon(
-  setting: AppIconSetting,
-  now: Date = new Date(),
-): AppIconName {
-  if (setting !== 'auto') {
-    return setting;
-  }
-  return scheduleFor(now.getHours()).variant;
+/** 表示すべきアイコンを決める。 */
+export function resolveAppIcon(setting: AppIconSetting) {
+  return setting;
 }
 
 /**
- * ネイティブのアイコン切り替えモジュール。
- *
- * 名前は react-native-change-icon 互換にしてある。導入したらこのファイルは
- * 変更不要で動き出す(未導入なら undefined のまま)。
+ * ネイティブのアイコン切り替えモジュール(iOS: ios/AppIconManager.swift)。
+ * Android には未実装なので undefined になる。
  */
-interface ChangeIconModule {
+interface AppIconManagerModule {
   changeIcon: (name: string | null) => Promise<string>;
 }
-const nativeChangeIcon: ChangeIconModule | undefined = (
-  NativeModules as { ChangeIcon?: ChangeIconModule }
-).ChangeIcon;
+const nativeAppIconManager: AppIconManagerModule | undefined = (
+  NativeModules as { AppIconManager?: AppIconManagerModule }
+).AppIconManager;
+
+/**
+ * AppIconName → Images.xcassets の appiconset 名。
+ * (CFBundleAlternateIcons は Xcode が asset catalog から自動生成するので、
+ *  キーは appiconset 名そのものになる。)
+ * 'day' は既定アイコン(AppIcon)なので null を渡して代替アイコンを解除する。
+ */
+const ALTERNATE_ICON_KEY: Record<AppIconName, string | null> = {
+  day: null,
+  night: 'AppIconNight',
+  sleep: 'AppIconSleep',
+};
 
 /** 既に適用済みの名前。同じ値で何度も呼ばない(iOS はトーストが出るため)。 */
 let applied: AppIconName | null = null;
@@ -58,19 +61,18 @@ export async function applyAppIcon(name: AppIconName): Promise<boolean> {
   if (applied === name) {
     return false;
   }
-  if (!nativeChangeIcon) {
+  if (!nativeAppIconManager) {
     if (__DEV__) {
       console.warn(
-        '[appIcon] ネイティブのアイコン切り替えが未導入のため、設定は保存されるが' +
-          'ホーム画面のアイコンは変わりません(iOS: CFBundleAlternateIcons /' +
-          ' Android: activity-alias の設定が必要)。',
+        '[appIcon] このプラットフォームではアイコン切り替え未対応のため、設定は' +
+          '保存されるがホーム画面のアイコンは変わりません' +
+          '(Android: activity-alias の実装が必要)。',
       );
     }
     return false;
   }
   try {
-    // 'day' を既定アイコンにする場合は null を渡す実装が一般的なので合わせる。
-    await nativeChangeIcon.changeIcon(name === 'day' ? null : name);
+    await nativeAppIconManager.changeIcon(ALTERNATE_ICON_KEY[name]);
     applied = name;
     return true;
   } catch (e) {

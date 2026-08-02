@@ -26,7 +26,7 @@ export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
  * アプリアイコン。'auto' は時間帯に合わせて切り替える。
  * それ以外を選んだ場合は自動判定を使わず固定する。
  */
-export type AppIconSetting = 'auto' | 'day' | 'night' | 'sleep';
+export type AppIconSetting = 'day' | 'night' | 'sleep';
 
 /**
  * 起動アニメーション。'auto' は時間帯に合わせて選び、'off' は演出なしで
@@ -110,7 +110,19 @@ export interface AppSettings {
   language: LanguageSetting;
   /** ホーム画面のアプリアイコン。既定は時間帯連動。 */
   appIcon: AppIconSetting;
-  /** 起動アニメーションの演出。既定は時間帯連動。 */
+  /**
+   * 起動アニメーションを出すか。既定 true。
+   *
+   * パターン選択(splashAnimation)とは分けてある。OFF にしてから ON に戻した時、
+   * 選んでいたパターンが失われないようにするため。
+   */
+  splashEnabled: boolean;
+  /**
+   * 起動アニメーションのパターン。既定は時間帯連動。
+   *
+   * 'off' は splashEnabled 導入前の保存値との互換のために型に残してある。
+   * 新しく書き込むことはない(OFF は splashEnabled=false で表す)。
+   */
   splashAnimation: SplashAnimationSetting;
 }
 
@@ -132,9 +144,20 @@ export const DEFAULTS: AppSettings = {
   albumName: null,
   albumNameHistory: [],
   language: 'auto',
-  appIcon: 'auto',
+  appIcon: 'day',
+  splashEnabled: true,
   splashAnimation: 'auto',
 };
+
+/**
+ * 起動アニメーションを出すべきか。
+ *
+ * 旧バージョンで 'off' を保存していた場合もここで OFF として扱う。
+ * 判定を1か所にまとめ、呼び出し側が両方のフィールドを見なくて済むようにする。
+ */
+export function isSplashEnabled(s: AppSettings): boolean {
+  return s.splashEnabled && s.splashAnimation !== 'off';
+}
 
 /** 設定を読み込む。失敗時はデフォルト値を返す（UI がクラッシュしないよう）。*/
 export async function loadSettings(): Promise<AppSettings> {

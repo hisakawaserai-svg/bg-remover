@@ -23,11 +23,24 @@ const sleep: SplashPattern = {
     react: 240,
     settle: 240,
     logo: 300,
-    exit: 200,
+    exit: 800,
   },
   wing: { amplitudeRad: 0.12, periodMs: 520 },
   // 目が覚めて眠気が晴れるように、背景が一様に薄れて消える。
   reveal: { kind: 'fade' },
+
+  // 退場: 眠そうなまま、小さく羽を動かして横へゆっくり流れていく。
+  exitStyle(t, m, l) {
+    'worklet';
+    const p = easeOutCubic(phase(t, m.logoEnd, m.total));
+    return {
+      transform: [
+        { translateX: -p * l.width * 0.9 },
+        { translateY: Math.sin(p * Math.PI * 2) * l.birdSize * 0.05 - p * l.height * 0.06 },
+        { rotate: `${p * 0.12}rad` },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -55,6 +68,11 @@ const sleep: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: 眠そうにゆっくり。振れ幅も小さいまま。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 380) * Math.PI * 2) * 0.22;
+    }
+
     if (t < m.enterEnd) {
       // 登場中はほぼ動かさない(眠っている)。
       return Math.sin((t / 520) * Math.PI * 2) * 0.12;

@@ -1,0 +1,30 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "GJd-Yh-RWb.text" : {
+      "comment" : "Class = \"UILabel\"; text = \"BgRemover\"; ObjectID = \"GJd-Yh-RWb\";",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "BgRemover"
+          }
+        }
+      }
+    },
+    "MN2-I3-ftu.text" : {
+      "comment" : "Class = \"UILabel\"; text = \"Powered by React Native\"; ObjectID = \"MN2-I3-ftu\";",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Powered by React Native"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

@@ -4,7 +4,7 @@
  * 流れ:
  *   右上の画面外から飛来 → 羽ばたきながら中央へ接近 → 着地前に減速 →
  *   **着地と同時に大きくブレーキの羽ばたき(ここで透明化が始まる)** →
- *   ホバリング → 羽を整える
+ *   ホバリング → 羽を整える → 左上へ抜けていく(来た方へは戻らない)
  *
  * sleep との差別化:
  *   sleep は「遅い・振れ幅が小さい・目を閉じている」。こちらは逆に
@@ -12,7 +12,7 @@
  *   止めないのがポイント。
  */
 import type { SplashPattern } from '../types';
-import { phase, mix, easeOutCubic, hump, damped } from '../ease';
+import { phase, mix, easeOutCubic, easeInQuad, hump, damped } from '../ease';
 
 /** 飛来中の羽ばたき周期(ms)。短い＝速い。 */
 const FLAP_FAST = 155;
@@ -35,7 +35,7 @@ const fly: SplashPattern = {
     react: 240,
     settle: 200,
     logo: 300,
-    exit: 200,
+    exit: 700,
   },
   wing: { amplitudeRad: 0.42, periodMs: FLAP_FAST },
 
@@ -50,6 +50,23 @@ const fly: SplashPattern = {
   // 透明化は「着地してブレーキの羽ばたきをした瞬間」から始まり、
   // 羽を整え終わるまでに広がりきる。
   revealWindow: m => ({ from: m.enterEnd, to: m.actionEnd }),
+
+  // 退場: 来た方へ引き返すと「なぜ戻る?」と見えるので、**反対側(左上)へ抜ける**。
+  // 右上から入って左上へ抜けることで、通りすがりに寄ってくれた感じになる。
+  exitStyle(t, m, l) {
+    'worklet';
+    const p = phase(t, m.logoEnd, m.total);
+    // 前半は溜め(小さく上下)、後半で一気に加速する。
+    const go = easeInQuad(phase(t, m.logoEnd + (m.total - m.logoEnd) * 0.25, m.total));
+    const bob = Math.sin(p * Math.PI * 6) * l.birdSize * 0.04 * (1 - go);
+    return {
+      transform: [
+        { translateX: -go * l.width * 1.1 },
+        { translateY: bob - go * l.height * 0.55 },
+        { rotate: `${go * 0.45}rad` },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -88,6 +105,11 @@ const fly: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: 飛び去る間はいちばん速く羽ばたく。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 110) * Math.PI * 2) * 0.5;
+    }
+
     const brake = m.enterEnd * BRAKE_AT;
     // 飛来: 速く大きく羽ばたきながら近づく。
     if (t < brake) {

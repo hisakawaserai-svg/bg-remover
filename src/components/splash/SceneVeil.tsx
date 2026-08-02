@@ -1,7 +1,7 @@
 /**
- * SceneVeil.tsx — 背景のシーン色を覆う膜(＝これが消えると透明チェッカーが出る)
+ * SceneVeil.tsx — スプラッシュ層(＝これが削れると下のホーム画面が見える)
  *
- * 下に敷いた CheckerboardBg を隠しているのがこの膜で、reveal フェーズで
+ * 下のホーム画面を隠しているのがこの層で、reveal フェーズで
  * パターンごとの出方(RevealSpec)に従って**完全に**消える。
  *
  *   linear … 帯状の境目が from → to へ流れる（端から剥がれる）
@@ -9,9 +9,9 @@
  *   fade   … 全体が一様に薄れる（眠気が晴れる）
  *
  * 約束事:
- *   progress=0 で**全面シーン色**、progress=1 で**全面チェッカー**。
- *   アイコンのように色を残す(residue)ことはしない。スプラッシュは
- *   「透明になりきる」ことが演出の目的なので、途中で止めない。
+ *   progress=0 で**全面シーン色**、progress=1 で**全面クリア(＝ホーム画面が全部見える)**。
+ *   色を残す(residue)ことはしない。ホーム画面へそのまま繋ぐのが目的なので
+ *   途中で止めない。
  *
  * 注意(過去のバグ):
  *   Skia のグラデーションは始点〜終点の外側を「端の色」で塗る。斜めの軸だと
@@ -43,7 +43,7 @@ const RING_DELAY = 0.16;
 
 interface Props {
   spec: RevealSpec;
-  /** 0 = 全面シーン色 / 1 = 全面チェッカー。 */
+  /** 0 = 全面シーン色 / 1 = 全部消えてホーム画面が見える。 */
   progress: SharedValue<number>;
   /** シーン色の不透明版と透明版。 */
   colors: { solid: string; clear: string };
@@ -57,7 +57,7 @@ export default function SceneVeil({ spec, progress, colors, layout }: Props) {
   const radial = spec.kind === 'radial';
 
   // 境目(0..1)。linear は 1+band → -band、radial は -band → 1+band と逆向きに走る。
-  // どちらも 0 で全面シーン色、1 で全面チェッカーになる。
+  // どちらも 0 で全面シーン色、1 で完全に消える。
   const positions = useDerivedValue(() => {
     const edge = radial
       ? mix(progress.value, -band, 1 + band)

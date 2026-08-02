@@ -33,6 +33,8 @@ import Card from './ui/Card';
 import OnboardingScreen from './OnboardingScreen';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
+import { isSplashEnabled } from '../settings/store';
+import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
 import type { AppIconSetting, SplashAnimationSetting } from '../settings/store';
@@ -72,6 +74,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  // 起動アニメーションの試聴中フラグ。設定画面の上に重ねて1回だけ再生する。
+  const [previewing, setPreviewing] = useState(false);
+  const splashOn = isSplashEnabled(settings);
+
   const header = (
     <AppHeader
       title={t('settings.title')}
@@ -89,6 +95,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   }
 
   return (
+    <>
     <Screen header={header} style={styles.container}>
 
         {/* ════════════════════════════════════════
@@ -289,30 +296,71 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             sub={t('settings.appIconHint')}
             value={settings.appIcon}
             options={[
-              { value: 'auto',  label: t('settings.optionAuto') },
               { value: 'day',   label: t('settings.iconDay') },
               { value: 'night', label: t('settings.iconNight') },
               { value: 'sleep', label: t('settings.iconSleep') },
             ]}
-            onChange={v => void updateSettings({ appIcon: v })}
+            // 実際の切り替えは App.tsx の useEffect が appIcon の変化を見て
+            // applyAppIcon() を呼ぶ('auto' の時間帯判定もそちらに集約)。
+            onChange={v => {
+              void updateSettings({ appIcon: v });
+            }}
           />
           <Divider />
-          <SelectRow<SplashAnimationSetting>
-            label={t('settings.splashAnimation')}
-            sub={t('settings.splashAnimationHint')}
-            value={settings.splashAnimation}
-            options={[
-              { value: 'auto',  label: t('settings.optionAuto') },
-              { value: 'fly',   label: t('settings.splashFly') },
-              { value: 'peel',  label: t('settings.splashPeel') },
-              { value: 'cross', label: t('settings.splashCross') },
-              { value: 'sleep', label: t('settings.splashSleep') },
-              { value: 'shake', label: t('settings.splashShake') },
-              { value: 'drop',  label: t('settings.splashDrop') },
-              { value: 'off',   label: t('settings.optionOff') },
-            ]}
-            onChange={v => void updateSettings({ splashAnimation: v })}
-          />
+          {/* ON/OFF。パターン選択とは分けてあるので、OFF にしても選んだ
+              パターンは残る(store の splashEnabled 参照)。 */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.splashAnimation')}</Text>
+              <Text style={styles.rowSub}>{t('settings.splashAnimationHint')}</Text>
+            </View>
+            <Switch
+              value={splashOn}
+              onValueChange={v =>
+                void updateSettings({
+                  splashEnabled: v,
+                  // 旧バージョンで 'off' を保存している場合はここで解消する。
+                  ...(v && settings.splashAnimation === 'off'
+                    ? { splashAnimation: 'auto' as SplashAnimationSetting }
+                    : null),
+                })
+              }
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
+
+          {/* ON の時だけパターン選択と試聴を出す(項目を増やしすぎない)。 */}
+          {splashOn && (
+            <>
+              <Divider />
+              <SelectRow<SplashAnimationSetting>
+                label={t('settings.splashPattern')}
+                sub={t('settings.splashAutoHint')}
+                value={
+                  settings.splashAnimation === 'off'
+                    ? 'auto'
+                    : settings.splashAnimation
+                }
+                options={[
+                  { value: 'auto',  label: t('settings.splashPatternAuto') },
+                  { value: 'fly',   label: t('settings.splashFly') },
+                  { value: 'peel',  label: t('settings.splashPeel') },
+                  { value: 'cross', label: t('settings.splashCross') },
+                  { value: 'sleep', label: t('settings.splashSleep') },
+                  { value: 'shake', label: t('settings.splashShake') },
+                  { value: 'drop',  label: t('settings.splashDrop') },
+                ]}
+                // 保存したうえで、変更後の演出をその場で1回再生して見せる。
+                // 「時間帯に合わせる」を選んだ時は、今の時刻で出る演出が流れる。
+                // ON/OFF の切り替えでは再生しない(意図が「消したい」なので)。
+                onChange={v => {
+                  void updateSettings({ splashAnimation: v });
+                  setPreviewing(true);
+                }}
+              />
+            </>
+          )}
         </Card>
 
         {/* ════════════════════════════════════════
@@ -374,6 +422,18 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         </Card>
 
     </Screen>
+
+    {/* 試聴: 現在の設定そのままで1回再生する。終わったら層を外すだけ。 */}
+    {previewing && (
+      <View style={StyleSheet.absoluteFill}>
+        <SplashAnimationView
+          isPreview
+          setting={settings.splashAnimation === 'off' ? 'auto' : settings.splashAnimation}
+          onFinish={() => setPreviewing(false)}
+        />
+      </View>
+    )}
+    </>
   );
 }
 

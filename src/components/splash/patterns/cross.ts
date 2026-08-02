@@ -5,7 +5,7 @@
  * 反転は scaleX の符号を反転させて表現する(BirdMascot 自体は触らない)。
  */
 import type { SplashPattern } from '../types';
-import { phase, mix, easeOutCubic, damped } from '../ease';
+import { phase, mix, easeOutCubic, easeInQuad, hump, damped } from '../ease';
 
 /** 横切ったあと、いったん止まる位置(画面幅に対する比)。 */
 const TURN_X = -0.34;
@@ -22,7 +22,7 @@ const cross: SplashPattern = {
     react: 240,
     settle: 200,
     logo: 300,
-    exit: 200,
+    exit: 700,
   },
   wing: { amplitudeRad: 0.34, periodMs: 170 },
   // ぶつかった地点(＝横切って止まる位置)から衝撃が広がる。
@@ -37,6 +37,21 @@ const cross: SplashPattern = {
   // ぶつかった瞬間(enter の終わり＝止まった時)から広がり、中央へ戻るまでに
   // 広がりきる。振り返る動作は「広がっていく背景を見ている」ことになる。
   revealWindow: m => ({ from: m.enterEnd, to: m.actionEnd }),
+
+  // 退場: 横へ飛び去りながら、去り際にもう一度こちらを振り返る。
+  exitStyle(t, m, l) {
+    'worklet';
+    const go = easeInQuad(phase(t, m.logoEnd, m.total));
+    // 去り際(70%地点)で一瞬だけ向きを戻す＝振り返り。
+    const look = hump(phase(t, m.logoEnd + (m.total - m.logoEnd) * 0.5, m.total));
+    return {
+      transform: [
+        { translateX: -go * l.width * 1.1 },
+        { translateY: Math.sin(go * Math.PI * 3) * l.birdSize * 0.05 },
+        { scaleX: 1 - look * 1.9 },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -69,6 +84,11 @@ const cross: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: 横切る時と同じテンポで羽ばたく。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 150) * Math.PI * 2) * 0.42;
+    }
+
     const flap = Math.sin((t / 170) * Math.PI * 2) * 0.34;
     if (t < m.actionEnd) {
       return flap;

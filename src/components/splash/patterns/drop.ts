@@ -5,7 +5,7 @@
  * その反動でくるっと起き上がり、小さく2回跳ねてから収まる。
  */
 import type { SplashPattern } from '../types';
-import { phase, mix, easeOutCubic, hump, damped } from '../ease';
+import { phase, mix, easeOutCubic, easeInQuad, hump, damped } from '../ease';
 
 /** 着地位置(画面中央からの下方向オフセット比)。波紋の中心もここに合わせる。 */
 const LANDING_Y = 0.18;
@@ -45,7 +45,7 @@ const drop: SplashPattern = {
     react: 260,
     settle: 260,
     logo: 320,
-    exit: 200,
+    exit: 700,
   },
   wing: { amplitudeRad: 0.2, periodMs: 240 },
   // 着地の衝撃が波紋になって広がる。中心は着地位置(画面やや下)。
@@ -61,6 +61,26 @@ const drop: SplashPattern = {
 
   // 着地して画面下に居座るので、ロゴは頭の上へ出す(下だと体に重なる)。
   logoOffset: l => -(l.height * LANDING_Y + l.birdSize * 0.55),
+
+  // 退場: 一度ぴょんと沈んで跳ね、その勢いで斜め上へ飛び去る。
+  exitStyle(t, m, l) {
+    'worklet';
+    const crouch = hump(phase(t, m.logoEnd, m.logoEnd + 160));
+    const go = easeInQuad(phase(t, m.logoEnd + 160, m.total));
+    // シマエナガの絵は尾が右下に伸びている＝**左向き**が正面。右へ飛ぶ時は
+    // そのままだと尾から進んで「逆走」して見えるので、飛び出す前に体を反転する。
+    // 0 を通るので、その一瞬が「くるっと向きを変えた」ように見える。
+    const turn = mix(phase(t, m.logoEnd + 120, m.logoEnd + 260), 1, -1);
+    return {
+      transform: [
+        { translateX: go * l.width * 0.7 },
+        { translateY: crouch * l.birdSize * 0.12 - go * l.height * 0.9 },
+        { rotate: `${-go * 0.3}rad` },
+        { scaleX: turn },
+        { scaleY: 1 - crouch * 0.12 },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -99,6 +119,11 @@ const drop: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: 踏み切ってから羽ばたく。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 120) * Math.PI * 2) * 0.45;
+    }
+
     if (t < m.enterEnd) {
       // 落ちている間は翼を開いたまま踏ん張る。
       return -0.5 * phase(t, 0, m.enterEnd);

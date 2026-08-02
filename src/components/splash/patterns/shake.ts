@@ -8,7 +8,7 @@
  * 尺が短くまとまるので、起動を軽くしたい時の候補でもある。
  */
 import type { SplashPattern } from '../types';
-import { phase, mix, easeOutCubic, hump, damped } from '../ease';
+import { phase, mix, easeOutCubic, easeInQuad, hump, damped } from '../ease';
 
 /** 震えの回数(action 全体で何往復するか)。 */
 const SHAKE_CYCLES = 7;
@@ -26,7 +26,7 @@ const shake: SplashPattern = {
     react: 240,
     settle: 200,
     logo: 300,
-    exit: 200,
+    exit: 650,
   },
   wing: { amplitudeRad: 0.28, periodMs: 150 },
 
@@ -43,6 +43,25 @@ const shake: SplashPattern = {
     from: m.noticeEnd + (m.actionEnd - m.noticeEnd) * BURST_AT,
     to: m.revealEnd,
   }),
+
+  // 退場: もう一度羽を大きく広げ、その勢いで一気に飛び去る。
+  exitStyle(t, m, l) {
+    'worklet';
+    const spread = hump(phase(t, m.logoEnd, m.logoEnd + 180));
+    const go = easeInQuad(phase(t, m.logoEnd + 180, m.total));
+    // シマエナガの絵は尾が右下に伸びている＝**左向き**が正面。右へ飛ぶ時は
+    // そのままだと尾から進んで「逆走」して見えるので、飛び出す前に体を反転する。
+    // 0 を通るので、その一瞬が「くるっと向きを変えた」ように見える。
+    const turn = mix(phase(t, m.logoEnd + 140, m.logoEnd + 280), 1, -1);
+    return {
+      transform: [
+        { translateX: go * l.width * 0.5 },
+        { translateY: -spread * l.birdSize * 0.08 - go * l.height * 1.0 },
+        { rotate: `${-go * 0.35}rad` },
+        { scaleX: turn * (1 + spread * 0.08) },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -86,6 +105,11 @@ const shake: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: 大きく広げてから高速で羽ばたく。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 105) * Math.PI * 2) * 0.55;
+    }
+
     const burst = m.noticeEnd + (m.actionEnd - m.noticeEnd) * BURST_AT;
     if (t < m.noticeEnd) {
       return Math.sin((t / 150) * Math.PI * 2) * 0.28;

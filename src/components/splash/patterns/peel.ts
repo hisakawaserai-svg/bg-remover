@@ -3,7 +3,7 @@
  *
  * 「背景を剥がすアプリ」であることをそのまま見せるパターン。
  *   中央にいるまま右上をちらっと見る → くちばしでつまんで斜め下へ引っぱる →
- *   その方向へ背景がペリッと剥がれて透明チェッカーが出る。
+ *   その方向へ背景がペリッと剥がれ、下のホーム画面が出てくる。
  *
  * キャラは端まで移動させない(REACH_X/REACH_Y)。端に張り付くと可愛さが落ち、
  * ロゴの表示位置とも干渉するため、身を乗り出す程度に留めている。
@@ -42,7 +42,7 @@ const peel: SplashPattern = {
     react: 260,
     settle: 220,
     logo: 300,
-    exit: 200,
+    exit: 700,
   },
   wing: { amplitudeRad: 0.3, periodMs: 200 },
   // **つまんだ場所そのもの**を起点にして、引っぱる方向(左下)へ剥がれる。
@@ -60,6 +60,25 @@ const peel: SplashPattern = {
 
   // 引っぱっている間だけ剥がれる(引く動作と背景の変化を一致させる)。
   revealWindow: m => ({ from: m.noticeEnd + PINCH_MS, to: m.revealEnd }),
+
+  // 退場: 仕事を終えて満足げに一度うなずき、右端へ帰っていく。
+  exitStyle(t, m, l) {
+    'worklet';
+    const nod = hump(phase(t, m.logoEnd, m.logoEnd + 220));
+    const go = easeInQuad(phase(t, m.logoEnd + 220, m.total));
+    // シマエナガの絵は尾が右下に伸びている＝**左向き**が正面。右へ飛ぶ時は
+    // そのままだと尾から進んで「逆走」して見えるので、飛び出す前に体を反転する。
+    // 0 を通るので、その一瞬が「くるっと向きを変えた」ように見える。
+    const turn = mix(phase(t, m.logoEnd + 180, m.logoEnd + 320), 1, -1);
+    return {
+      transform: [
+        { translateX: go * l.width * 0.95 },
+        { translateY: nod * l.birdSize * 0.07 - go * l.height * 0.2 },
+        { rotate: `${nod * 0.18 - go * 0.2}rad` },
+        { scaleX: turn },
+      ],
+    };
+  },
 
   birdStyle(t, m, l) {
     'worklet';
@@ -98,6 +117,11 @@ const peel: SplashPattern = {
 
   wingAngle(t, m) {
     'worklet';
+    // 退場: うなずいてから羽ばたいて帰る。
+    if (t >= m.logoEnd) {
+      return Math.sin((t / 140) * Math.PI * 2) * 0.42;
+    }
+
     const flap = Math.sin((t / 200) * Math.PI * 2) * 0.3;
     if (t < m.noticeEnd) {
       return flap;

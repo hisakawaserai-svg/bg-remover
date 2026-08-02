@@ -183,7 +183,7 @@ def draw(variant, scene=1.0, size=OUT):
     return img.convert('RGB').resize((size, size), Image.LANCZOS)
 
 
-IOS_DIR = 'ios/BgRemover/Images.xcassets/AppIcon.appiconset'
+IOS_DIR = 'ios/BgRemover/Images.xcassets/AppIconSleep.appiconset'
 IOS_SIZES = {
     'icon-20@1x.png': 20, 'icon-20@2x.png': 40, 'icon-20@3x.png': 60,
     'icon-29@1x.png': 29, 'icon-29@2x.png': 58, 'icon-29@3x.png': 87,

@@ -134,6 +134,7 @@ import LoadingView from './src/components/ui/LoadingView';
 import { describeSaveError } from './src/imaging/saveErrors';
 import { t, useT } from './src/i18n';
 import { useSettings } from './src/settings/SettingsContext';
+import { isSplashEnabled } from './src/settings/store';
 import { useAlbumName } from './src/settings/useAlbumName';
 
 // ── 広告 ──────────────────────────────────────────────────────────────────────
@@ -188,7 +189,13 @@ function stepTone(step: StickerSession['step']): 'default' | 'accent' {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function App() {
+/**
+ * AppScreens — 画面ツリー本体。
+ *
+ * 起動スプラッシュはこの下(＝上のレイヤー)に重ねるため、下の App が包む。
+ * この中では従来どおり早期 return で画面を出し分けてよい。
+ */
+function AppScreens() {
   // 言語が切り替わったらこの画面ツリー全体を描き直す。
   // 下位の画面もそれぞれ useT() を呼んでいるので、個別にも更新される。
   const { t } = useT();
@@ -197,11 +204,6 @@ export default function App() {
   const { width: winW, height: winH } = useWindowDimensions();
   const [splitMode, setSplitMode] = useState<SplitMode>('auto');
   const [appState,  setAppState]  = useState<AppState>('idle');
-  // 起動スプラッシュ。毎回表示し、約1.2秒後に本編へ進む。
-  // AppState には足さない: appState は編集フローの戻り先(prevStateRef など)に
-  // 使われており、スプラッシュを混ぜると戻る導線の分岐が増えるため。
-  const [splashDone, setSplashDone] = useState(false);
-  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
   // 設定画面を開く直前の state を退避し、閉じた時に元の画面へ戻すために使う
   const prevStateRef = useRef<AppState>('idle');
   // 使い方(howto)画面の戻り先。prevStateRef を上書きすると設定→使い方→戻る後に
@@ -268,8 +270,6 @@ export default function App() {
   const thumbBg = useThumbBg();
 
   // ── アプリアイコン ─────────────────────────────────────────────────────────
-  // 設定のロード完了時と、設定変更時に反映する。'auto' の場合は起動時点の
-  // 時間帯で決まる（起動中に日付が変わっても切り替えない）。
   useEffect(() => {
     if (!settingsLoaded) return;
     void applyAppIcon(resolveAppIcon(appSettings.appIcon));
@@ -1066,23 +1066,6 @@ export default function App() {
     setAppState('saved');
   }, [appState]);
 
-  // ── 起動スプラッシュ ────────────────────────────────────────────────────
-  // どの画面より先に判定する。表示中も設定・セッションのロードは裏で進む。
-  // 設定が 'off' の場合は出さずにそのままホームへ。設定のロード前は
-  // DEFAULTS('auto')で始まるので、初回フレームからスプラッシュが出る。
-  if (!splashDone && appSettings.splashAnimation !== 'off') {
-    return (
-      <>
-        <StatusBar hidden />
-        <SplashAnimationView
-          animationType={SPLASH_ANIMATION}
-          setting={appSettings.splashAnimation}
-          onFinish={handleSplashFinish}
-        />
-      </>
-    );
-  }
-
   // ── ポリゴン編集の準備中 ────────────────────────────────────────────────
   // 他のどの画面より先に判定する。ここで返さないと前の画面が描かれ続けて、
   // ローディングを挟んだ意味がなくなる。
@@ -1653,6 +1636,43 @@ export default function App() {
   );
 }
 
+/**
+ * App — 画面ツリーの上に起動スプラッシュを重ねるだけのラッパー。
+ *
+ * 「背景を剥がすとホーム画面が現れる」演出のため、**ホーム画面を先に描画し**、
+ * その上に不透明なスプラッシュ層を置いて、演出でその層を削っていく。
+ * 演出が終わったらスプラッシュ層だけを外すので、そのまま操作できる。
+ *
+ * 早期 return だらけの AppScreens を書き換えずに重ねられるよう、包む形にした。
+ */
+export default function App() {
+  const { settings } = useSettings();
+  const [splashDone, setSplashDone] = useState(false);
+  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
+
+  // OFF なら最初から出さない。ロード前は DEFAULTS(ON)なので初回フレームから
+  // 演出が始まる。判定は store の isSplashEnabled に集約(旧 'off' 値も吸収)。
+  const showSplash = !splashDone && isSplashEnabled(settings);
+
+  return (
+    <View style={styles.appRoot}>
+      <AppScreens />
+      {showSplash && (
+        <View style={StyleSheet.absoluteFill}>
+          <StatusBar hidden />
+          <SplashAnimationView
+            animationType={SPLASH_ANIMATION}
+            setting={
+              settings.splashAnimation === 'off' ? 'auto' : settings.splashAnimation
+            }
+            onFinish={handleSplashFinish}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const IOS = {
@@ -1668,6 +1688,8 @@ const IOS = {
 } as const;
 
 const styles = StyleSheet.create({
+  // スプラッシュを重ねるためのルート。
+  appRoot: { flex: 1 },
   container: {
     flexGrow: 1,
     alignItems: 'center',

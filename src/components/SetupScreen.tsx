@@ -809,38 +809,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 title={t('editor.modeEyedropper')}
                 desc={t('editor.modeEyedropperHint')}
               />
+              <ToolRow
+                icon="healing"
+                title={t('editor.modeRestore')}
+                desc={t('editor.modeRestoreHint')}
+              />
             </View>
           </Card>
         )}
-
-        {/* 「うまく消えなかったときの直し方」。自動・手動どちらのモードでも出す。
-            自動透過は万能ではないので、失敗した時に何を使えばよいのかを
-            この画面の時点で示しておく（結果を見てから探させない）。 */}
-        <Card style={styles.card}>
-          <Text style={styles.manualDesc}>{t('setup.toolsTitle')}</Text>
-          <View style={styles.toolList}>
-            <ToolRow
-              icon="auto-fix-high"
-              title={t('settings.autoTolerance')}
-              desc={t('setup.toolsAuto')}
-            />
-            <ToolRow
-              icon={TOOL_ICONS.eyedropper}
-              title={t('editor.modeEyedropper')}
-              desc={t('setup.toolsEyedropper')}
-            />
-            <ToolRow
-              icon="healing"
-              title={t('editor.modeRestore')}
-              desc={t('setup.toolsRestore')}
-            />
-            <ToolRow
-              icon={TOOL_ICONS.draw}
-              title={t('editor.title')}
-              desc={t('setup.toolsPolygon')}
-            />
-          </View>
-        </Card>
 
         <AnimatedPressable style={styles.primaryBtn} onPress={() => onConfirm(rows, cols, mode, noSplit, { rowYsImg, colXsImg })} pressedScale={0.97}>
           <Text style={styles.btnTxt}>

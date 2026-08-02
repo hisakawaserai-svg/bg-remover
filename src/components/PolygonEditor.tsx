@@ -413,6 +413,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [brushPx, setBrushPx] = useState(BRUSH_DEFAULT_PX);
   // 元画像の透かし表示。復元ブラシでは既定 ON（消えた場所が見えないと塗れない）。
   const [ghostOn, setGhostOn] = useState(true);
+  // ツールメニューの開閉。常時6個並べると編集領域を食うので、普段は
+  // 選択中の1個だけを出し、押した時だけ下へ展開する。
+  const [toolMenuOpen, setToolMenuOpen] = useState(false);
   // なぞり中の軌跡。必ず「画像座標」で持つ。表示座標で持つと、ズームや
   // パンを動かした瞬間に古い座標のまま描かれ、見当違いの場所（左上など）に
   // 円が出る。画像座標なら Canvas の変換がそのまま効くのでズレようがない。
@@ -1265,6 +1268,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
       if (gPhase.current === 'pinch') return;
 
+      // スポイト: 押したまま動かして狙いを定められるよう、指を追ってルーペを
+      // 更新する。以前は押した瞬間の1回しか出しておらず、動かしても
+      // ルーペが固まったままだった。
+      if (gPhase.current === 'pending' && appModeRef.current === 'eyedropper') {
+        showLoupe(gStartLX.current + gs.dx, gStartLY.current + gs.dy);
+        return;
+      }
+
       // 復元ブラシ: 指の軌跡を貯める。実際の画素書き換えは離した時に1回だけ行う
       // （毎フレーム画像全体を作り直すと重すぎるため）。
       if (gPhase.current === 'restore') {
@@ -1359,8 +1370,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
       if (gPhase.current === 'pending') {
         const moved = Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD;
-        if (!moved) {
-          if (appModeRef.current === 'draw') {
+        // スポイトだけは「動かしてから離す」を正式な操作にしているので、
+        // 移動量で捨てない。ルーペで位置を確かめてから離す使い方に合わせる。
+        // （以前はここで moved 判定に弾かれ、微調整すると何も起きなかった）
+        if (!moved || appModeRef.current === 'eyedropper') {
+          if (appModeRef.current === 'draw' && !moved) {
             // draw モード: タップ座標に四角を追加
             const z = zoomRef.current;
             const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
@@ -1944,65 +1958,75 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </View>
         </View>
 
-        {/* ── フローティングボタン群 (右端: モード切替) ── */}
+        {/* ── ツールメニュー（右端）──
+            常時6個並べると編集領域を食うので、普段は選択中の1個だけを出す。
+            アイコンの下の矢印が「押すと他のツールが出る」ことを示す。
+            選ぶと閉じて、そのツールのアイコンに変わる。 */}
         <View style={styles.floating} pointerEvents="box-none">
+          {/* 現在のツール。押すと展開する。 */}
           <AnimatedPressable
-            style={[styles.floatBtn, appMode === 'draw' && styles.floatBtnActive]}
+            style={[styles.floatBtn, styles.floatBtnActive]}
             disabled={eyeBusy}
-            onPress={() => setAppMode('draw')}
+            onPress={() => setToolMenuOpen(o => !o)}
           >
-            <Icon name="edit" size={22} color="#FFF" />
-          </AnimatedPressable>
-          <AnimatedPressable
-            style={[styles.floatBtn, appMode === 'move' && styles.floatBtnActive]}
-            disabled={eyeBusy}
-            onPress={() => setAppMode('move')}
-          >
-            <Icon name="pan-tool" size={22} color="#FFF" />
-          </AnimatedPressable>
-          {/* スポイト: タップした色を透過させる。描画/移動と排他のツール。 */}
-          <AnimatedPressable
-            style={[styles.floatBtn, appMode === 'eyedropper' && styles.floatBtnActive]}
-            disabled={eyeBusy}
-            onPress={() => setAppMode('eyedropper')}
-          >
-            <Icon name="colorize" size={22} color="#FFF" />
-          </AnimatedPressable>
-          {/* 復元ブラシ: 消えすぎた部分を元画像から戻す。親が対応している時だけ出す。 */}
-          {onRestore && (
-            <AnimatedPressable
-              style={[styles.floatBtn, appMode === 'restore' && styles.floatBtnActive]}
-              disabled={eyeBusy}
-              onPress={() => { setAppMode('restore'); setRetransOpen(false); }}
-            >
-              <Icon name="healing" size={22} color="#FFF" />
-            </AnimatedPressable>
-          )}
-          {/* 透過強度パネルの開閉。既定は閉じていて画像を覆わない。 */}
-          {onRetransparent && (
-            <AnimatedPressable
-              style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
-              disabled={eyeBusy}
-              onPress={() => {
-                const next = !retransOpen;
-                setRetransOpen(next);
-                setChromeHidden(false);
-                // 同じ場所を使うので、開くときは復元ブラシから抜ける。
-                if (next && appMode === 'restore') setAppMode('move');
-              }}
-            >
-              <Icon name="tune" size={22} color="#FFF" />
-            </AnimatedPressable>
-          )}
-          {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
-          <AnimatedPressable
-            style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
-            disabled={eyeBusy}
-            onPress={() => setChromeHidden(h => !h)}
-          >
-            <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
+            <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
+            <Icon
+              name={toolMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
+              size={14}
+              color="#FFF"
+              style={styles.floatCaret}
+            />
           </AnimatedPressable>
 
+          {toolMenuOpen && (
+            <>
+              {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore'] as const : [])] as AppMode[])
+                .filter(m => m !== appMode)
+                .map(m => (
+                  <AnimatedPressable
+                    key={m}
+                    style={styles.floatBtn}
+                    disabled={eyeBusy}
+                    onPress={() => {
+                      setAppMode(m);
+                      setRetransOpen(false);
+                      setToolMenuOpen(false);
+                    }}
+                  >
+                    <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
+                  </AnimatedPressable>
+                ))}
+
+              <View style={styles.floatDivider} />
+
+              {/* 再透過（セル編集の時だけ親から渡される）。 */}
+              {onRetransparent && (
+                <AnimatedPressable
+                  style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
+                  disabled={eyeBusy}
+                  onPress={() => {
+                    const next = !retransOpen;
+                    setRetransOpen(next);
+                    setChromeHidden(false);
+                    // 下部パネルを共有しているので、開くときは復元ブラシから抜ける。
+                    if (next && appMode === 'restore') setAppMode('move');
+                    setToolMenuOpen(false);
+                  }}
+                >
+                  <Icon name="tune" size={22} color="#FFF" />
+                </AnimatedPressable>
+              )}
+
+              {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
+              <AnimatedPressable
+                style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
+                disabled={eyeBusy}
+                onPress={() => { setChromeHidden(h => !h); setToolMenuOpen(false); }}
+              >
+                <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
+              </AnimatedPressable>
+            </>
+          )}
         </View>
 
         {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
@@ -2190,6 +2214,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,30,30,0.72)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  // 現在のツールの下に出す小さな矢印。「押すと他のツールが出る」ことを示す。
+  floatCaret: {
+    position: 'absolute',
+    bottom: -1,
   },
   floatBtnActive: {
     backgroundColor: IOS.blue,

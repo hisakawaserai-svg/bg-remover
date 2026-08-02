@@ -582,11 +582,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const runHeavy = useCallback((work: () => void) => {
     eyeBusyRef.current = true;
     setEyeBusy(true);
+    // 保険: 何かの理由で下の解除に到達しなかった場合でも、操作不能のまま
+    // 固まらないようにする（実処理が終わっていれば下で先に解除される）。
+    const failsafe = setTimeout(() => {
+      eyeBusyRef.current = false;
+      setEyeBusy(false);
+    }, 8000);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       try {
         work();
       } finally {
         // 例外が出ても必ず解除する（漏らすと以後スポイト・復元が死ぬ）。
+        clearTimeout(failsafe);
         eyeBusyRef.current = false;
         setEyeBusy(false);
         setRipple(null);
@@ -959,7 +966,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const pan = useRef(PanResponder.create({
     // スポイト処理中はジェスチャーを一切受け付けない。
     // 連続タップで処理が直列に溜まるのと、パンの誤爆を同時に防ぐ。
-    onStartShouldSetPanResponder: () => !eyeBusyRef.current && !uiInteractingRef.current,
+    // タップの入口は塞がない。ここに uiInteractingRef を足すと、スライダーの
+    // 終了イベントを1度でも取りこぼした瞬間にキャンバスのタップが全部死ぬ。
+    // スライダーからタッチを奪うのは「移動」側なので、ガードは下の
+    // onMoveShouldSetPanResponder だけで足りる。
+    onStartShouldSetPanResponder: () => !eyeBusyRef.current,
     // 微小なジッタ（タップ時の指ブレ）では responder を奪わず、明確なドラッグ
     // （PAN_THRESHOLD=8px 以上の移動）のときだけパンを開始する。これにより
     // キャンバス上のフローティングボタンの onPress が横取りされず生き残る。
@@ -1650,7 +1661,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         {/* 透過強度 + 再適用。親が onRetransparent を渡した画面（セル編集）だけ出す。
             元画像の該当セル範囲から作り直すので、消えすぎも消え足りないも直せる。 */}
         {onRetransparent && retransOpen && !chromeHidden && (
-          <View style={styles.retransWrap} pointerEvents="box-none">
+          <View style={styles.panelSlot} pointerEvents="box-none">
             <View style={styles.retransCard}>
               <View style={styles.retransHead}>
                 <Text style={styles.retransTitle}>{t('editor.retransTitle')}</Text>
@@ -1705,8 +1716,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         )}
 
         {/* ブラシの太さ。復元モードの時だけ出す。連続値で、現在値を px で示す。 */}
-        {appMode === 'restore' && !chromeHidden && (
-          <View style={styles.brushBar} pointerEvents="box-none">
+        {/* ブラシの太さ。透過強度が開いている間は出さない（同じ場所を使うため）。
+            ペン/スポイト等のツール切替と同じで、常にどちらか一方だけが出る。 */}
+        {appMode === 'restore' && !retransOpen && !chromeHidden && (
+          <View style={styles.panelSlot} pointerEvents="box-none">
             <View style={styles.brushCard}>
               <View style={styles.brushHead}>
                 <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
@@ -1909,7 +1922,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             <AnimatedPressable
               style={[styles.floatBtn, appMode === 'restore' && styles.floatBtnActive]}
               disabled={eyeBusy}
-              onPress={() => setAppMode('restore')}
+              onPress={() => { setAppMode('restore'); setRetransOpen(false); }}
             >
               <Icon name="healing" size={22} color="#FFF" />
             </AnimatedPressable>
@@ -1919,7 +1932,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             <AnimatedPressable
               style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
               disabled={eyeBusy}
-              onPress={() => { setRetransOpen(o => !o); setChromeHidden(false); }}
+              onPress={() => {
+                const next = !retransOpen;
+                setRetransOpen(next);
+                setChromeHidden(false);
+                // 同じ場所を使うので、開くときは復元ブラシから抜ける。
+                if (next && appMode === 'restore') setAppMode('move');
+              }}
             >
               <Icon name="tune" size={22} color="#FFF" />
             </AnimatedPressable>
@@ -2191,14 +2210,19 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],  // 倍率が動いても幅が揺れないようにする
   },
   // ── 透過強度パネル（セル編集のみ）─────────────────────────────────────────
-  retransWrap: {
+  /**
+   * 下部パネルの置き場。透過強度とブラシの太さが交代で使う。
+   * 2つを別々の場所に出すと画面が混み合ううえ、同時に出ると
+   * どちらを触っているのか分からなくなるため、1箇所に集約して排他にする。
+   */
+  panelSlot: {
     position: 'absolute',
-    left: 12, right: 12, top: 56,
+    left: 12, right: 12, bottom: 58,
     alignItems: 'center',
   },
   retransCard: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 320,
     backgroundColor: 'rgba(30,30,30,0.86)',
     borderRadius: 14,
     paddingHorizontal: 12,
@@ -2233,12 +2257,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(52,199,89,0.30)',
     borderWidth: 1,
     borderColor: 'rgba(52,199,89,0.9)',
-  },
-  brushBar: {
-    position: 'absolute',
-    // ツール説明（高さ約34 + 下余白12）の上に重ならないよう置く。
-    left: 12, right: 12, bottom: 58,
-    alignItems: 'center',
   },
   brushCard: {
     width: '100%',

@@ -1484,11 +1484,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             >
               <Text style={styles.zoomStepTxt}>＋</Text>
             </AnimatedPressable>
+            {/* 全体表示に戻す。拡大しすぎた・画像がどこかへ行った時の復帰専用。
+                バーの外に置くとツール説明と重なるため、[＋] の隣に並べる。 */}
+            <View style={styles.zoomSep} />
+            <AnimatedPressable style={styles.zoomStepBtn} onPress={resetZoom} pressedScale={0.9}>
+              <Icon name="refresh" size={19} color="#FFF" />
+            </AnimatedPressable>
           </View>
-          {/* 全体表示に戻す。拡大しすぎた・画像がどこかへ行った時の復帰専用。 */}
-          <AnimatedPressable style={styles.zoomResetBtn} onPress={resetZoom} pressedScale={0.9}>
-            <Icon name="refresh" size={20} color="#FFF" />
-          </AnimatedPressable>
         </View>
       </View>
 
@@ -1692,13 +1694,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0, right: 0, bottom: 8,
     alignItems: 'center',
-    gap: 6,
   },
   zoomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
+    gap: 2,
+    paddingHorizontal: 5,
     paddingVertical: 5,
     borderRadius: 14,
     backgroundColor: 'rgba(30,30,30,0.72)',
@@ -1706,26 +1707,26 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomStepBtn: {
-    width: 34, height: 30,
+    width: 32, height: 30,
     alignItems: 'center', justifyContent: 'center',
   },
   zoomStepTxt: { fontSize: 18, color: '#FFF' },
   zoomPreset: {
-    paddingHorizontal: 9,
+    paddingHorizontal: 7,
     paddingVertical: 5,
     borderRadius: 8,
+  },
+  // [＋] と全体表示ボタンの間の区切り。役割が違うことを示す。
+  zoomSep: {
+    width: 0.5,
+    height: 20,
+    marginHorizontal: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   zoomPresetOn: { backgroundColor: IOS.blue },
   zoomPresetTxt: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
   zoomPresetTxtOn: { color: '#FFF', fontWeight: '600' },
-  zoomResetBtn: {
-    width: 36, height: 36,
-    borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(30,30,30,0.72)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
+
 
   // draw モードのオーバーレイヒント（iOS のトースト風）
 

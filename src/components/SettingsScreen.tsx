@@ -122,8 +122,21 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             onChange={setTolerance}
             onComplete={v => void updateSettings({ tolerance: v })}
           />
+          {/* 文字の穴を透過する（上級者向け・既定OFF）。
+            背景と同じ色の絵柄を消し得るので、注意書きを添えて既定は切ってある。 */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.fillTextHoles')}</Text>
+              <Text style={styles.rowSub}>{t('settings.fillTextHolesHint')}</Text>
+            </View>
+            <Switch
+              value={settings.fillTextHoles}
+              onValueChange={v => void updateSettings({ fillTextHoles: v })}
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
           <Divider />
-          
           {/* スポイトの許容値。上の「許容値」とは独立して調整する。 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
@@ -150,21 +163,6 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             <Switch
               value={settings.featherEdges}
               onValueChange={v => void updateSettings({ featherEdges: v })}
-              trackColor={{ false: IOS.fill, true: IOS.blue }}
-              thumbColor="#FFF"
-            />
-          </View>
-
-          {/* 文字の穴を透過する（上級者向け・既定OFF）。
-              背景と同じ色の絵柄を消し得るので、注意書きを添えて既定は切ってある。 */}
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.fillTextHoles')}</Text>
-              <Text style={styles.rowSub}>{t('settings.fillTextHolesHint')}</Text>
-            </View>
-            <Switch
-              value={settings.fillTextHoles}
-              onValueChange={v => void updateSettings({ fillTextHoles: v })}
               trackColor={{ false: IOS.fill, true: IOS.blue }}
               thumbColor="#FFF"
             />

@@ -143,6 +143,11 @@ const en: typeof ja = {
     noSplitButton: 'Cut out without splitting',
     toPolygonEditor: 'Go to polygon editing',
     rePickImage: 'Choose a different image',
+    toolsTitle: "When the background doesn't come out right",
+    toolsAuto: 'Auto removal: erases colors close to the background. Adjust the strength in Settings.',
+    toolsEyedropper: 'Eyedropper: tap a color to make it transparent.',
+    toolsRestore: 'Restore brush: paint over parts that were erased too much to bring them back.',
+    toolsPolygon: 'Polygon editing: enclose an area with a rectangle to cut out just what you need.',
     resetTitle: 'Reset Edits',
     resetMessage:
       'Undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
@@ -187,6 +192,8 @@ const en: typeof ja = {
     retransTitle: 'Removal strength',
     retransApply: 'Re-apply to this cutout',
     eyedropBusy: 'Removing color...',
+    undoBusy: 'Undoing the edit...',
+    redoBusy: 'Reapplying the edit...',
     loadFailed: 'Failed to load the image',
   },
 

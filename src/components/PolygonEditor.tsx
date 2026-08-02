@@ -399,6 +399,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 実処理は同期的に JS を止めるため、先にこれを true にして描画を1フレーム
   // 走らせてから処理へ入る（そうしないと表示が出ないまま固まる）。
   const [eyeBusy, setEyeBusy] = useState(false);
+  /** 処理中オーバーレイの文言キー。処理の種類で出し分ける。 */
+  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.undoBusy' | 'editor.redoBusy'>('editor.eyedropBusy');
   // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
   const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
   // 透過強度パネルは既定で畳んでおく。開きっぱなしだと画像の上側を覆って
@@ -484,7 +486,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
 
   // ── Refs (PanResponder クロージャから最新値を読む) ─────────────────────
-  const zoomRef       = useRef(zoom);       zoomRef.current       = zoom;
+  /**
+   * ズーム/パンの唯一の正。
+   *
+   * 以前はここに毎レンダー `zoomRef.current = zoom` と代入していた。
+   * ジェスチャー中は state を更新せず zoomRef/SharedValue だけを進める設計に
+   * 変えたため、この代入があると「別の理由で再描画が起きた瞬間に、古い state で
+   * 現在値が巻き戻る」ことになる（×8にしてパンすると×1に戻る、の原因）。
+   * 値の変更は必ず applyZoom() を通す。
+   */
+  const zoomRef       = useRef(zoom);
 
   // ── ジェスチャー中のズーム更新を 1フレーム1回にまとめる ─────────────────────
   //
@@ -504,20 +515,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const pendingZoomRef = useRef<ZoomState | null>(null);
   const zoomRafRef     = useRef<number | null>(null);
-  const scheduleZoom = useCallback((next: ZoomState) => {
-    zoomRef.current = next;   // 後続の計算がすぐ読めるよう先に入れる
-    zoomSV.value = next;      // 画像の変換は UI スレッドで即反映（再描画なし）
+  /**
+   * ズーム値を変更する唯一の入口。
+   *
+   * commit=false: ジェスチャー中。zoomRef と SharedValue（＝画像の見た目）だけを
+   *   進め、React の state は触らない。再描画が挟まらないので滑らかに動く。
+   * commit=true: 確定。state も揃えて、倍率表示や頂点ハンドルを追いつかせる。
+   */
+  const applyZoom = useCallback((next: ZoomState, commit = false) => {
+    zoomRef.current = next;
+    zoomSV.value = next;
     pendingZoomRef.current = next;
+    if (commit) setZoom(next);
   }, [zoomSV]);
+
+  const scheduleZoom = useCallback((next: ZoomState) => {
+    applyZoom(next, false);
+  }, [applyZoom]);
 
   /**
    * ジェスチャーが終わった時に React 側へ反映する。
    * 頂点ハンドルの大きさや倍率表示など、state を見ている部分を追いつかせる。
    */
   const commitZoom = useCallback(() => {
-    const pending = pendingZoomRef.current;
-    pendingZoomRef.current = null;
-    if (pending) setZoom(pending);
+    // 正は zoomRef。state をそこへ揃えるだけにして、二重管理をなくす。
+    setZoom(zoomRef.current);
   }, []);
   useEffect(() => () => {
     if (zoomRafRef.current != null) cancelAnimationFrame(zoomRafRef.current);
@@ -594,7 +616,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 戻し、実行経路を1本にする。1つ目でコミット、2つ目で描画が乗る。
    * 待ち時間は固定せず、処理が終わったら解除する。
    */
-  const runHeavy = useCallback((work: () => void) => {
+  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.undoBusy' | 'editor.redoBusy') => {
+    if (key) setBusyKey(key);
     eyeBusyRef.current = true;
     setEyeBusy(true);
     // 保険: 何かの理由で下の解除に到達しなかった場合でも、操作不能のまま
@@ -702,10 +725,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       canvasSizeRef.current.w, canvasSizeRef.current.h,
       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
     );
-    zoomRef.current = next;
-    zoomSV.value = next;   // 画像側（UIスレッド）も揃える
-    setZoom(next);
-  }, [zoomSV]);
+    applyZoom(next, true);
+  }, [applyZoom]);
 
   // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
   useEffect(() => {
@@ -727,7 +748,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     const snap = prev.pop()!;
     setPast(prev);
     if (snap.kind === 'edit') {
-      onUndoEditRef.current?.();          // 画像の巻き戻しは親が行う
+      // 画像の巻き戻しは親が元画像から掛け直すので重い。何も出ないと
+      // 固まったように見えるため、処理中を出してから実行する。
+      runHeavy(() => onUndoEditRef.current?.(), 'editor.undoBusy');
       setFuture(f => [{ kind: 'edit' }, ...f]);
       return;
     }
@@ -746,7 +769,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     if (!snap) return;
     setFuture(rest);
     if (snap.kind === 'edit') {
-      onRedoEditRef.current?.();
+      runHeavy(() => onRedoEditRef.current?.(), 'editor.redoBusy');
       setPast(p => [...p, { kind: 'edit' }]);
       return;
     }
@@ -1366,7 +1389,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               startRipple();
               const tol = eyeTolRef.current;
               const fth = featherRef.current;
-              runHeavy(() => onEyedropRef.current?.(x, y, tol, fth));
+              runHeavy(() => onEyedropRef.current?.(x, y, tol, fth), 'editor.eyedropBusy');
             }
           } else {
             // move モード: 辺タップ・ポリゴン選択
@@ -1384,7 +1407,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           setPast(p => [...p, { kind: 'edit' }]);
           setFuture([]);
           const radius = brushRadiusRef.current;
-          runHeavy(() => onRestoreRef.current?.(pts, radius));
+          runHeavy(() => onRestoreRef.current?.(pts, radius), 'editor.eyedropBusy');
         }
       }
 
@@ -1550,11 +1573,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             (width  - PAD_L - PAD_R) / bgResult.width,
             (height - PAD_T - PAD_B) / bgResult.height,
           );
-          setZoom(clampZoom(
+          applyZoom(clampZoom(
             { scale: 1, tx: 0, ty: 0 },
             width, height,
             bgResult.width * measuredDs, bgResult.height * measuredDs,
-          ));
+          ), true);
           canvasViewRef.current?.measureInWindow((x, y) => {
             viewOffsetRef.current = { x, y };
           });
@@ -1815,7 +1838,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           <View style={styles.busyOverlay}>
             <View style={styles.busyCard}>
               <ActivityIndicator color="#FFF" />
-              <Text style={styles.busyTxt}>{t('editor.eyedropBusy')}</Text>
+              <Text style={styles.busyTxt}>{t(busyKey)}</Text>
             </View>
           </View>
         )}

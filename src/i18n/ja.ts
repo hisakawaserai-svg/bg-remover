@@ -164,6 +164,13 @@ const ja = {
     noSplitButton: '分割せずにくり抜く',
     toPolygonEditor: 'ポリゴン編集へ',
     rePickImage: '画像を選び直す',
+    // 分割設定画面で出す「直し方」の案内。自動透過が失敗した時に、
+    // どのツールで直せるのかを初心者にも分かるようにする。
+    toolsTitle: 'うまく消えなかったときは',
+    toolsAuto: '自動透過：背景に近い色をまとめて消します。強さは設定で変えられます。',
+    toolsEyedropper: 'スポイト：消したい色をタップすると、その色が透明になります。',
+    toolsRestore: '復元ブラシ：消えすぎた部分をなぞると元に戻ります。',
+    toolsPolygon: 'ポリゴン編集：四角で囲んで、必要な部分だけ切り出します。',
     resetTitle: '編集をリセット',
     resetMessage: 'スポイトで消した色をすべて元に戻し、自動の背景除去だけ済んだ状態にします。\nこの操作は取り消せません。',
   },
@@ -208,6 +215,8 @@ const ja = {
     retransTitle: '透過強度',
     retransApply: 'このカットに再適用',
     eyedropBusy: '色を削除中...',
+    undoBusy: '編集を戻しています...',
+    redoBusy: '編集を適用しています...',
     loadFailed: '画像の読み込みに失敗しました',
   },
 

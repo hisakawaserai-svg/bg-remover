@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import Animated, {
   useSharedValue,
+  useDerivedValue,
   useAnimatedStyle,
   withTiming,
   Easing,
@@ -491,18 +492,32 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // すると同じ数だけ再レンダーが走り、指を動かしている間ずっと重くなる。
   // ズーム値そのものは zoomRef に即時反映し（同じジェスチャー中の計算はこれを読む）、
   // React への反映だけを requestAnimationFrame でまとめる。
+  /**
+   * ズーム/パンの現在値を UI スレッドへ渡すための値。
+   *
+   * 以前はジェスチャーのたびに setZoom していたため、指を動かすたびに
+   * React の再描画が走り、その中で Canvas のノードを作り直していた。
+   * これが「カクカク」の正体。変換だけを SharedValue に載せて UI スレッドで
+   * 動かし、React の state はジェスチャーが終わった時に1回だけ更新する。
+   */
+  const zoomSV = useSharedValue({ scale: 1, tx: 0, ty: 0 });
+
   const pendingZoomRef = useRef<ZoomState | null>(null);
   const zoomRafRef     = useRef<number | null>(null);
   const scheduleZoom = useCallback((next: ZoomState) => {
-    zoomRef.current = next;      // 後続の計算がすぐ読めるよう先に入れる
+    zoomRef.current = next;   // 後続の計算がすぐ読めるよう先に入れる
+    zoomSV.value = next;      // 画像の変換は UI スレッドで即反映（再描画なし）
     pendingZoomRef.current = next;
-    if (zoomRafRef.current != null) return; // このフレームぶんは予約済み
-    zoomRafRef.current = requestAnimationFrame(() => {
-      zoomRafRef.current = null;
-      const pending = pendingZoomRef.current;
-      pendingZoomRef.current = null;
-      if (pending) setZoom(pending);
-    });
+  }, [zoomSV]);
+
+  /**
+   * ジェスチャーが終わった時に React 側へ反映する。
+   * 頂点ハンドルの大きさや倍率表示など、state を見ている部分を追いつかせる。
+   */
+  const commitZoom = useCallback(() => {
+    const pending = pendingZoomRef.current;
+    pendingZoomRef.current = null;
+    if (pending) setZoom(pending);
   }, []);
   useEffect(() => () => {
     if (zoomRafRef.current != null) cancelAnimationFrame(zoomRafRef.current);
@@ -682,12 +697,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 「拡大しすぎた」「画像がどこかへ行った」ときの復帰専用。
    */
   const resetZoom = useCallback(() => {
-    setZoom(clampZoom(
+    const next = clampZoom(
       { scale: 1, tx: 0, ty: 0 },
       canvasSizeRef.current.w, canvasSizeRef.current.h,
       imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
-    ));
-  }, []);
+    );
+    zoomRef.current = next;
+    zoomSV.value = next;   // 画像側（UIスレッド）も揃える
+    setZoom(next);
+  }, [zoomSV]);
 
   // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
   useEffect(() => {
@@ -1325,9 +1343,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
             addRect(x, y);
           } else if (appModeRef.current === 'eyedropper') {
-            // スポイト: タップ位置の色を透過させる。画像外のタップは無視する。
+            // スポイト: 指を離した位置の色を透過させる。画像外のタップは無視する。
+            // 押した位置ではなく離した位置を使うのは、指を置いてから微調整して
+            // 狙いを定める使い方に合わせるため（実機だと押した瞬間に確定すると
+            // 狙いがずれる）。ルーペも離す直前の位置を映している。
             const z = zoomRef.current;
-            const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
+            const relLX = gStartLX.current + gs.dx;
+            const relLY = gStartLY.current + gs.dy;
+            const { x, y } = localToImage(relLX, relLY, z);
             if (x >= 0 && x < imageWRef.current && y >= 0 && y < imageHRef.current
                 // 透過済みの場所のタップは見た目が変わらない（空振り）ので、
                 // 履歴を積まずに無視する。積むと undo が1回無反応になり、
@@ -1339,7 +1362,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
               setPast(p => [...p, { kind: 'edit' }]);
               setFuture([]);
-              setRipple({ x: gStartLX.current, y: gStartLY.current });
+              setRipple({ x: relLX, y: relLY });
               startRipple();
               const tol = eyeTolRef.current;
               const fth = featherRef.current;
@@ -1366,6 +1389,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       }
 
       hideLoupe();
+      commitZoom();   // ジェスチャー中は SharedValue だけ動かしているので確定する
       gPhase.current = 'idle';
     },
 
@@ -1387,6 +1411,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       strokeImgRef.current = [];
       setStrokePts([]);
       hideLoupe();
+      commitZoom();
       gPhase.current             = 'idle';
     },
   })).current;
@@ -1459,11 +1484,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     );
   }, []);
 
-  const groupTransform = [
-    { translateX: zoom.tx },
-    { translateY: zoom.ty },
-    { scale: zoom.scale },
-  ];
+  // 画像とポリゴンを載せる Group の変換。UI スレッドで動くので、
+  // ジェスチャー中に React の再描画が入らない。
+  const groupTransform = useDerivedValue(() => [
+    { translateX: zoomSV.value.tx },
+    { translateY: zoomSV.value.ty },
+    { scale: zoomSV.value.scale },
+  ], [zoomSV]);
 
   // 連番ラベルの画面座標
   const labelPositions = useMemo(() =>
@@ -1847,7 +1874,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           {/* 倍率とズーム操作は隣り合わせに置く。数値だけ離れた場所にあると
               「今いくつか」と「どう変えるか」が結びつかない。 */}
           <View style={styles.zoomTopRow}>
-            <Text style={styles.zoomBadgeTxt}>×{zoom.scale.toFixed(1)}</Text>
+            <Text style={styles.zoomBadgeTxt}>×{sliderToZoom(sliderV).toFixed(1)}</Text>
             <View style={styles.zoomSliderWrap}>
               {/* 目盛り。どこが ×1/×2/×4/×8/×16/×24 かを示す。 */}
               <View style={styles.zoomTicks} pointerEvents="none">
@@ -1881,6 +1908,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   zoomDraggingRef.current = false;
                   uiInteractingRef.current = false;
                   discardStroke();
+                  commitZoom();
                 }}
                 minimumTrackTintColor={IOS.blue}
                 maximumTrackTintColor="rgba(255,255,255,0.28)"
@@ -2111,9 +2139,14 @@ const styles = StyleSheet.create({
   // 下地切替を右上に浮かせるコンテナ
   floatingTop: {
     position:  'absolute',
+    left:      8,
     right:     8,
     top:       8,
-    alignItems: 'flex-end',
+    // 下地切替とズームを横1行に並べる。縦に2段重ねると画像の上端が
+    // その分だけ触れなくなるため、高さを1行に抑える。
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 
   // ── フローティングボタン群 (キャンバス右端縦並び) ─────────────────────────
@@ -2122,7 +2155,7 @@ const styles = StyleSheet.create({
     right: 8,
     // 下側（ツール説明・ブラシ設定）が混み合っていたので上へ寄せ、
     // 空いた右端の縦方向にズームを入れる。右上の下地切替と被らない位置から。
-    top: 128,
+    top: 60,
     alignItems: 'center',
     // 縦に全部積むので、画面の短い端末（iPhone SE 等）でも収まるよう詰める。
     // ボタン自体は 44pt を維持する（これ以上小さくすると押しにくい）。
@@ -2155,19 +2188,19 @@ const styles = StyleSheet.create({
   },
   // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
   zoomTopRow: {
-    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 14,
     backgroundColor: 'rgba(30,30,30,0.78)',
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomSliderWrap: {
-    width: 150,
+    // 下地切替と横に並ぶので、幅を詰めて小さい画面でも収まるようにする。
+    width: 112,
     height: 34,
     justifyContent: 'center',
   },
@@ -2205,8 +2238,8 @@ const styles = StyleSheet.create({
   // ── 倍率バッジ ────────────────────────────────────────────────────────────
   zoomBadgeTxt: {
     color: '#FFF',
-    fontSize: 13,
-    minWidth: 42,
+    fontSize: 12,
+    minWidth: 38,
     fontVariant: ['tabular-nums'],  // 倍率が動いても幅が揺れないようにする
   },
   // ── 透過強度パネル（セル編集のみ）─────────────────────────────────────────

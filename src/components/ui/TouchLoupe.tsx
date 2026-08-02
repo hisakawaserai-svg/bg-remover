@@ -37,6 +37,11 @@ export const LOUPE_SIZE = 116;
 export const LOUPE_MAGNIFY = 3.5;
 /** 指がこの距離(表示px)までルーペに近づいたら反対側へ逃がす。 */
 const AVOID_MARGIN = 24;
+/**
+ * 上部のコントロール行（下地切替・ズーム）の下に出すための余白。
+ * 上端に出すと、そのまま操作パネルと重なって両方見えなくなる。
+ */
+const TOP_OFFSET = 52;
 
 interface Props {
   /** 拡大して見せる画像。親が描画に使っているものをそのまま渡す。 */
@@ -73,12 +78,12 @@ export default function TouchLoupe({
 }: Props) {
   if (!image || !point) return null;
 
-  // 既定は左上。指が左上に来たら右上へ逃がす。
-  // 上下ではなく左右だけで逃がすのは、下側にツール説明やブラシ設定があり、
-  // 下へ動かすとそちらと重なるため。
+  // 既定は左。指が左側に来たら右へ逃がす。
+  // 上下ではなく左右だけで逃がすのは、上に操作パネル、下にツール説明と
+  // ブラシ設定があり、縦に動かすとどちらかと重なるため。
   const nearLeft = touch != null
     && touch.x < LOUPE_SIZE + AVOID_MARGIN
-    && touch.y < LOUPE_SIZE + AVOID_MARGIN;
+    && touch.y < TOP_OFFSET + LOUPE_SIZE + AVOID_MARGIN;
   const left = nearLeft ? canvasW - LOUPE_SIZE - 8 : 8;
 
   // 注目点がルーペの中心に来るような平行移動。
@@ -141,7 +146,7 @@ export default function TouchLoupe({
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 8,
+    top: TOP_OFFSET,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,

@@ -125,3 +125,32 @@ export function densifyStroke(
   }
   return out;
 }
+
+/**
+ * ストロークの点を間引く（保存サイズ対策）。
+ *
+ * タッチイベントは60〜120Hz で来るので、ゆっくりなぞると同じ場所に点が
+ * 何十個も溜まる。操作列はセッションとして永続化されるため、そのまま持つと
+ * 1ストロークで数KB、編集を重ねると容易に肥大する。
+ *
+ * 塗る側（applyRestoreStroke）が必ず間を補間するので、間隔が半径の半分以下に
+ * 収まっていれば結果は変わらない。ここでは「その間隔を超えた点だけ」を残す。
+ * 始点と終点は必ず残す（線の端が縮むのを防ぐ）。
+ */
+export function thinStroke(
+  points: Array<[number, number]>,
+  radius: number,
+): Array<[number, number]> {
+  if (points.length <= 2) return points.slice();
+  const minGap = Math.max(1, Math.max(0.5, radius) * 0.5);
+  const minGapSq = minGap * minGap;
+  const out: Array<[number, number]> = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const [lx, ly] = out[out.length - 1];
+    const [x, y] = points[i];
+    const dx = x - lx, dy = y - ly;
+    if (dx * dx + dy * dy >= minGapSq) out.push(points[i]);
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}

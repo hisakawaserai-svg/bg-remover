@@ -58,7 +58,7 @@ import {
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import type { RemoveBgResult, BBox } from '../imaging';
-import { splitConnected, isTransparentAt, findUncoveredRegions, initialRectFromBBox } from '../imaging';
+import { splitConnected, isTransparentAt, findUncoveredRegions, initialRectFromBBox, thinStroke } from '../imaging';
 import type { UncoveredRegion } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
 import type { ThumbBg } from '../settings/store';
@@ -1254,8 +1254,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
-      // ── ピンチ (move モードのみ) ───────────────────────────────────────
-      if (appModeRef.current === 'move' && touches.length >= 2) {
+      // ── 二本指: 拡大縮小＋移動（どのツールでも使える）─────────────────
+      // 以前は移動モードでしか効かず、スポイトや復元ブラシの最中に見る場所を
+      // 変えたいときに、いちいちツールを切り替える必要があった。
+      // 二本指はどのツールでも「見る場所を変える」操作として空いているので、
+      // そこに割り当てる（一本指はツールごとの操作のまま）。
+      if (touches.length >= 2) {
         const d    = touchDist(touches[0], touches[1]);
         const offX = viewOffsetRef.current.x;
         const offY = viewOffsetRef.current.y;
@@ -1264,6 +1268,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const midY = (touches[0].pageY + touches[1].pageY) / 2 - offY;
 
         if (gPhase.current !== 'pinch') {
+          // 一本指の操作の途中で二本目が乗った場合、そちらは中断扱いにする。
+          // 描きかけの軌跡を残すと、離した時に意図しない復元が確定してしまう。
+          if (gPhase.current === 'restore') discardStroke();
+          hideLoupe();
           gPhase.current      = 'pinch';
           gPinchDist0.current = d;
           gPinchMidX.current  = midX;
@@ -1272,13 +1280,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         }
         const { scale: s0, tx: tx0, ty: ty0 } = gStartZoom.current;
         const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, s0 * d / gPinchDist0.current));
-        // 焦点固定: ピンチ開始中点が画面上で動かないよう tx/ty を補正
+        // 焦点固定: ピンチ開始時の中点にあった画像上の点を、
+        // 「今の中点」へ持ってくる。こうすると拡大縮小と同時に、
+        // 二本指を滑らせたぶんだけ画像も動く（＝移動も一緒にできる）。
         const focalX = (gPinchMidX.current - tx0) / s0;
         const focalY = (gPinchMidY.current - ty0) / s0;
         scheduleZoom(clampZoom({
           scale: newScale,
-          tx: gPinchMidX.current - focalX * newScale,
-          ty: gPinchMidY.current - focalY * newScale,
+          tx: midX - focalX * newScale,
+          ty: midY - focalY * newScale,
         }, canvasSizeRef.current.w, canvasSizeRef.current.h,
            imageWRef.current * dsRef.current, imageHRef.current * dsRef.current));
         return;
@@ -1439,7 +1449,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           setPast(p => [...p, { kind: 'edit' }]);
           setFuture([]);
           const radius = brushRadiusRef.current;
-          runHeavy(() => onRestoreRef.current?.(pts, radius), 'editor.eyedropBusy');
+          // 保存サイズ対策。操作列は永続化されるので、同じ場所に溜まった点を
+          // 落としてから渡す。塗る側が補間するので結果は変わらない。
+          const thinned = thinStroke(pts, radius);
+          runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.eyedropBusy');
         }
       }
 
@@ -2245,7 +2258,8 @@ const styles = StyleSheet.create({
     // 縦に段を重ねると画像の上端がその分だけ触れなくなるので、高さは1行に抑える。
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    // 左詰め。ズーム行のすぐ右にドロップダウンが並ぶ。
+    justifyContent: 'flex-start',
     gap: 8,
   },
 
@@ -2305,7 +2319,6 @@ const styles = StyleSheet.create({
   },
   // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
   zoomTopRow: {
-    flex: 1,   // 余った幅をズーム行が使う
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -2317,9 +2330,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomSliderWrap: {
-    // 余った幅いっぱいに伸ばす。長いほど倍率を細かく決めやすい。
-    flex: 1,
-    minWidth: 90,
+    width: 132,
     height: 34,
     justifyContent: 'center',
   },

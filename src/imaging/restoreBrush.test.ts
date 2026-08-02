@@ -6,7 +6,7 @@
  *   - なぞっていない透過部分は透明のままであること
  *   - RGB を書き換えないこと（フェザリングの結果を壊さない）
  */
-import { applyRestoreStroke, densifyStroke } from './restoreBrush';
+import { applyRestoreStroke, densifyStroke, thinStroke } from './restoreBrush';
 import { removeBackgroundInPlace } from './removeBackground';
 
 const W = 60;
@@ -204,5 +204,38 @@ describe('細いブラシ（1px）', () => {
     for (let x = 10; x <= 50; x++) {
       expect(alphaAt(cur, x, 30)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('thinStroke（保存サイズ対策）', () => {
+  it('密に溜まった点を間引く', () => {
+    // 同じ場所を細かく往復したような、密な点列。
+    const dense: Array<[number, number]> = [];
+    for (let i = 0; i < 200; i++) dense.push([10 + i * 0.05, 10]);
+
+    const thin = thinStroke(dense, 6);
+    expect(thin.length).toBeLessThan(dense.length / 4);
+  });
+
+  it('間引いても塗る結果は変わらない', () => {
+    const base = makeBase();
+    const a = Uint8Array.from(base);
+    const b = Uint8Array.from(base);
+    for (let i = 0; i < W * H; i++) { a[i * 4 + 3] = 0; b[i * 4 + 3] = 0; }
+
+    const dense: Array<[number, number]> = [];
+    for (let i = 0; i <= 100; i++) dense.push([10 + i * 0.3, 30]);
+
+    applyRestoreStroke(a, base, W, H, W, H, { points: dense, radius: 3 });
+    applyRestoreStroke(b, base, W, H, W, H, { points: thinStroke(dense, 3), radius: 3 });
+
+    expect(Array.from(b)).toEqual(Array.from(a));
+  });
+
+  it('始点と終点は必ず残す', () => {
+    const pts: Array<[number, number]> = [[0, 0], [0.1, 0], [0.2, 0], [50, 0]];
+    const thin = thinStroke(pts, 10);
+    expect(thin[0]).toEqual([0, 0]);
+    expect(thin[thin.length - 1]).toEqual([50, 0]);
   });
 });

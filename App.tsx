@@ -774,6 +774,24 @@ function AppScreens() {
    * レンダーのたびに切り出すと毎回別の配列になり、PolygonEditor 側で
    * SkImage を作り直し続けることになる。開いているセルが変わった時だけ作る。
    */
+  /**
+   * セル編集で表示するセル画像。
+   *
+   * 以前はレンダーのたびに buildCellRgba を呼んでいた。復元ブラシは1ストロークごとに
+   * 再レンダーを起こすので、そのたびに「切り出し + SkImage 生成 + 連結成分の再計算」が
+   * 走って重くなっていた。編集が進んだ時（bgVersion）と対象が変わった時だけ作り直す。
+   */
+  const cellSubResult = useMemo(() => {
+    if (appState !== 'cell_editing' || editingCellIdx === null) return null;
+    const c = cells[editingCellIdx];
+    const bb = c?.kind === 'auto' ? c.bbox : c?.srcBBox;
+    if (!bb) return null;
+    return buildCellRgba(bb);
+    // buildCellRgba は cellTolerance と設定に依存する（useCallback の依存に入っている）。
+    // bgVersion は「画素が変わった」ことを示す唯一の合図なので依存に含める。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState, editingCellIdx, cells, buildCellRgba, bgVersion]);
+
   const cellBaseRgba = useMemo(() => {
     if (appState !== 'cell_editing' || editingCellIdx === null) return null;
     const bg = bgResult;
@@ -1419,7 +1437,7 @@ function AppScreens() {
     if (editedCell && bbox) {
       // 透過強度を変えていれば元画像から作り直したもの、そうでなければ従来どおり
       // bgResult から切り出したものが返る（確定時と同じヘルパを通す）。
-      const subBgResult = buildCellRgba(bbox);
+      const subBgResult = cellSubResult;
       if (!subBgResult) return null;
       // 前回のポリゴンがあれば復元して開く（形の作り直しではなく調整で済む）。
       const initialPolys = editedCell.kind === 'poly' && editedCell.polygon

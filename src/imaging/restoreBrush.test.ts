@@ -177,3 +177,32 @@ describe('applyEditSteps での復元ブラシ', () => {
     expect(alphaAt(cur, 30, 30)).toBe(0);
   });
 });
+
+describe('細いブラシ（1px）', () => {
+  it('1px でも必ず画素が復元される', () => {
+    const base = makeBase();
+    const cur = Uint8Array.from(base);
+    for (let i = 0; i < W * H; i++) cur[i * 4 + 3] = 0;
+
+    // 直径1px = 半径0.5。円の判定だけだと1画素も掛からないことがある。
+    const changed = applyRestoreStroke(cur, base, W, H, W, H,
+      { points: [[30.5, 30.5]], radius: 0.5 });
+
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it('1px でも指が飛んだ間が埋まる（連続した線になる）', () => {
+    const base = makeBase();
+    const cur = Uint8Array.from(base);
+    for (let i = 0; i < W * H; i++) cur[i * 4 + 3] = 0;
+
+    // 指を速く動かした時のように、離れた2点だけを渡す。
+    applyRestoreStroke(cur, base, W, H, W, H,
+      { points: [[10, 30], [50, 30]], radius: 0.5 });
+
+    // 間の画素が途切れず埋まっていること。
+    for (let x = 10; x <= 50; x++) {
+      expect(alphaAt(cur, x, 30)).toBeGreaterThan(0);
+    }
+  });
+});

@@ -412,8 +412,22 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [brushPx, setBrushPx] = useState(BRUSH_DEFAULT_PX);
   // 元画像の透かし表示。復元ブラシでは既定 ON（消えた場所が見えないと塗れない）。
   const [ghostOn, setGhostOn] = useState(true);
+  // なぞり中の軌跡。必ず「画像座標」で持つ。表示座標で持つと、ズームや
+  // パンを動かした瞬間に古い座標のまま描かれ、見当違いの場所（左上など）に
+  // 円が出る。画像座標なら Canvas の変換がそのまま効くのでズレようがない。
   const [strokePts, setStrokePts] = useState<Array<[number, number]>>([]);
   const strokeImgRef = useRef<Array<[number, number]>>([]);
+  // ドラッグ中の再描画を1フレーム1回に間引く（毎イベント setState すると重い）。
+  const strokeRafRef = useRef<number | null>(null);
+  const flushStroke = useCallback(() => {
+    if (strokeRafRef.current != null) return;
+    strokeRafRef.current = requestAnimationFrame(() => {
+      strokeRafRef.current = null;
+      setStrokePts([...strokeImgRef.current]);
+    });
+  }, []);
+  // ブラシサイズ調整中の目安表示。画面中央に実寸の円を出す。
+  const [brushSliding, setBrushSliding] = useState(false);
   // ブラシ半径は画像の短辺に対する割合で決める。こうしないと、大きなシートでは
   // 太すぎ、小さな画像では細すぎ、という状態になる。
   // スライダーは直径で扱う（「3px の線を直す」という感覚に合わせる）。
@@ -962,7 +976,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const z = zoomRef.current;
         const { x, y } = localToImage(lx, ly, z);
         strokeImgRef.current = [[x, y]];
-        setStrokePts([[lx, ly]]);
+        flushStroke();
         return;
       }
 
@@ -1188,7 +1202,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const z = zoomRef.current;
         const { x, y } = localToImage(lx, ly, z);
         strokeImgRef.current.push([x, y]);
-        setStrokePts(p => [...p, [lx, ly]]);
+        flushStroke();
         return;
       }
 
@@ -1344,6 +1358,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       dragEdgeIndicesRef.current = null;
       dragEdgeMovedRef.current   = false;
       dragLastPolygonsRef.current = null; // 中断時は保存しない
+      // 中断時も軌跡を必ず捨てる。ここが抜けていたため、ジェスチャーが
+      // 中断されると緑の円が残り続け、ズームを動かすと一緒に動いていた。
+      strokeImgRef.current = [];
+      setStrokePts([]);
       gPhase.current             = 'idle';
     },
   })).current;
@@ -1355,6 +1373,21 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // ドラッグ中に変化しないポリゴンは Skia.Path.Make() を毎フレーム呼ばなくて済む。
   // setPolygons の updater 関数は変化のないポリゴンを「同じ参照のまま」返すためキャッシュがヒットする。
   const pathCacheRef = useRef(new Map<number, { pts: [number,number][]; ds: number; path: ReturnType<typeof Skia.Path.Make> }>());
+
+  /** なぞり中の軌跡のパス（画像座標 × ds）。点が無い時は null。 */
+  const strokePath = useMemo(() => {
+    if (strokePts.length === 0) return null;
+    const p = Skia.Path.Make();
+    p.moveTo(strokePts[0][0] * ds, strokePts[0][1] * ds);
+    for (let i = 1; i < strokePts.length; i++) {
+      p.lineTo(strokePts[i][0] * ds, strokePts[i][1] * ds);
+    }
+    // 1点だけのタップでも見えるよう、極小の線分を足す。
+    if (strokePts.length === 1) {
+      p.lineTo(strokePts[0][0] * ds + 0.01, strokePts[0][1] * ds);
+    }
+    return p;
+  }, [strokePts, ds]);
 
   const polyPaths = useMemo(() => {
     const cache = pathCacheRef.current;
@@ -1527,6 +1560,20 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             />
 
 
+            {/* なぞっている最中の軌跡。丸を点々と並べるのではなく1本のパスとして
+                描く（点の数だけ View を作ると重いうえ、粒々に見える）。
+                この Group は画像座標系なので、ズーム・パンは自動で追従する。 */}
+            {appMode === 'restore' && strokePath && (
+              <Path
+                path={strokePath}
+                color="rgba(52,199,89,0.55)"
+                style="stroke"
+                strokeWidth={brushPx * ds}
+                strokeCap="round"
+                strokeJoin="round"
+              />
+            )}
+
             {/* 確定ポリゴン */}
             {polyPaths.map((path, idx) => {
               const c     = POLY_COLORS[idx % POLY_COLORS.length];
@@ -1626,24 +1673,20 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </View>
         )}
 
-        {/* なぞっている最中の軌跡。実際の書き換えは指を離した時なので、
-            ここで「どこを塗ったか」を見せないと手応えが無い。 */}
-        {appMode === 'restore' && strokePts.map(([px, py], i) => (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={[
-              styles.brushDot,
-              {
-                left: px - brushRadius * ds * zoom.scale,
-                top:  py - brushRadius * ds * zoom.scale,
-                width:  brushRadius * ds * zoom.scale * 2,
-                height: brushRadius * ds * zoom.scale * 2,
-                borderRadius: brushRadius * ds * zoom.scale,
-              },
-            ]}
-          />
-        ))}
+        {/* ブラシサイズ調整中だけ、画面中央に実寸の円を出す。
+            スライダーを動かしながら太さを確かめるためのもので、
+            指の位置とは無関係なので中央に固定する。 */}
+        {brushSliding && (
+          <View pointerEvents="none" style={styles.brushGaugeWrap}>
+            <View
+              style={[styles.brushGauge, {
+                width: brushPx * ds * zoom.scale,
+                height: brushPx * ds * zoom.scale,
+                borderRadius: brushPx * ds * zoom.scale / 2,
+              }]}
+            />
+          </View>
+        )}
 
         {/* ブラシの太さ。復元モードの時だけ出す。連続値で、現在値を px で示す。 */}
         {appMode === 'restore' && !chromeHidden && (
@@ -1674,8 +1717,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 // ② スライダーに触れた時点で、描きかけの軌跡を必ず捨てる。
                 // 残したままサイズだけ変えると、古いタッチ座標に新しい太さの
                 // プレビューが出て「変な場所に出る」状態になる。
-                onSlidingStart={discardStroke}
+                onSlidingStart={() => { discardStroke(); setBrushSliding(true); }}
                 onValueChange={setBrushPx}
+                onSlidingComplete={() => setBrushSliding(false)}
                 minimumTrackTintColor={IOS.blue}
                 maximumTrackTintColor="rgba(255,255,255,0.28)"
                 thumbTintColor="#FFF"
@@ -1840,7 +1884,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 minimumValue={0}
                 maximumValue={1}
                 value={sliderV}
-                onSlidingStart={() => { zoomDraggingRef.current = true; }}
+                onSlidingStart={() => { zoomDraggingRef.current = true; discardStroke(); }}
                 onValueChange={v => {
                   setSliderV(v);
                   setZoomScale(sliderToZoom(v));
@@ -2127,11 +2171,16 @@ const styles = StyleSheet.create({
   retransApplyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
 
   // ── 復元ブラシ ────────────────────────────────────────────────────────────
-  brushDot: {
+  // ブラシサイズ調整中に中央へ出す実寸の円。
+  brushGaugeWrap: {
     position: 'absolute',
-    backgroundColor: 'rgba(52,199,89,0.35)',
+    left: 0, right: 0, top: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  brushGauge: {
+    backgroundColor: 'rgba(52,199,89,0.30)',
     borderWidth: 1,
-    borderColor: 'rgba(52,199,89,0.8)',
+    borderColor: 'rgba(52,199,89,0.9)',
   },
   brushBar: {
     position: 'absolute',

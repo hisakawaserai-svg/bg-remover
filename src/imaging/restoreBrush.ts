@@ -44,10 +44,30 @@ export function applyRestoreStroke(
   const rSq = r * r;
   let changed = 0;
 
-  for (const [gx, gy] of stroke.points) {
+  // 指のタッチイベントは速く動かすと数十px飛ぶ。来た点だけを塗ると跡が点線に
+  // なるので、必ず間を埋めてから塗る。記録側ではなくここで埋めることで、
+  // 操作列を再生した時も同じ結果になる。
+  const points = densifyStroke(stroke.points, r);
+
+  for (const [gx, gy] of points) {
     // 元画像座標 → このバッファ内の座標。
     const cx = gx - offsetX;
     const cy = gy - offsetY;
+
+    // 半径が 1px 未満だと、円の判定だけでは1画素も掛からないことがある
+    // （中心が画素の境目に落ちた場合）。細いブラシで「なぞっても何も起きない」
+    // のを防ぐため、中心の画素だけは必ず対象にする。
+    const ccx = Math.round(cx);
+    const ccy = Math.round(cy);
+    if (ccx >= 0 && ccy >= 0 && ccx < width && ccy < height) {
+      const bx0 = ccx + offsetX;
+      const by0 = ccy + offsetY;
+      if (bx0 >= 0 && by0 >= 0 && bx0 < baseWidth && by0 < baseHeight) {
+        const d0 = (ccy * width + ccx) * 4 + 3;
+        const s0 = (by0 * baseWidth + bx0) * 4 + 3;
+        if (rgba[d0] < baseRgba[s0]) { rgba[d0] = baseRgba[s0]; changed++; }
+      }
+    }
 
     const x0 = Math.max(0, Math.floor(cx - r));
     const x1 = Math.min(width - 1, Math.ceil(cx + r));

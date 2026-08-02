@@ -428,6 +428,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   }, []);
   // ブラシサイズ調整中の目安表示。画面中央に実寸の円を出す。
   const [brushSliding, setBrushSliding] = useState(false);
+  /**
+   * スライダー等のUIを操作中かどうか。
+   *
+   * キャンバスの PanResponder は onMoveShouldSetPanResponder で「8px以上動いたら
+   * 自分が取る」としているため、スライダーをドラッグすると途中でタッチを奪って
+   * しまう。奪った瞬間の座標はスライダー基準の小さい値なので、画像の左上あたりに
+   * ブラシの線が出ていた。UI操作中はキャンバス側が一切反応しないようにする。
+   */
+  const uiInteractingRef = useRef(false);
   // ブラシ半径は画像の短辺に対する割合で決める。こうしないと、大きなシートでは
   // 太すぎ、小さな画像では細すぎ、という状態になる。
   // スライダーは直径で扱う（「3px の線を直す」という感覚に合わせる）。
@@ -669,6 +678,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     });
     return () => cancelAnimationFrame(id);
   }, [eyeBusy]);
+
+  /**
+   * UI操作中フラグの保険。
+   *
+   * onSlidingComplete は基本必ず来るが、万一取りこぼすとフラグが立ちっぱなしに
+   * なり、キャンバスが一切反応しなくなる（＝操作不能）。モードやパネルの
+   * 表示が切り替わる＝スライダーから手が離れているので、そこで必ず下ろす。
+   */
+  useEffect(() => {
+    uiInteractingRef.current = false;
+    setBrushSliding(false);
+  }, [appMode, chromeHidden, retransOpen]);
 
   // ピンチ・[＋]/[−]・全体表示で倍率が変わった時に、つまみを追従させる。
   useEffect(() => {
@@ -947,12 +968,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const pan = useRef(PanResponder.create({
     // スポイト処理中はジェスチャーを一切受け付けない。
     // 連続タップで処理が直列に溜まるのと、パンの誤爆を同時に防ぐ。
-    onStartShouldSetPanResponder: () => !eyeBusyRef.current,
+    onStartShouldSetPanResponder: () => !eyeBusyRef.current && !uiInteractingRef.current,
     // 微小なジッタ（タップ時の指ブレ）では responder を奪わず、明確なドラッグ
     // （PAN_THRESHOLD=8px 以上の移動）のときだけパンを開始する。これにより
     // キャンバス上のフローティングボタンの onPress が横取りされず生き残る。
     onMoveShouldSetPanResponder:  (_, gs) =>
-      Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD,
+      !uiInteractingRef.current &&
+      (Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD),
 
     onPanResponderGrant: (evt) => {
       const lx = evt.nativeEvent.locationX;
@@ -1654,7 +1676,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   minimumValue={0}
                   maximumValue={100}
                   value={cellTol}
+                  onSlidingStart={() => { uiInteractingRef.current = true; discardStroke(); }}
                   onValueChange={setCellTol}
+                  onSlidingComplete={() => { uiInteractingRef.current = false; discardStroke(); }}
                   minimumTrackTintColor={IOS.blue}
                   maximumTrackTintColor="rgba(255,255,255,0.28)"
                   thumbTintColor="#FFF"
@@ -1717,9 +1741,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 // ② スライダーに触れた時点で、描きかけの軌跡を必ず捨てる。
                 // 残したままサイズだけ変えると、古いタッチ座標に新しい太さの
                 // プレビューが出て「変な場所に出る」状態になる。
-                onSlidingStart={() => { discardStroke(); setBrushSliding(true); }}
+                onSlidingStart={() => {
+                  uiInteractingRef.current = true;
+                  discardStroke();
+                  setBrushSliding(true);
+                }}
                 onValueChange={setBrushPx}
-                onSlidingComplete={() => setBrushSliding(false)}
+                onSlidingComplete={() => {
+                  uiInteractingRef.current = false;
+                  setBrushSliding(false);
+                  // 奪い合いの隙間で入った軌跡が残らないよう、最後にもう一度捨てる。
+                  discardStroke();
+                }}
                 minimumTrackTintColor={IOS.blue}
                 maximumTrackTintColor="rgba(255,255,255,0.28)"
                 thumbTintColor="#FFF"
@@ -1884,7 +1917,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 minimumValue={0}
                 maximumValue={1}
                 value={sliderV}
-                onSlidingStart={() => { zoomDraggingRef.current = true; discardStroke(); }}
+                onSlidingStart={() => {
+                  zoomDraggingRef.current = true;
+                  uiInteractingRef.current = true;
+                  discardStroke();
+                }}
                 onValueChange={v => {
                   setSliderV(v);
                   setZoomScale(sliderToZoom(v));
@@ -1897,6 +1934,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   setSliderV(finalV);
                   setZoomScale(near !== undefined ? near : sliderToZoom(v));
                   zoomDraggingRef.current = false;
+                  uiInteractingRef.current = false;
+                  discardStroke();
                 }}
                 minimumTrackTintColor={IOS.blue}
                 maximumTrackTintColor="rgba(255,255,255,0.28)"

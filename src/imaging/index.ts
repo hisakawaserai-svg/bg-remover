@@ -49,6 +49,7 @@ export type { RemoveBgResult } from './removeBackground';
 export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
 export { rebuildCellFromOriginal, cropFromOriginal, isBBoxInside } from './rebuildCell';
 export { applyRestoreStroke, densifyStroke } from './restoreBrush';
+export { initialRectFromBBox, INIT_PAD_RATIO, INIT_PAD_MIN_RATIO, INIT_PAD_MIN_PX } from './polygonInit';
 export type { RestoreStroke } from './restoreBrush';
 export type { CellBBox, RebuildOptions } from './rebuildCell';
 export type { UncoveredRegion } from './maskPolygon';

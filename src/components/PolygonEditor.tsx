@@ -56,7 +56,7 @@ import {
 } from '@shopify/react-native-skia';
 import type { SkImage } from '@shopify/react-native-skia';
 import type { RemoveBgResult, BBox } from '../imaging';
-import { splitConnected, isTransparentAt, findUncoveredRegions } from '../imaging';
+import { splitConnected, isTransparentAt, findUncoveredRegions, initialRectFromBBox } from '../imaging';
 import type { UncoveredRegion } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
 import type { ThumbBg } from '../settings/store';
@@ -733,8 +733,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
     let points: [number, number][];
     if (hit) {
-      // ヒット時: bbox の4隅をそのまま四角にする（位置もサイズも bbox 由来＝ズレない）。
-      points = [[hit.minX, hit.minY], [hit.maxX, hit.minY], [hit.maxX, hit.maxY], [hit.minX, hit.maxY]];
+      // ヒット時: bbox を少し外側へ広げた四角にする。
+      // bbox ぴったりだと、アンチエイリアスの薄い縁や髪の毛のような細い部分が
+      // 判定に乗らず、そのまま書き出すと端が欠ける。余分を削るほうが、
+      // 足りない部分を探して足すより気付きやすいので、広めから始める。
+      // 広げるのはこの生成時だけで、以後ユーザーが動かした形には触らない。
+      points = initialRectFromBBox(hit, iw, ih);
     } else {
       // 非ヒット時: 従来どおりタップ点中心に画像短辺×RECT_RATIO の正方形を置く。
       const fallbackHalf = Math.min(iw, ih) * RECT_RATIO / 2;
@@ -1588,7 +1592,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 onPress={() => setBrushIdx(i)}
                 pressedScale={0.9}
               >
-                <View style={[styles.brushPreview, { width: 6 + i * 6, height: 6 + i * 6, borderRadius: 12 }]} />
+                <View style={[styles.brushPreview, { width: 6 + i * 6, height: 6 + i * 6 }]} />
               </AnimatedPressable>
             ))}
           </View>
@@ -2060,7 +2064,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
   },
   brushBtnOn: { backgroundColor: IOS.blue, borderColor: IOS.blue },
-  brushPreview: { backgroundColor: '#FFF' },
+  brushPreview: { backgroundColor: '#FFF', borderRadius: 12 },
 
   // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
   busyOverlay: {

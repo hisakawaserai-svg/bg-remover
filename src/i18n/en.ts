@@ -180,6 +180,9 @@ const en: typeof ja = {
     resetTitle: 'Reset Edits',
     resetMessage:
       'Clears the polygons and undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
+    retransTitle: 'Removal strength',
+    retransApply: 'Re-apply to this cutout',
+    eyedropBusy: 'Removing color...',
     loadFailed: 'Failed to load the image',
   },
 

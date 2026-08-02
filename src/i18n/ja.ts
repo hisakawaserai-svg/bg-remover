@@ -201,6 +201,9 @@ const ja = {
     uncoveredProceed: 'このまま進める',
     resetTitle: '編集をリセット',
     resetMessage: 'ポリゴンを消し、スポイトで消した色も元に戻して、自動の背景除去だけ済んだ状態にします。\nこの操作は取り消せません。',
+    retransTitle: '透過強度',
+    retransApply: 'このカットに再適用',
+    eyedropBusy: '色を削除中...',
     loadFailed: '画像の読み込みに失敗しました',
   },
 

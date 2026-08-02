@@ -37,6 +37,8 @@ export { splitConnected, MIN_AREA, MERGE_GAP } from './splitConnected';
 export type { BBox } from './splitObjects';
 export type { RemoveBgResult } from './removeBackground';
 export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
+export { rebuildCellFromOriginal, cropFromOriginal, isBBoxInside } from './rebuildCell';
+export type { CellBBox, RebuildOptions } from './rebuildCell';
 export type { UncoveredRegion } from './maskPolygon';
 
 const TARGET_SIZE = 500;

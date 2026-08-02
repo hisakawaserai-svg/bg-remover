@@ -46,6 +46,8 @@ import {
   persistSourceImage,
   applyEditSteps,
   loadImagePixels,
+  rebuildCellFromOriginal,
+  isBBoxInside,
 } from './src/imaging';
 import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
@@ -244,6 +246,16 @@ function AppScreens() {
   const redoStepsRef = useRef<EditStep[]>([]);
   // 元画像（背景除去前）の画素。操作列を掛け直すときの基準。
   const baseRgbaRef = useRef<Uint8Array | null>(null);
+
+  /**
+   * セル編集中の「透過強度」。null = 未調整で、従来どおり bgResult（シート全体を
+   * 一括で透過した結果）から切り出す。値が入っている間は、そのセルだけ
+   * 元画像 baseRgbaRef から作り直す。
+   *
+   * 透過済みの bgResult から作り直してはいけない（消えた画素は戻らないので
+   * 「透過しすぎ」を弱める方向に直せない）。必ず元画像から作る。
+   */
+  const [cellTolerance, setCellTolerance] = useState<number | null>(null);
   // 画像を作り直したことを子へ伝えるカウンタ（rgba は同一参照のまま中身が変わるため）。
   const [bgVersion, setBgVersion] = useState(0);
 
@@ -458,6 +470,7 @@ function AppScreens() {
     setBgResult(null);
     setCells([]);
     setEditingCellIdx(null);
+    setCellTolerance(null);
     setPolygons([]); // 前画像のポリゴンを消す（手動セッション再開時は後段の resumePolygons で復元される）
     setCurrentImageUri(uri); // done upsert 時に参照する
 
@@ -714,6 +727,40 @@ function AppScreens() {
   // PolygonEditor からポリゴンを受け取り、cells[editingCellIdx] を差し替える。
   // ポリゴン座標はセル切り出し済みのサブ画像基準（0 原点）なので座標変換不要。
 
+  /**
+   * セル1枚ぶんの RGBA を作る。描画（cell_editing）と確定（handleCellEditConfirm）で
+   * 必ず同じものを使うため、生成元をこの1箇所に集約する。
+   *
+   * cellTolerance が null なら従来どおり bgResult（シート全体の透過結果）から切り出す。
+   * 値が入っていれば、元画像 baseRgbaRef から作り直す。透過済みの bgResult を
+   * 作り直しの入力にすると、消えた画素が戻らず「透過しすぎ」を直せないため。
+   */
+  const buildCellRgba = useCallback((bbox: {
+    minX: number; minY: number; maxX: number; maxY: number;
+  }): RemoveBgResult | null => {
+    const bg = bgResultRef.current;
+    if (!bg) return null;
+    const base = baseRgbaRef.current;
+
+    if (cellTolerance !== null && base && isBBoxInside(bbox, bg.width, bg.height)) {
+      return rebuildCellFromOriginal(base, bg.width, bg.height, bbox, {
+        tolerance: cellTolerance,
+        feather: appSettings.featherEdges,
+        fillHoles: appSettings.fillTextHoles,
+        steps: editsRef.current,
+      });
+    }
+
+    const subW = bbox.maxX - bbox.minX + 1;
+    const subH = bbox.maxY - bbox.minY + 1;
+    const rgba = new Uint8Array(subW * subH * 4);
+    for (let y = 0; y < subH; y++) {
+      const srcOff = ((bbox.minY + y) * bg.width + bbox.minX) * 4;
+      rgba.set(bg.rgba.subarray(srcOff, srcOff + subW * 4), y * subW * 4);
+    }
+    return { rgba, width: subW, height: subH };
+  }, [cellTolerance, appSettings.featherEdges, appSettings.fillTextHoles]);
+
   const handleCellEditConfirm = useCallback(async (polygons: Polygon[]) => {
     if (editingCellIdx === null || !bgResult) return;
     const editedCell = cells[editingCellIdx];
@@ -723,12 +770,10 @@ function AppScreens() {
     const subW = bbox.maxX - bbox.minX + 1;
     const subH = bbox.maxY - bbox.minY + 1;
 
-    // 元画像からセル領域の RGBA を切り出す
-    const subRgba = new Uint8Array(subW * subH * 4);
-    for (let y = 0; y < subH; y++) {
-      const srcOff = ((bbox.minY + y) * bgResult.width + bbox.minX) * 4;
-      subRgba.set(bgResult.rgba.subarray(srcOff, srcOff + subW * 4), y * subW * 4);
-    }
+    // 画面に出していたものと同じセル画像を使う（透過強度を変えていればその結果）。
+    const built = buildCellRgba(bbox);
+    if (!built) return;
+    const subRgba = built.rgba;
 
     // 3頂点以上のポリゴンだけを対象にマスク処理
     const validPolys = polygons.filter(p => p.points.length >= 3);
@@ -779,6 +824,8 @@ function AppScreens() {
     ];
     setCells(nextCells);
     setEditingCellIdx(null);
+    // 透過強度はセル単位の調整。確定したらここで捨てる（次のセルへ持ち越さない）。
+    setCellTolerance(null);
     setAppState('preview');
 
     // 編集確定後のセル一覧をセッションに保存
@@ -894,6 +941,7 @@ function AppScreens() {
     setBgResult(null);
     setCells([]);
     setEditingCellIdx(null);
+    setCellTolerance(null);
     setPolygons([]);
     setCurrentSessionId(null);
     setCurrentImageUri('');
@@ -1315,14 +1363,10 @@ function AppScreens() {
     const editedCell = cells[editingCellIdx];
     if (editedCell?.kind === 'auto') {
       const { bbox } = editedCell;
-      const subW = bbox.maxX - bbox.minX + 1;
-      const subH = bbox.maxY - bbox.minY + 1;
-      const subRgba = new Uint8Array(subW * subH * 4);
-      for (let y = 0; y < subH; y++) {
-        const srcOff = ((bbox.minY + y) * bgResult.width + bbox.minX) * 4;
-        subRgba.set(bgResult.rgba.subarray(srcOff, srcOff + subW * 4), y * subW * 4);
-      }
-      const subBgResult: RemoveBgResult = { rgba: subRgba, width: subW, height: subH };
+      // 透過強度を変えていれば元画像から作り直したもの、そうでなければ従来どおり
+      // bgResult から切り出したものが返る（確定時と同じヘルパを通す）。
+      const subBgResult = buildCellRgba(bbox);
+      if (!subBgResult) return null;
       return (
         <>
           <StatusBar hidden />
@@ -1333,6 +1377,9 @@ function AppScreens() {
             onPreview={handleCellEditConfirm}
             onBack={() => {
               setEditingCellIdx(null);
+              // 透過強度はセルごとの調整なので、抜ける時に必ず捨てる。
+              // 残すと次に開いた別のセルへ意図せず引き継がれる。
+              setCellTolerance(null);
               setAppState('preview');
             }}
             onSettings={() => goToSettings()}
@@ -1347,7 +1394,11 @@ function AppScreens() {
             // 巻き戻ると、編集対象のセルの前提そのものが崩れるため。
             canUndoEdit={edits.length > 1}
             canRedoEdit={redoSteps.length > 0}
-            bgVersion={bgVersion}
+            // 透過強度を変えるたびに再生成するので、画像の差し替えを伝える。
+            bgVersion={bgVersion + (cellTolerance ?? 0)}
+            cellTolerance={cellTolerance ?? appSettings.tolerance}
+            // 「再適用」。元画像の該当セル範囲から作り直す（透過済みは入力にしない）。
+            onRetransparent={tol => setCellTolerance(tol)}
           />
         </>
       );

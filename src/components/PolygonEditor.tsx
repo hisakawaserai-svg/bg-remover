@@ -16,6 +16,7 @@
  */
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   PanResponder,
   StyleSheet,
@@ -186,6 +187,13 @@ interface Props {
   onUndoEdit?: () => void;
   onRedoEdit?: () => void;
   onResetEdits?: () => void;
+  /**
+   * 「透過強度」を変えてこのセルを作り直す。渡された画面でだけ UI を出す。
+   * 実処理は親が持つ（元画像を持っているのは親のため）。
+   */
+  onRetransparent?: (tolerance: number) => void;
+  /** 透過強度スライダーの初期値。onRetransparent とセットで渡す。 */
+  cellTolerance?: number;
   canUndoEdit?: boolean;
   canRedoEdit?: boolean;
   bgVersion?: number;
@@ -273,7 +281,7 @@ function distPointToSegment(
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
   const { settings } = useSettings();
@@ -339,6 +347,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // （両方向に無条件で同期すると、ドラッグ中につまみが指から離れて震える）。
   const [sliderV, setSliderV] = useState(0);
   const zoomDraggingRef = useRef(false);
+  // スポイト処理中フラグ。ref(eyeBusyRef) は連打の門番、こちらは画面表示用。
+  // 実処理は同期的に JS を止めるため、先にこれを true にして描画を1フレーム
+  // 走らせてから処理へ入る（そうしないと表示が出ないまま固まる）。
+  const [eyeBusy, setEyeBusy] = useState(false);
+  // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
+  const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
   // initialPolygons がある（セッション復元）場合はそれを初期値にする。
   // ない場合は空配列（drawモードでタップするごとに addRect で追加される）。
   const [polygons,   setPolygons]   = useState<Polygon[]>(initialPolygons ?? []);
@@ -800,7 +814,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const gPinchMidY  = useRef(0);
 
   const pan = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
+    // スポイト処理中はジェスチャーを一切受け付けない。
+    // 連続タップで処理が直列に溜まるのと、パンの誤爆を同時に防ぐ。
+    onStartShouldSetPanResponder: () => !eyeBusyRef.current,
     // 微小なジッタ（タップ時の指ブレ）では responder を奪わず、明確なドラッグ
     // （PAN_THRESHOLD=8px 以上の移動）のときだけパンを開始する。これにより
     // キャンバス上のフローティングボタンの onPress が横取りされず生き残る。
@@ -1138,6 +1154,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
               // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
               eyeBusyRef.current = true;
+              setEyeBusy(true);   // 「色を削除中...」を出し、操作を止める
               setPast(p => [...p, { kind: 'edit' }]);
               setFuture([]);
 
@@ -1147,6 +1164,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 } finally {
                   // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
                   eyeBusyRef.current = false;
+                  setEyeBusy(false);
+                  // タップ表示を明示的に消す。以前はここが無く、波紋の View が
+                  // 出しっぱなしのまま残っていた（透明になるだけで消えていなかった）。
+                  setRipple(null);
                 }
               });
             }
@@ -1402,6 +1423,52 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           />
         )}
 
+        {/* 透過強度 + 再適用。親が onRetransparent を渡した画面（セル編集）だけ出す。
+            元画像の該当セル範囲から作り直すので、消えすぎも消え足りないも直せる。 */}
+        {onRetransparent && (
+          <View style={styles.retransWrap} pointerEvents="box-none">
+            <View style={styles.retransCard}>
+              <View style={styles.retransHead}>
+                <Text style={styles.retransTitle}>{t('editor.retransTitle')}</Text>
+                <Text style={styles.retransValue}>{Math.round(cellTol)}</Text>
+              </View>
+              <View style={styles.retransRow}>
+                <Text style={styles.retransEnd}>{t('granularity.weak')}</Text>
+                <Slider
+                  style={styles.retransSlider}
+                  minimumValue={0}
+                  maximumValue={100}
+                  value={cellTol}
+                  onValueChange={setCellTol}
+                  minimumTrackTintColor={IOS.blue}
+                  maximumTrackTintColor="rgba(255,255,255,0.28)"
+                  thumbTintColor="#FFF"
+                />
+                <Text style={styles.retransEnd}>{t('granularity.strong')}</Text>
+              </View>
+              <AnimatedPressable
+                style={styles.retransApply}
+                onPress={() => onRetransparent(cellTol)}
+                pressedScale={0.96}
+              >
+                <Icon name="auto-fix-high" size={16} color="#FFF" />
+                <Text style={styles.retransApplyTxt}>{t('editor.retransApply')}</Text>
+              </AnimatedPressable>
+            </View>
+          </View>
+        )}
+
+        {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
+            表示を出してから1フレーム待って実処理へ入る（rippleThen が担保）。 */}
+        {eyeBusy && (
+          <View style={styles.busyOverlay}>
+            <View style={styles.busyCard}>
+              <ActivityIndicator color="#FFF" />
+              <Text style={styles.busyTxt}>{t('editor.eyedropBusy')}</Text>
+            </View>
+          </View>
+        )}
+
         {/* ポリゴン連番バッジ */}
         {labelPositions.map((pos, idx) => (
           <View
@@ -1461,12 +1528,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         <View style={styles.floating} pointerEvents="box-none">
           <AnimatedPressable
             style={[styles.floatBtn, appMode === 'draw' && styles.floatBtnActive]}
+            disabled={eyeBusy}
             onPress={() => setAppMode('draw')}
           >
             <Icon name="edit" size={22} color="#FFF" />
           </AnimatedPressable>
           <AnimatedPressable
             style={[styles.floatBtn, appMode === 'move' && styles.floatBtnActive]}
+            disabled={eyeBusy}
             onPress={() => setAppMode('move')}
           >
             <Icon name="pan-tool" size={22} color="#FFF" />
@@ -1474,6 +1543,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           {/* スポイト: タップした色を透過させる。描画/移動と排他のツール。 */}
           <AnimatedPressable
             style={[styles.floatBtn, appMode === 'eyedropper' && styles.floatBtnActive]}
+            disabled={eyeBusy}
             onPress={() => setAppMode('eyedropper')}
           >
             <Icon name="colorize" size={22} color="#FFF" />
@@ -1553,14 +1623,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       <View style={styles.bar}>
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={past.length === 0 && !canUndoEdit}
+          disabled={eyeBusy || (past.length === 0 && !canUndoEdit)}
           onPress={handleUndo}
         >
           <Icon name="undo" size={24} color={IOS.label} />
         </AnimatedPressable>
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={future.length === 0 && !canRedoEdit}
+          disabled={eyeBusy || (future.length === 0 && !canRedoEdit)}
           onPress={handleRedo}
         >
           <Icon name="redo" size={24} color={IOS.label} />
@@ -1568,7 +1638,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         {/* 削除ボタン: 頂点選択中=頂点削除 / ポリゴン選択中=ポリゴン削除 / 未選択=非活性 */}
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={selectedId === null}
+          disabled={eyeBusy || selectedId === null}
           onPress={deleteSelected}
         >
           <Icon name="delete" size={24} color={selectedId !== null ? IOS.red : IOS.label} />
@@ -1577,7 +1647,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             戻すものが何も無い時は非活性。 */}
         <AnimatedPressable
           style={styles.barIconBtn}
-          disabled={polygons.length === 0 && past.length === 0}
+          disabled={eyeBusy || (polygons.length === 0 && past.length === 0)}
           onPress={handleReset}
         >
           <Icon name="refresh" size={24} color={IOS.label} />
@@ -1766,6 +1836,52 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   zoomStepTxt: { fontSize: 18, color: '#FFF' },
+  // ── 透過強度パネル（セル編集のみ）─────────────────────────────────────────
+  retransWrap: {
+    position: 'absolute',
+    left: 12, right: 12, top: 56,
+    alignItems: 'center',
+  },
+  retransCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: 'rgba(30,30,30,0.86)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+    gap: 6,
+  },
+  retransHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  retransTitle: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  retransValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
+  retransRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  retransSlider: { flex: 1, height: 30 },
+  retransEnd: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+  retransApply: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: IOS.blue,
+    borderRadius: 10,
+    paddingVertical: 8,
+  },
+  retransApplyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
+  // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
+  busyOverlay: {
+    position: 'absolute',
+    left: 0, right: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  busyCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(30,30,30,0.92)',
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderRadius: 14,
+  },
+  busyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
   zoomSliderWrap: {
     width: 150,
     height: 30,

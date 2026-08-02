@@ -411,6 +411,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [chromeHidden, setChromeHidden] = useState(false);
   // 復元ブラシの太さ（BRUSH_SIZES の添字）と、なぞっている最中の軌跡（表示座標）。
   const [brushPx, setBrushPx] = useState(BRUSH_DEFAULT_PX);
+  // スポイトの許容値。設定画面まで行かずに、その場で強弱を変えられるようにする。
+  const [eyeTol, setEyeTol] = useState(settings.eyedropperTolerance);
   // 元画像の透かし表示。復元ブラシでは既定 ON（消えた場所が見えないと塗れない）。
   const [ghostOn, setGhostOn] = useState(true);
   // ツールメニューの開閉。常時6個並べると編集領域を食うので、普段は
@@ -556,8 +558,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const imageHRef     = useRef(bgResult.height); imageHRef.current = bgResult.height;
   // スポイト用。許容値は設定画面で変わるので、クロージャ直参照だと初回値に固定される。
   const rgbaRef       = useRef(bgResult.rgba);   rgbaRef.current   = bgResult.rgba;
-  const eyeTolRef     = useRef(settings.eyedropperTolerance);
-  eyeTolRef.current   = settings.eyedropperTolerance;
+  const eyeTolRef     = useRef(eyeTol);
+  eyeTolRef.current   = eyeTol;
   const featherRef    = useRef(settings.featherEdges);
   featherRef.current  = settings.featherEdges;
   // 親のコールバックは PanResponder のクロージャからも呼ぶので ref 経由で読む。
@@ -1780,6 +1782,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         )}
 
         {/* ブラシの太さ。復元モードの時だけ出す。連続値で、現在値を px で示す。 */}
+        {/* スポイトの許容値。ブラシの太さと同じ枠を使い、スポイト選択中だけ出す。
+            設定画面まで行かずに「もう少し広く／狭く」を調整できるようにする。 */}
+        {appMode === 'eyedropper' && !retransOpen && !chromeHidden && (
+          <View style={styles.panelSlot} pointerEvents="box-none">
+            <View style={styles.brushCard}>
+              <View style={styles.brushHead}>
+                <Text style={styles.brushLabel}>{t('settings.eyedropperTolerance')}</Text>
+                <Text style={styles.brushValue}>{Math.round(eyeTol)}</Text>
+              </View>
+              <Slider
+                style={styles.brushSlider}
+                minimumValue={0}
+                maximumValue={100}
+                value={eyeTol}
+                onSlidingStart={() => { uiInteractingRef.current = true; }}
+                onValueChange={setEyeTol}
+                onSlidingComplete={() => { uiInteractingRef.current = false; }}
+                minimumTrackTintColor={IOS.blue}
+                maximumTrackTintColor="rgba(255,255,255,0.28)"
+                thumbTintColor="#FFF"
+              />
+            </View>
+          </View>
+        )}
+
         {/* ブラシの太さ。透過強度が開いている間は出さない（同じ場所を使うため）。
             ペン/スポイト等のツール切替と同じで、常にどちらか一方だけが出る。 */}
         {appMode === 'restore' && !retransOpen && !chromeHidden && (
@@ -1889,27 +1916,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
         {/* ── フローティング上部: 下地切替 ── */}
         <View style={styles.floatingTop} pointerEvents="box-none">
-          <View style={styles.bgSegmented}>
-            {([
-              // 'gray' は廃止（市松・白・黒で用は足りるため）。設定の「背景色」も同じ3択。
-              { mode: 'checker', label: t('colors.checker') },
-              { mode: 'white',   label: t('colors.white') },
-              { mode: 'black',   label: t('colors.black') },
-            ] as const).map(({ mode, label }) => (
-              <AnimatedPressable
-                key={mode}
-                style={[styles.bgSegBtn, bgMode === mode && styles.bgSegBtnOn]}
-                onPress={() => setBgMode(mode)}
-                pressedScale={0.94}
-              >
-                <Text style={[styles.bgSegTxt, bgMode === mode && styles.bgSegTxtOn]}>
-                  {label}
-                </Text>
-              </AnimatedPressable>
-            ))}
-          </View>
+
           {/* 倍率とズーム操作は隣り合わせに置く。数値だけ離れた場所にあると
               「今いくつか」と「どう変えるか」が結びつかない。 */}
+          {!chromeHidden && (
           <View style={styles.zoomTopRow}>
             <Text style={styles.zoomBadgeTxt}>×{sliderToZoom(sliderV).toFixed(1)}</Text>
             <View style={styles.zoomSliderWrap}>
@@ -1956,14 +1966,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               <Icon name="refresh" size={17} color="#FFF" />
             </AnimatedPressable>
           </View>
-        </View>
-
-        {/* ── ツールメニュー（右端）──
+          )}
+          {/* ── ツールメニュー（右端）──
             常時6個並べると編集領域を食うので、普段は選択中の1個だけを出す。
             アイコンの下の矢印が「押すと他のツールが出る」ことを示す。
             選ぶと閉じて、そのツールのアイコンに変わる。 */}
-        <View style={styles.floating} pointerEvents="box-none">
-          {/* 現在のツール。押すと展開する。 */}
+          <View style={styles.floating} pointerEvents="box-none">
+            {/* 現在のツール。押すと展開する。 */}
           <AnimatedPressable
             style={[styles.floatBtn, styles.floatBtnActive]}
             disabled={eyeBusy}
@@ -1999,7 +2008,25 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
               <View style={styles.floatDivider} />
 
-              {/* 再透過（セル編集の時だけ親から渡される）。 */}
+                {/* 下地の切替。常時出しておくほどのものではないのでここへ入れる。 */}
+              <View style={styles.bgColumn}>
+                {([
+                  { mode: 'checker', icon: 'grid-on' },
+                  { mode: 'white',   icon: 'lightbulb' },
+                  { mode: 'black',   icon: 'lightbulb-outline' },
+                ] as const).map(({ mode, icon }) => (
+                  <AnimatedPressable
+                    key={mode}
+                    style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
+                    onPress={() => setBgMode(mode)}
+                    pressedScale={0.9}
+                  >
+                    <Icon name={icon} size={16} color="#FFF" />
+                  </AnimatedPressable>
+                ))}
+              </View>
+
+                {/* 再透過（セル編集の時だけ親から渡される）。 */}
               {onRetransparent && (
                 <AnimatedPressable
                   style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
@@ -2017,7 +2044,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 </AnimatedPressable>
               )}
 
-              {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
+                {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
               <AnimatedPressable
                 style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
                 disabled={eyeBusy}
@@ -2027,7 +2054,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               </AnimatedPressable>
             </>
           )}
+          </View>
         </View>
+
+
 
         {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
             ズーム操作を横1列にまとめる。スライダーは対数目盛りで、
@@ -2189,10 +2219,11 @@ const styles = StyleSheet.create({
     left:      8,
     right:     8,
     top:       8,
-    // 下地切替とズームを横1行に並べる。縦に2段重ねると画像の上端が
-    // その分だけ触れなくなるため、高さを1行に抑える。
+    // 「ズーム（余った幅いっぱい）｜ドロップダウン」の1行。
+    // 縦に段を重ねると画像の上端がその分だけ触れなくなるので、高さは1行に抑える。
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: 8,
   },
 
@@ -2216,6 +2247,18 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
   },
   // 現在のツールの下に出す小さな矢印。「押すと他のツールが出る」ことを示す。
+  bgColumn: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  bgDot: {
+    width: 36, height: 28,
+    borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  bgDotOn: { backgroundColor: IOS.blue, borderColor: IOS.blue },
   floatCaret: {
     position: 'absolute',
     bottom: -1,
@@ -2240,6 +2283,7 @@ const styles = StyleSheet.create({
   },
   // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
   zoomTopRow: {
+    flex: 1,   // 余った幅をズーム行が使う
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -2251,8 +2295,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomSliderWrap: {
-    // 下地切替と横に並ぶので、幅を詰めて小さい画面でも収まるようにする。
-    width: 112,
+    // 余った幅いっぱいに伸ばす。長いほど倍率を細かく決めやすい。
+    flex: 1,
+    minWidth: 90,
     height: 34,
     justifyContent: 'center',
   },

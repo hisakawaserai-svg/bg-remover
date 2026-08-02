@@ -76,11 +76,8 @@ const ZOOM_MIN       = 1;
  * （画像テクスチャは同じものを使い回す）。
  */
 const ZOOM_MAX       = 24;
-const ZOOM_STEP      = 0.5; // ボタン1回分のズーム量
 /** 倍率プリセット。スライダーの目盛りと、離した時の吸い付き先を兼ねる。 */
 const ZOOM_PRESETS   = [1, 2, 4, 8, 16, 24] as const;
-/** ズームバーの高さ(px)。ツール説明を上へ逃がす量の計算に使う。 */
-const ZOOM_BAR_H     = 40;
 
 /**
  * 倍率 ↔ スライダー位置(0〜1) の変換。
@@ -597,28 +594,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // なので throttle なしでも十分に軽い。
 
   // ── ボタンズーム ────────────────────────────────────────────────────────────
-
-  /**
-   * [+]/[−] ボタン用の中心固定ズーム。
-   * 焦点 = 表示領域の中心 (displayW/2, displayH/2)。
-   * tx = focal - (focal - tx) * (newScale / oldScale) で
-   * 焦点が画面上で動かないよう tx/ty を補正する。
-   */
-  const stepZoom = useCallback((direction: 1 | -1) => {
-    setZoom(prev => {
-      const newScale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, prev.scale + direction * ZOOM_STEP));
-      if (newScale === prev.scale) return prev;
-      const focalX = canvasSizeRef.current.w / 2;
-      const focalY = canvasSizeRef.current.h / 2;
-      const ratio  = newScale / prev.scale;
-      return clampZoom({
-        scale: newScale,
-        tx: focalX - (focalX - prev.tx) * ratio,
-        ty: focalY - (focalY - prev.ty) * ratio,
-      }, canvasSizeRef.current.w, canvasSizeRef.current.h,
-         imageWRef.current * dsRef.current, imageHRef.current * dsRef.current);
-    });
-  }, []);
 
   /**
    * 倍率を直接指定する（プリセット・リセット共用）。
@@ -1797,8 +1772,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             icon={TOOL_HINTS[appMode].icon}
             title={t(TOOL_HINTS[appMode].titleKey)}
             desc={t(TOOL_HINTS[appMode].descKey)}
-            // ズームバー（高さ約40 + 下余白8）のぶん上へ逃がす。
-            bottom={ZOOM_BAR_H + 16}
+            // ズームは右端へ移したので、下端は説明とブラシ設定だけになった。
+            bottom={12}
           />
         )}
 
@@ -1881,83 +1856,58 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           >
             <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
           </AnimatedPressable>
+
+          {/* ── ズーム（縦）──
+              以前は画面下に横並びで置いていたが、ツール説明・ブラシ設定と
+              下側に集中して窮屈だった。ツール群を上へ寄せ、空いた右端の縦方向に
+              移す。同じ列に並べているので、画面が短い端末でも重なりようがない。 */}
+          {!chromeHidden && (
+            <>
+              <View style={styles.floatDivider} />
+              <View style={styles.vzoomBox}>
+                <Slider
+                  style={styles.vzoomSlider}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={sliderV}
+                  onSlidingStart={() => {
+                    zoomDraggingRef.current = true;
+                    uiInteractingRef.current = true;
+                    discardStroke();
+                  }}
+                  onValueChange={v => {
+                    setSliderV(v);
+                    setZoomScale(sliderToZoom(v));
+                  }}
+                  onSlidingComplete={v => {
+                    // 目盛りの近くで離したらぴったりの倍率へ寄せる。
+                    const near = ZOOM_PRESETS.find(
+                      p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
+                    const finalV = near !== undefined ? zoomToSlider(near) : v;
+                    setSliderV(finalV);
+                    setZoomScale(near !== undefined ? near : sliderToZoom(v));
+                    zoomDraggingRef.current = false;
+                    uiInteractingRef.current = false;
+                    discardStroke();
+                  }}
+                  minimumTrackTintColor={IOS.blue}
+                  maximumTrackTintColor="rgba(255,255,255,0.28)"
+                  thumbTintColor="#FFF"
+                />
+              </View>
+              {/* 全体表示に戻す */}
+              <AnimatedPressable style={styles.floatBtnSmall} onPress={resetZoom} pressedScale={0.9}>
+                <Icon name="refresh" size={18} color="#FFF" />
+              </AnimatedPressable>
+            </>
+          )}
         </View>
 
         {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
             ズーム操作を横1列にまとめる。スライダーは対数目盛りで、
             ×1/×2/×4/×8/×12 の目盛りに吸い付く。細かく詰めたい時は連続値、
             決め打ちしたい時は目盛り、と両方できる。 */}
-        {!chromeHidden && (
-        <View style={styles.zoomBar} pointerEvents="box-none">
-          <View style={styles.zoomRow}>
-            <AnimatedPressable
-              style={styles.zoomStepBtn}
-              disabled={zoom.scale <= ZOOM_MIN}
-              onPress={() => stepZoom(-1)}
-            >
-              <Text style={styles.zoomStepTxt}>－</Text>
-            </AnimatedPressable>
-            {/* 倍率スライダー（対数目盛り）。目盛りは ×1/×2/×4/×8/×12 で、
-                指を離した時に近ければ吸い付く。連続値でも刻みでも狙える。 */}
-            <View style={styles.zoomSliderWrap}>
-              <View style={styles.zoomTicks} pointerEvents="none">
-                {ZOOM_PRESETS.map(p => (
-                  <View
-                    key={p}
-                    style={[
-                      styles.zoomTick,
-                      // トラック両端はつまみ半径ぶん内側なので、目盛りも同じ式で置く。
-                      { left: `${zoomToSlider(p) * 100}%` },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Slider
-                style={styles.zoomSlider}
-                minimumValue={0}
-                maximumValue={1}
-                value={sliderV}
-                onSlidingStart={() => {
-                  zoomDraggingRef.current = true;
-                  uiInteractingRef.current = true;
-                  discardStroke();
-                }}
-                onValueChange={v => {
-                  setSliderV(v);
-                  setZoomScale(sliderToZoom(v));
-                }}
-                onSlidingComplete={v => {
-                  // 目盛りの近くで離したらぴったりの倍率へ寄せる。
-                  const near = ZOOM_PRESETS.find(
-                    p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
-                  const finalV = near !== undefined ? zoomToSlider(near) : v;
-                  setSliderV(finalV);
-                  setZoomScale(near !== undefined ? near : sliderToZoom(v));
-                  zoomDraggingRef.current = false;
-                  uiInteractingRef.current = false;
-                  discardStroke();
-                }}
-                minimumTrackTintColor={IOS.blue}
-                maximumTrackTintColor="rgba(255,255,255,0.28)"
-                thumbTintColor="#FFF"
-              />
-            </View>
-            <AnimatedPressable
-              style={styles.zoomStepBtn}
-              disabled={zoom.scale >= ZOOM_MAX}
-              onPress={() => stepZoom(1)}
-            >
-              <Text style={styles.zoomStepTxt}>＋</Text>
-            </AnimatedPressable>
-            {/* 全体表示に戻す。拡大しすぎた・画像がどこかへ行った時の復帰専用。
-                バーの外に置くとツール説明と重なるため、[＋] の隣に並べる。 */}
-            <View style={styles.zoomSep} />
-            <AnimatedPressable style={styles.zoomStepBtn} onPress={resetZoom} pressedScale={0.9}>
-              <Icon name="refresh" size={19} color="#FFF" />
-            </AnimatedPressable>
-          </View>
-        </View>
-        )}
+
       </View>
 
       {/* ── 下部コントロールバー: undo / redo / 削除 / 保存 ── */}
@@ -2118,9 +2068,13 @@ const styles = StyleSheet.create({
   floating: {
     position: 'absolute',
     right: 8,
-    top: '30%',
+    // 下側（ツール説明・ブラシ設定）が混み合っていたので上へ寄せ、
+    // 空いた右端の縦方向にズームを入れる。右上の下地切替と被らない位置から。
+    top: 76,
     alignItems: 'center',
-    gap: 8,
+    // 縦に全部積むので、画面の短い端末（iPhone SE 等）でも収まるよう詰める。
+    // ボタン自体は 44pt を維持する（これ以上小さくすると押しにくい）。
+    gap: 6,
   },
   floatBtn: {
     width: 44, height: 44,
@@ -2140,7 +2094,42 @@ const styles = StyleSheet.create({
   floatBtnDisabled: { opacity: 0.3 },
   floatBtnTxt: { fontSize: 20, color: '#FFF' },
 
-  // ── 倍率バッジ / ズームバー ────────────────────────────────────────────────
+  // 右カラム内の区切り（ツール群とズームの間）。
+  floatDivider: {
+    width: 28,
+    height: 0.5,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    marginVertical: 2,
+  },
+  // 小さめの丸ボタン（全体表示）。ツールボタンより控えめにする。
+  floatBtnSmall: {
+    width: 36, height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  /**
+   * 縦ズームスライダー。
+   * Slider は縦向きを持たないので、横向きのまま -90度 回して縦にする。
+   * 箱の幅・高さと、中のスライダーの幅・高さを入れ替えた関係にしてある。
+   */
+  vzoomBox: {
+    width: 44,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: 'rgba(30,30,30,0.72)',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  vzoomSlider: {
+    width: 92,
+    height: 40,
+    transform: [{ rotate: '-90deg' }],
+  },
+
+  // ── 倍率バッジ ────────────────────────────────────────────────────────────
   zoomBadge: {
     marginTop: 6,
     alignSelf: 'flex-end',
@@ -2156,27 +2145,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontVariant: ['tabular-nums'],  // 倍率が動いても幅が揺れないようにする
   },
-  zoomBar: {
-    position: 'absolute',
-    left: 0, right: 0, bottom: 8,
-    alignItems: 'center',
-  },
-  zoomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 5,
-    paddingVertical: 5,
-    borderRadius: 14,
-    backgroundColor: 'rgba(30,30,30,0.72)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  zoomStepBtn: {
-    width: 32, height: 30,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  zoomStepTxt: { fontSize: 18, color: '#FFF' },
   // ── 透過強度パネル（セル編集のみ）─────────────────────────────────────────
   retransWrap: {
     position: 'absolute',
@@ -2223,7 +2191,8 @@ const styles = StyleSheet.create({
   },
   brushBar: {
     position: 'absolute',
-    left: 12, right: 12, bottom: ZOOM_BAR_H + 56,
+    // ツール説明（高さ約34 + 下余白12）の上に重ならないよう置く。
+    left: 12, right: 12, bottom: 58,
     alignItems: 'center',
   },
   brushCard: {
@@ -2264,32 +2233,6 @@ const styles = StyleSheet.create({
   },
   busyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
 
-  zoomSliderWrap: {
-    width: 150,
-    height: 30,
-    justifyContent: 'center',
-  },
-  zoomSlider: { width: '100%', height: 30 },
-  // 目盛り。トラックの裏に細い縦線を置く。
-  zoomTicks: {
-    position: 'absolute',
-    left: 10, right: 10,
-    top: 13, height: 4,
-  },
-  zoomTick: {
-    position: 'absolute',
-    width: 1.5, height: 4,
-    marginLeft: -0.75,
-    borderRadius: 1,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-  },
-  // [＋] と全体表示ボタンの間の区切り。役割が違うことを示す。
-  zoomSep: {
-    width: 0.5,
-    height: 20,
-    marginHorizontal: 3,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
 
 
   // draw モードのオーバーレイヒント（iOS のトースト風）

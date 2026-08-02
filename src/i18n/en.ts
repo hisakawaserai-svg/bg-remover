@@ -212,6 +212,8 @@ const en: typeof ja = {
     eyedropperToleranceHint: 'Color-difference threshold from the tapped color (higher erases more)',
     feather: 'Soften edges',
     featherHint: 'Makes the 1px border semi-transparent to prevent white fringing',
+    fillTextHoles: 'Remove background inside letters',
+    fillTextHolesHint: 'Also removes narrow enclosed background, such as the inside of "A" or "O". Thin artwork the same color as the background may disappear',
     sectionExport: 'Export',
     album: 'Destination album',
     autoDelete: 'Auto-delete work data after saving',

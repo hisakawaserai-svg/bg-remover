@@ -70,6 +70,15 @@ export interface AppSettings {
    * アンチエイリアスの無い絵では効果が薄いのでOFFにできるようにしてある。
    */
   featherEdges: boolean;
+  /**
+   * 「文字の穴を透過する」（上級者向け）。既定 false。
+   *
+   * ON にすると、線で囲まれていて画像端と繋がっていない背景（「あ」「ロ」の内側や
+   * 細い隙間）も透過する。抜くのは「細い」閉領域だけに限っているが、それでも
+   * 背景と同じ色の細い被写体を消してしまう可能性は残る。
+   * スタンプ作成では誤除去のほうが痛いので、既定は OFF。
+   */
+  fillTextHoles: boolean;
   gridColumns: 2 | 3 | 4;
   thumbBg: ThumbBg;
   splitLineColor: SplitLineColor;
@@ -135,6 +144,8 @@ export const DEFAULTS: AppSettings = {
   // tolerance の現行デフォルトと同じ値。分離しても既存ユーザーの体感が変わらないようにする。
   splitTolerance: 30,
   featherEdges:   true,
+  // 既定 OFF。誤除去を増やさないことを優先する（上級者が明示的に ON にする想定）。
+  fillTextHoles:  false,
   gridColumns:    3,
   thumbBg:        'white',
   splitLineColor: '#007AFF',

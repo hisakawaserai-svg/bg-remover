@@ -462,7 +462,7 @@ function AppScreens() {
       baseRgbaRef.current = result.rgba.slice();
       const steps: EditStep[] = resumeEdits?.length
         ? resumeEdits
-        : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges }];
+        : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
       applyEditSteps(result.rgba, result.width, result.height, steps);
       editsRef.current = steps;
       setEdits(steps);
@@ -1001,6 +1001,7 @@ function AppScreens() {
           latest.imageUri,
           latest.autoData.tolerance ?? appSettings.tolerance,
           appSettings.featherEdges,
+          appSettings.fillTextHoles,
         );
         setBgResult(result);
 
@@ -1040,7 +1041,7 @@ function AppScreens() {
         baseRgbaRef.current = result.rgba.slice();
         const steps: EditStep[] = latest.edits?.length
           ? latest.edits
-          : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges }];
+          : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
         applyEditSteps(result.rgba, result.width, result.height, steps);
         editsRef.current = steps;
         setEdits(steps);

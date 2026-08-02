@@ -25,7 +25,7 @@ export function applyEditSteps(
 ): void {
   for (const s of steps) {
     if (s.kind === 'autoBg') {
-      removeBackgroundInPlace(rgba, width, height, s.tolerance, s.feather);
+      removeBackgroundInPlace(rgba, width, height, s.tolerance, s.feather, s.fillHoles ?? false);
     } else {
       removeColorAt(rgba, width, height, s.x, s.y, s.tolerance, s.feather);
     }

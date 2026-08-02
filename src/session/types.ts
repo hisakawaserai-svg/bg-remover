@@ -31,7 +31,10 @@ export interface SessionPolygon {
  * ようにするため、他の操作と同じ列に並べている。
  */
 export type EditStep =
-  | { kind: 'autoBg'; tolerance: number; feather: boolean }
+  // fillHoles は「文字の穴を透過する」オプション。省略時 false。
+  // 既存の保存済みセッションにはこのキーが無いため optional にしてある
+  // （無い＝当時の挙動＝穴埋めなし、として正しく再現できる）。
+  | { kind: 'autoBg'; tolerance: number; feather: boolean; fillHoles?: boolean }
   | { kind: 'eyedrop'; x: number; y: number; tolerance: number; feather: boolean };
 
 /**

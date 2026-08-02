@@ -239,6 +239,8 @@ const ja = {
     eyedropperToleranceHint: 'タップした色との色差しきい値（大きいほど広く消える）',
     feather: '輪郭をなじませる',
     featherHint: '境目の1pxを半透明にして白フチを防ぎます',
+    fillTextHoles: '文字の穴を透過する',
+    fillTextHolesHint: '「あ」「ロ」の内側など、囲まれた細い背景も抜きます。背景と同じ色の細い絵柄が消えることがあります',
     sectionExport: '書き出し',
     album: '保存先アルバム',
     autoDelete: '保存後に作業データを自動削除',

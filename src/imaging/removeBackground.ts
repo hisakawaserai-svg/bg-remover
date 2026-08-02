@@ -17,6 +17,24 @@ export const PEEL_MIN_CLEAR_RATIO = 0.05;
 /** 残っている前景のこの割合を超えて消すなら、背景ではなく被写体とみなして中止。 */
 export const PEEL_MAX_CLEAR_RATIO = 0.9;
 
+// ── 「文字の穴を透過する」（上級者向けオプション）のパラメータ ──────────────────
+/**
+ * 穴として抜いてよい「太さ」の上限。短辺に対する割合で、内接半径と比べる。
+ *
+ * 面積ではなく太さで判定するのが要点。白い鳥のような背景色と同じ色の被写体は、
+ * 面積が小さくても「太い」ので弾ける。一方、文字の内側や線の隙間は面積に関係なく
+ * 細いので通る。面積上限だけの判定では両者を区別できず、被写体を消してしまう。
+ */
+export const HOLE_MAX_THICKNESS_RATIO = 0.015;
+/** 太さ上限の下限・上限（px）。小さい画像で0になったり、大画像で緩くなりすぎるのを防ぐ。 */
+export const HOLE_MIN_THICKNESS_PX = 3;
+export const HOLE_MAX_THICKNESS_PX = 24;
+/**
+ * 面積の上限（画像全体に対する割合）。太さ判定に加えた二段目の保険。
+ * 細長い形が延々と繋がっているケースで、広範囲が一気に消えるのを防ぐ。
+ */
+export const HOLE_MAX_AREA_RATIO = 0.05;
+
 // ── 輪郭フェザリングのパラメータ ──────────────────────────────────────────────
 /** 本体色と背景色のチャンネル差がこれ未満だと混合比の推定が不安定なので使わない。 */
 export const FEATHER_MIN_CONTRAST = 20;
@@ -51,9 +69,10 @@ export async function removeBackground(
   fileUri: string,
   tolerance: number = TOLERANCE,
   feather: boolean = true,
+  fillHoles: boolean = false,
 ): Promise<RemoveBgResult> {
   const img = await loadImagePixels(fileUri);
-  removeBackgroundInPlace(img.rgba, img.width, img.height, tolerance, feather);
+  removeBackgroundInPlace(img.rgba, img.width, img.height, tolerance, feather, fillHoles);
   return img;
 }
 
@@ -136,7 +155,11 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
 
 /**
  * 読み込み済みの画素に対して背景除去を行う（破壊的）。
- * 四隅からのフラッドフィル → 皮むき → フェザリング → alpha を落とす、の順。
+ * 四隅からのフラッドフィル → 皮むき → 穴埋め(任意) → フェザリング → alpha を落とす、の順。
+ *
+ * fillHoles は「文字の穴を透過する」オプション。既定 false。
+ * 背景色と同じ色の被写体（白背景の上の白い鳥など）を消す可能性があるため、
+ * 通常の除去では使わず、ユーザーが明示的に有効にしたときだけ通す。
  */
 export function removeBackgroundInPlace(
   rgba: Uint8Array,
@@ -144,6 +167,7 @@ export function removeBackgroundInPlace(
   height: number,
   tolerance: number = TOLERANCE,
   feather: boolean = true,
+  fillHoles: boolean = false,
 ): void {
   const pixelCount = width * height;
   const bgColors = estimateBgColors(rgba, width, height, tolerance);
@@ -172,7 +196,15 @@ export function removeBackgroundInPlace(
     );
   }
 
+  // 文字の内側のように、画像端と繋がっていない「細い」閉じた背景を拾う（任意）。
+  // 皮むきの後に置くことで、皮むき側の「境界色の偏り」判定に影響を与えない。
+  if (fillHoles) {
+    const holes = fillEnclosedHoles(rgba, visited, width, height, bgColors, tolerance);
+    console.log(`[removeBg] holes: +${holes}px`);
+  }
+
   // 輪郭を半透明化するのは alpha を落とす前（境界画素の元の色が必要なため）。
+  // 穴埋めの後に呼ぶので、穴の内側の縁も同じようにフェザリングされる。
   if (feather) {
     const softened = featherEdges(rgba, visited, width, height, bgColors);
     console.log(`[removeBg] feather: ${softened}px`);
@@ -457,6 +489,168 @@ function featherEdges(
     rgba[off] = r; rgba[off + 1] = g; rgba[off + 2] = b; rgba[off + 3] = a;
   }
   return writes.length;
+}
+
+/**
+ * 成分の「太さ」＝最大内接半径を測る（マンハッタン距離）。
+ *
+ * bbox を1px ぶん外へ広げた作業領域を作り、成分外の画素を距離0として
+ * 2パスの距離変換をかける。返るのは成分内の最大距離で、
+ * 「その形の中に収まる最大の円（菱形）の半径」にあたる。
+ *
+ * 文字の内側や線の隙間は細いので小さく、鳥の体のような塊は大きくなる。
+ * 面積では区別できない両者を、この値なら分けられる。
+ */
+function componentThickness(
+  component: Int32Array,
+  size: number,
+  w: number,
+): number {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < size; i++) {
+    const idx = component[i];
+    const x = idx % w;
+    const y = (idx - x) / w;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  // 外周1pxを「成分外」として確保するため、bbox を上下左右に1広げる。
+  const bw = maxX - minX + 3;
+  const bh = maxY - minY + 3;
+  const dist = new Int32Array(bw * bh); // 0 = 成分外
+  const INSIDE = bw + bh; // 距離の上限として十分大きい値
+  for (let i = 0; i < size; i++) {
+    const idx = component[i];
+    const x = idx % w;
+    const y = (idx - x) / w;
+    dist[(y - minY + 1) * bw + (x - minX + 1)] = INSIDE;
+  }
+
+  // 前向きパス: 上と左から伝播。
+  for (let y = 1; y < bh; y++) {
+    for (let x = 1; x < bw; x++) {
+      const i = y * bw + x;
+      if (dist[i] === 0) continue;
+      const up = dist[i - bw] + 1;
+      const left = dist[i - 1] + 1;
+      const m = up < left ? up : left;
+      if (m < dist[i]) dist[i] = m;
+    }
+  }
+  // 後ろ向きパス: 下と右から伝播。
+  let best = 0;
+  for (let y = bh - 2; y >= 0; y--) {
+    for (let x = bw - 2; x >= 0; x--) {
+      const i = y * bw + x;
+      if (dist[i] === 0) continue;
+      const down = dist[i + bw] + 1;
+      const right = dist[i + 1] + 1;
+      const m = down < right ? down : right;
+      if (m < dist[i]) dist[i] = m;
+      if (dist[i] > best) best = dist[i];
+    }
+  }
+  return best;
+}
+
+/**
+ * 閉じた背景（穴）の除去。「文字の穴を透過する」オプションが ON のときだけ呼ばれる。
+ *
+ * 四隅からのフラッドフィルは、背景が線で囲まれていると内側へ入れない。
+ * 「あ」「ロ」やロゴの内側、細い線が作る隙間がこれにあたり、そこだけ背景色が残る。
+ * 皮むきパスは画像の5%以上が消えるときしか発動しないため、この手の領域には届かない。
+ *
+ * 残っている画素を連結成分に分け、次を全部満たす成分だけ透過する:
+ *   - 成分内の全画素が推定背景色に tol 以内で一致する
+ *   - 画像の端に接していない（＝囲まれた内側）
+ *   - 「太さ」が上限以下（＝細い隙間であって、塊ではない）
+ *   - 面積が画像全体の HOLE_MAX_AREA_RATIO 以下（二段目の保険）
+ *
+ * 太さ判定が要になる。色と面積だけで判断すると、白背景の上の白い鳥のように
+ * 「背景色と同じ色で、輪郭線に囲まれた、小さい被写体」を消してしまう。
+ *
+ * 返り値は新たに透過した画素数。
+ */
+function fillEnclosedHoles(
+  rgba: Uint8Array,
+  visited: Uint8Array,
+  w: number,
+  h: number,
+  bgColors: BgColor[],
+  tol: number,
+): number {
+  if (bgColors.length === 0) return 0;
+
+  const pixelCount = w * h;
+  const maxArea = Math.floor(pixelCount * HOLE_MAX_AREA_RATIO);
+  if (maxArea < 1) return 0;
+
+  const maxThickness = Math.max(
+    HOLE_MIN_THICKNESS_PX,
+    Math.min(HOLE_MAX_THICKNESS_PX, Math.round(Math.min(w, h) * HOLE_MAX_THICKNESS_RATIO)),
+  );
+
+  // 一度見た画素は再訪しない。visited とは別に持つ（採用しなかった成分も
+  // 「見た」として畳んでしまうことで、全体を O(画素数) に保つ）。
+  const seen = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  // 上限を超えた成分はどのみち不採用なので、記録は maxArea 個までで足りる。
+  const component = new Int32Array(maxArea);
+  let filled = 0;
+
+  for (let start = 0; start < pixelCount; start++) {
+    if (visited[start] || seen[start]) continue;
+    // 背景色に一致しない画素は被写体。そこから成分を広げない。
+    if (!matchesBg(rgba, start * 4, bgColors, tol)) {
+      seen[start] = 1;
+      continue;
+    }
+
+    let head = 0;
+    let tail = 0;
+    let size = 0;
+    let touchesEdge = false;
+    seen[start] = 1;
+    queue[tail++] = start;
+
+    while (head < tail) {
+      const idx = queue[head++];
+      if (size < maxArea) component[size] = idx;
+      size++;
+
+      const x = idx % w;
+      const y = (idx - x) / w;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touchesEdge = true;
+
+      const neighbors = [
+        x > 0 ? idx - 1 : -1,
+        x < w - 1 ? idx + 1 : -1,
+        y > 0 ? idx - w : -1,
+        y < h - 1 ? idx + w : -1,
+      ];
+      for (const ni of neighbors) {
+        if (ni < 0 || seen[ni] || visited[ni]) continue;
+        // 背景色でない隣は成分の外（＝囲っている線）。seen は立てない。
+        if (!matchesBg(rgba, ni * 4, bgColors, tol)) continue;
+        seen[ni] = 1;
+        queue[tail++] = ni;
+      }
+    }
+
+    if (touchesEdge || size > maxArea) continue;
+    // 太い＝被写体の可能性。文字の内側や隙間ならここを通る。
+    if (componentThickness(component, size, w) > maxThickness) continue;
+
+    for (let i = 0; i < size; i++) {
+      visited[component[i]] = 1;
+    }
+    filled += size;
+  }
+
+  return filled;
 }
 
 /**

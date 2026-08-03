@@ -177,6 +177,9 @@ const en: typeof ja = {
     modeRestoreHint: 'Paint over parts that were erased too much to bring them back',
     brushSize: 'Brush size',
     ghost: 'Original',
+    reticleDecide: 'OK',
+    reticleRecording: 'Recording',
+    reticleSelected: 'Deselect',
     uncoveredTitle: 'Some areas are not enclosed',
     uncoveredMessage: 'Areas that are not filled will not be saved. Continue anyway?',
     uncoveredBack: 'Go back and fix',
@@ -188,6 +191,7 @@ const en: typeof ja = {
     retransApply: 'Re-apply to this cutout',
     eyedropDone: '💧 Color removed',
     eyedropNothing: '💧 No color to remove here',
+    moveNothingHere: 'No vertex or polygon here',
     eyedropBusy: 'Removing color...',
     undoBusy: 'Undoing the edit...',
     redoBusy: 'Reapplying the edit...',
@@ -242,6 +246,14 @@ const en: typeof ja = {
     boundaryColor: 'Boundary line color',
     language: 'Language',
     languageAuto: 'Match device',
+
+    // ── Loupe ──
+    sectionLoupe: 'Loupe',
+    loupeMode: 'Loupe control',
+    loupeModeHint: 'How the crosshair is aimed while the loupe is showing',
+    loupeModeFixed: 'Fixed crosshair (recommended)',
+    loupeModeAdjust: 'Nudgeable crosshair',
+    loupeModeDrag: 'Drag to adjust',
 
     // ── Appearance (app icon / launch animation) ──
     sectionAppearance: 'Appearance',

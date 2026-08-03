@@ -29,6 +29,19 @@ export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 export type AppIconSetting = 'day' | 'night' | 'sleep';
 
 /**
+ * ルーペのレティクル（照準）の扱い。復元ブラシ・スポイト・ポリゴン編集で共通。
+ *
+ *   'fixed'  … 従来どおり。指を置いている場所がそのまま編集位置で、
+ *              指を離した時点で確定する。ルーペはドラッグ中だけ出る。
+ *   'adjust' … レティクル（照準）が常に画面上にあり、指・ドラッグ・十字ボタンの
+ *              どれでも動かせる。指を離しても確定せず、決定ボタンで確定する。
+ *              十字ボタン1回＝元画像1ドットなので、拡大しても縮小しても
+ *              「押した回数＝動いたドット数」が変わらない。
+ *   'drag'   … 未実装（'fixed' と同じ挙動）。
+ */
+export type LoupeMode = 'fixed' | 'adjust' | 'drag';
+
+/**
  * 起動アニメーション。'auto' は時間帯に合わせて選び、'off' は演出なしで
  * すぐホームへ入る。それ以外は毎回そのパターンを固定で再生する
  * (通常はレア枠の 'drop' も、明示指定なら毎回出る)。
@@ -133,6 +146,13 @@ export interface AppSettings {
    * 新しく書き込むことはない(OFF は splashEnabled=false で表す)。
    */
   splashAnimation: SplashAnimationSetting;
+  /**
+   * ルーペのレティクル操作。既定は 'fixed'（従来の挙動）。
+   *
+   * 普段変える設定ではないので設定画面にだけ置く。編集中のドロップダウンに
+   * 出すと、ツール切り替えのたびに目に入る割に押されない項目が増える。
+   */
+  loupeMode: LoupeMode;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -158,6 +178,7 @@ export const DEFAULTS: AppSettings = {
   appIcon: 'day',
   splashEnabled: true,
   splashAnimation: 'auto',
+  loupeMode: 'fixed',
 };
 
 /**

@@ -37,7 +37,7 @@ import { isSplashEnabled } from '../settings/store';
 import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
-import type { AppIconSetting, SplashAnimationSetting } from '../settings/store';
+import type { AppIconSetting, LoupeMode, SplashAnimationSetting } from '../settings/store';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
 
@@ -407,6 +407,27 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               })}
             </View>
           </View>
+        </Card>
+
+        {/* ════════════════════════════════════════
+            セクション 2.9: ルーペ
+
+            編集中のドロップダウンではなくここに置いている。一度決めたら
+            まず変えない設定なので、編集画面の常設 UI を増やしたくない。
+        ════════════════════════════════════════ */}
+        <Text style={styles.sectionTitle}>{t('settings.sectionLoupe')}</Text>
+        <Card style={styles.card} padding={0}>
+          <SelectRow<LoupeMode>
+            label={t('settings.loupeMode')}
+            sub={t('settings.loupeModeHint')}
+            value={settings.loupeMode}
+            options={[
+              { value: 'fixed',  label: t('settings.loupeModeFixed') },
+              { value: 'adjust', label: t('settings.loupeModeAdjust') },
+              { value: 'drag',   label: t('settings.loupeModeDrag') },
+            ]}
+            onChange={v => void updateSettings({ loupeMode: v })}
+          />
         </Card>
 
         {/* ════════════════════════════════════════

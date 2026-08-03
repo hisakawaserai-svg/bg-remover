@@ -199,6 +199,9 @@ const ja = {
     modeRestoreHint: '消えすぎた部分をなぞって元に戻します',
     brushSize: 'ブラシの太さ',
     ghost: '元画像',
+    reticleDecide: '決定',
+    reticleRecording: '記録中',
+    reticleSelected: '解除',
     uncoveredTitle: '囲まれていない部分があります',
     uncoveredMessage: '塗りつぶされていない部分は保存されません。このまま進めますか？',
     uncoveredBack: '戻って直す',
@@ -209,6 +212,7 @@ const ja = {
     retransApply: 'このカットに再適用',
     eyedropDone: '💧 色を削除しました',
     eyedropNothing: '💧 削除できる色がありません',
+    moveNothingHere: 'ここには頂点もポリゴンもありません',
     eyedropBusy: '色を削除中...',
     undoBusy: '編集を戻しています...',
     redoBusy: '編集を適用しています...',
@@ -270,6 +274,14 @@ const ja = {
     boundaryColor: '境界線の色',
     language: '言語',
     languageAuto: '端末に合わせる',
+
+    // ── ルーペ ──
+    sectionLoupe: 'ルーペ',
+    loupeMode: 'ルーペ操作',
+    loupeModeHint: '指で隠れる位置を拡大表示する時の、照準の合わせ方',
+    loupeModeFixed: '固定レティクル（推奨）',
+    loupeModeAdjust: '微調整レティクル',
+    loupeModeDrag: 'ドラッグ調整',
 
     // ── 見た目(アプリアイコン / 起動アニメーション) ──
     sectionAppearance: '見た目',

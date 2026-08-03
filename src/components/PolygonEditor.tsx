@@ -1976,161 +1976,153 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           />
         )}
 
-        {/* ── フローティング上部: 下地切替 ── */}
+        {/* ── フローティング上部: ズーム + ツール ── */}
         <View style={styles.floatingTop} pointerEvents="box-none">
-
-          {/* 倍率とズーム操作は隣り合わせに置く。数値だけ離れた場所にあると
-              「今いくつか」と「どう変えるか」が結びつかない。 */}
           {!chromeHidden && (
-          <View style={styles.zoomTopRow}>
-            <Text style={styles.zoomBadgeTxt}>×{sliderToZoom(sliderV).toFixed(1)}</Text>
-            <View style={styles.zoomSliderWrap}>
-              {/* 目盛り。どこが ×1/×2/×4/×8/×16/×24 かを示す。 */}
-              <View style={styles.zoomTicks} pointerEvents="none">
-                {ZOOM_PRESETS.map(p => (
-                  <View key={p} style={[styles.zoomTickCol, { left: `${zoomToSlider(p) * 100}%` }]}>
-                    <View style={styles.zoomTick} />
-                    <Text style={styles.zoomTickTxt}>{p}</Text>
-                  </View>
-                ))}
+            <View style={styles.zoomTopRow}>
+              <Text style={styles.zoomBadgeTxt}>×{sliderToZoom(sliderV).toFixed(1)}</Text>
+              <View style={styles.zoomSliderWrap}>
+                {/* 目盛り。どこが ×1/×2/×4/×8/×16/×24 かを示す。 */}
+                <View style={styles.zoomTicks} pointerEvents="none">
+                  {ZOOM_PRESETS.map(p => (
+                    <View key={p} style={[styles.zoomTickCol, { left: `${zoomToSlider(p) * 100}%` }]}>
+                      <View style={styles.zoomTick} />
+                      <Text style={styles.zoomTickTxt}>{p}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Slider
+                  style={styles.zoomSlider}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={sliderV}
+                  onSlidingStart={() => {
+                    zoomDraggingRef.current = true;
+                    uiInteractingRef.current = true;
+                    discardStroke();
+                  }}
+                  onValueChange={v => {
+                    setSliderV(v);
+                    setZoomScale(sliderToZoom(v));
+                  }}
+                  onSlidingComplete={v => {
+                    const near = ZOOM_PRESETS.find(
+                      p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
+                    const finalV = near !== undefined ? zoomToSlider(near) : v;
+                    setSliderV(finalV);
+                    setZoomScale(near !== undefined ? near : sliderToZoom(v));
+                    zoomDraggingRef.current = false;
+                    uiInteractingRef.current = false;
+                    discardStroke();
+                    commitZoom();
+                  }}
+                  minimumTrackTintColor={IOS.blue}
+                  maximumTrackTintColor="rgba(255,255,255,0.28)"
+                  thumbTintColor="#FFF"
+                />
               </View>
-              <Slider
-                style={styles.zoomSlider}
-                minimumValue={0}
-                maximumValue={1}
-                value={sliderV}
-                onSlidingStart={() => {
-                  zoomDraggingRef.current = true;
-                  uiInteractingRef.current = true;
-                  discardStroke();
-                }}
-                onValueChange={v => {
-                  setSliderV(v);
-                  setZoomScale(sliderToZoom(v));
-                }}
-                onSlidingComplete={v => {
-                  const near = ZOOM_PRESETS.find(
-                    p => Math.abs(zoomToSlider(p) - v) <= ZOOM_SNAP_R);
-                  const finalV = near !== undefined ? zoomToSlider(near) : v;
-                  setSliderV(finalV);
-                  setZoomScale(near !== undefined ? near : sliderToZoom(v));
-                  zoomDraggingRef.current = false;
-                  uiInteractingRef.current = false;
-                  discardStroke();
-                  commitZoom();
-                }}
-                minimumTrackTintColor={IOS.blue}
-                maximumTrackTintColor="rgba(255,255,255,0.28)"
-                thumbTintColor="#FFF"
-              />
+              <AnimatedPressable style={styles.zoomResetBtn} onPress={resetZoom} pressedScale={0.9}>
+                <Icon name="refresh" size={17} color="#FFF" />
+              </AnimatedPressable>
             </View>
-            <AnimatedPressable style={styles.zoomResetBtn} onPress={resetZoom} pressedScale={0.9}>
-              <Icon name="refresh" size={17} color="#FFF" />
-            </AnimatedPressable>
-          </View>
           )}
           {/* ── ツールメニュー（右端）──
             常時6個並べると編集領域を食うので、普段は選択中の1個だけを出す。
             アイコンの下の矢印が「押すと他のツールが出る」ことを示す。
             選ぶと閉じて、そのツールのアイコンに変わる。 */}
-          <View style={styles.floating} pointerEvents="box-none">
+          <View style={styles.toolDropdown} pointerEvents="box-none">
             {/* 現在のツール。押すと展開する。 */}
-          <AnimatedPressable
-            style={[styles.floatBtn, styles.floatBtnActive]}
-            disabled={eyeBusy}
-            onPress={() => setToolMenuOpen(o => !o)}
-          >
-            <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
-            <Icon
-              name={toolMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
-              size={14}
-              color="#FFF"
-              style={styles.floatCaret}
-            />
-          </AnimatedPressable>
+            <AnimatedPressable
+              style={[styles.floatBtn, styles.floatBtnActive]}
+              disabled={eyeBusy}
+              onPress={() => setToolMenuOpen(o => !o)}
+            >
+              <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
+              <Icon
+                name={toolMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
+                size={14}
+                color="#FFF"
+                style={styles.floatCaret}
+              />
+            </AnimatedPressable>
 
-          {toolMenuOpen && (
-            <>
-              {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore'] as const : [])] as AppMode[])
-                .filter(m => m !== appMode)
-                .map(m => (
-                  <AnimatedPressable
-                    key={m}
-                    style={styles.floatBtn}
-                    disabled={eyeBusy}
-                    onPress={() => {
-                      setAppMode(m);
-                      setRetransOpen(false);
-                      setToolMenuOpen(false);
-                    }}
-                  >
-                    <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
-                  </AnimatedPressable>
-                ))}
+            {toolMenuOpen && (
+              <>
+                {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore'] as const : [])] as AppMode[])
+                  .filter(m => m !== appMode)
+                  .map(m => (
+                    <AnimatedPressable
+                      key={m}
+                      style={styles.floatBtn}
+                      disabled={eyeBusy}
+                      onPress={() => {
+                        setAppMode(m);
+                        setRetransOpen(false);
+                        setToolMenuOpen(false);
+                      }}
+                    >
+                      <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
+                    </AnimatedPressable>
+                  ))}
 
-              <View style={styles.floatDivider} />
+                <View style={styles.floatDivider} />
 
                 {/* 下地の切替。まず現在の下地のアイコンだけを出し、押したら選べる。
                   3つ常時並べると縦に伸びるうえ、普段は変えないものなので畳んでおく。 */}
-              <AnimatedPressable
-                style={[styles.floatBtn, bgPickerOpen && styles.floatBtnActive]}
-                onPress={() => setBgPickerOpen(o => !o)}
-                pressedScale={0.9}
-              >
-                <Icon name={BG_ICONS[bgMode]} size={20} color="#FFF" />
-              </AnimatedPressable>
-              {bgPickerOpen && (
-                <View style={styles.bgColumn}>
-                  {(['checker', 'white', 'black'] as const).map(mode => (
-                    <AnimatedPressable
-                      key={mode}
-                      style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
-                      onPress={() => { setBgMode(mode); setBgPickerOpen(false); }}
-                      pressedScale={0.9}
-                    >
-                      <Icon name={BG_ICONS[mode]} size={16} color="#FFF" />
-                    </AnimatedPressable>
-                  ))}
-                </View>
-              )}
+                <AnimatedPressable
+                  style={[styles.floatBtn, bgPickerOpen && styles.floatBtnActive]}
+                  onPress={() => setBgPickerOpen(o => !o)}
+                  pressedScale={0.9}
+                >
+                  <Icon name={BG_ICONS[bgMode]} size={20} color="#FFF" />
+                </AnimatedPressable>
+                {bgPickerOpen && (
+                  <View style={styles.bgColumn}>
+                    {(['checker', 'white', 'black'] as const).map(mode => (
+                      <AnimatedPressable
+                        key={mode}
+                        style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
+                        onPress={() => { setBgMode(mode); setBgPickerOpen(false); }}
+                        pressedScale={0.9}
+                      >
+                        <Icon name={BG_ICONS[mode]} size={16} color="#FFF" />
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                )}
 
                 {/* 再透過（セル編集の時だけ親から渡される）。 */}
-              {onRetransparent && (
-                <AnimatedPressable
-                  style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
-                  disabled={eyeBusy}
-                  onPress={() => {
-                    const next = !retransOpen;
-                    setRetransOpen(next);
-                    setChromeHidden(false);
-                    // 下部パネルを共有しているので、開くときは復元ブラシから抜ける。
-                    if (next && appMode === 'restore') setAppMode('move');
-                    setToolMenuOpen(false);
-                  }}
-                >
-                  <Icon name="tune" size={22} color="#FFF" />
-                </AnimatedPressable>
-              )}
+                {onRetransparent && (
+                  <AnimatedPressable
+                    style={[styles.floatBtn, retransOpen && styles.floatBtnActive]}
+                    disabled={eyeBusy}
+                    onPress={() => {
+                      const next = !retransOpen;
+                      setRetransOpen(next);
+                      setChromeHidden(false);
+                      // 下部パネルを共有しているので、開くときは復元ブラシから抜ける。
+                      if (next && appMode === 'restore') setAppMode('move');
+                      setToolMenuOpen(false);
+                    }}
+                  >
+                    <Icon name="tune" size={22} color="#FFF" />
+                  </AnimatedPressable>
+                )}
 
                 {/* 重なっているものを一時的に全部隠す。画像の端を直す時の逃げ道。 */}
-              <AnimatedPressable
-                style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
-                disabled={eyeBusy}
-                onPress={() => { setChromeHidden(h => !h); setToolMenuOpen(false); }}
-              >
-                <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
-              </AnimatedPressable>
-            </>
-          )}
+                <AnimatedPressable
+                  style={[styles.floatBtn, chromeHidden && styles.floatBtnActive]}
+                  disabled={eyeBusy}
+                  onPress={() => { setChromeHidden(h => !h); setToolMenuOpen(false); }}
+                >
+                  <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
+                </AnimatedPressable>
+              </>
+            )}
           </View>
         </View>
 
 
-
-        {/* ── ズームバー: [−] 倍率スライダー [＋] │ 全体表示 ──
-            ズーム操作を横1列にまとめる。スライダーは対数目盛りで、
-            ×1/×2/×4/×8/×12 の目盛りに吸い付く。細かく詰めたい時は連続値、
-            決め打ちしたい時は目盛り、と両方できる。 */}
 
       </View>
 
@@ -2287,31 +2279,26 @@ const styles = StyleSheet.create({
     left:      8,
     right:     8,
     top:       8,
-    // 「ズーム（余った幅いっぱい）｜ドロップダウン」の1行。
-    // 縦に段を重ねると画像の上端がその分だけ触れなくなるので、高さは1行に抑える。
-    // 倍率・スライダー・ドロップダウンを横一列に置く。
-    // 余白を埋めるのはスライダーだけで、ドロップダウンは行の右端に収まる。
-    // space-between や絶対配置で位置を作ると、要素が増減したときにズレる。
     flexDirection: 'row',
     alignItems: 'flex-start',
+    justifyContent: 'flex-end',
     gap: 8,
   },
 
-  // ── フローティングボタン群 (キャンバス右端縦並び) ─────────────────────────
-  floating: {
-    position: 'absolute',
-    right: 8,
-    // 下側（ツール説明・ブラシ設定）が混み合っていたので上へ寄せ、
-    // 空いた右端の縦方向にズームを入れる。右上の下地切替と被らない位置から。
-    top: 60,
+  // ── ツールドロップダウン ────────────────────────────────────────────────
+  toolDropdown: {
     alignItems: 'center',
-    // 縦に全部積むので、画面の短い端末（iPhone SE 等）でも収まるよう詰める。
-    // ボタン自体は 44pt を維持する（これ以上小さくすると押しにくい）。
+    flexShrink: 0,
     gap: 6,
+    padding: 5,
+    borderRadius: 14,
+    backgroundColor: 'rgba(30,30,30,0.78)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   floatBtn: {
-    width: 44, height: 44,
-    borderRadius: 14,
+    width: 34, height: 34,
+    borderRadius: 10,
     backgroundColor: 'rgba(30,30,30,0.72)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
@@ -2353,7 +2340,7 @@ const styles = StyleSheet.create({
   },
   // ── 上部のズーム行（倍率 + スライダー + 全体表示）────────────────────────
   zoomTopRow: {
-    flex: 1,   // 行の余白はこのまとまりが受け持つ
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -2365,7 +2352,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   zoomSliderWrap: {
-    // 余白を実際に埋めるのはここ。倍率表示と全体表示ボタンは固定幅。
+    // 余白を埋めるのはスライダー領域だけ。倍率・リセット・ツールは固定幅。
     flex: 1,
     minWidth: 80,
     height: 34,

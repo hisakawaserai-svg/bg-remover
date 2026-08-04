@@ -1,5 +1,6 @@
 package com.bgremover.app
 
+import android.content.Intent
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -19,4 +20,12 @@ class MainActivity : ReactActivity() {
    */
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+
+  // launchMode="singleTask" のため、起動中に共有された画像は onNewIntent で届く。
+  // setIntent() で getIntent() を更新した上で super に渡し、
+  // SharedImageModule（ActivityEventListener）へ通知させる。
+  override fun onNewIntent(intent: Intent) {
+    setIntent(intent)
+    super.onNewIntent(intent)
+  }
 }

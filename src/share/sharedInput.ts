@@ -1,7 +1,7 @@
 /**
- * sharedInput.ts — 共有シート（Share Extension）から渡された画像を引き取る。
+ * sharedInput.ts — 他アプリの共有シートから渡された画像を引き取る。
  *
- * Share Extension は受け取った画像の生データを変換せず App Group の
+ * iOS: Share Extension は受け取った画像の生データを変換せず App Group の
  * コンテナ直下に `share_input`（拡張子なし）として置き、本体アプリを起動する。
  * ここではその1ファイルを本体アプリのキャッシュへ移し、App Group 側は消す。
  *
@@ -12,9 +12,18 @@
  *
  * ネイティブモジュールは足していない。App Group のパスは react-native-fs の
  * pathForGroup（iOS のみ）で取れる。
+ *
+ * Android: ACTION_SEND (image/*) は SharedImageModule（ネイティブ）が受け取り、
+ * content:// の中身をキャッシュへコピーして file:// で返す（convertToPng が
+ * file:// 前提のため）。同じ理由で、取得した時点でネイティブ側が Intent の
+ * EXTRA_STREAM を消し、二重取得を防ぐ。
  */
-import { Platform } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
 import RNFS from 'react-native-fs';
+
+const { SharedImageModule } = NativeModules;
+/** SharedImageModule.kt の EVENT_NAME と一致させること。 */
+const ANDROID_SHARE_EVENT_NAME = 'onSharedImageReceived';
 
 /** Share Extension 側（ShareViewController.swift）と一致させること。 */
 const APP_GROUP_ID = 'group.com.sera.bgremover.app';
@@ -43,10 +52,34 @@ export function emitShareSheetClosed(): void {
 }
 
 /**
+ * Android: 実行中のアプリに ACTION_SEND (image/*) が届いたら呼ばれる。
+ * launchMode="singleTask" のため、これが無いと前面のまま来た共有に気付けない
+ * （AppState は 'active' のまま動かないケースがある）。
+ */
+export function onAndroidSharedImageReceived(listener: Listener): () => void {
+  if (Platform.OS !== 'android' || !SharedImageModule) return () => {};
+  const emitter = new NativeEventEmitter(SharedImageModule);
+  const sub = emitter.addListener(ANDROID_SHARE_EVENT_NAME, listener);
+  return () => sub.remove();
+}
+
+/**
  * 共有画像があれば引き取って file:// URI を返す。無ければ null。
- * 返した時点で App Group 側のファイルは削除済み（再読込されない）。
+ * 返した時点で共有元の情報（App Group のファイル／Intent の EXTRA_STREAM）は
+ * 消去済み（再読込されない）。
  */
 export async function consumeSharedImage(): Promise<string | null> {
+  if (Platform.OS === 'android') {
+    if (!SharedImageModule) return null;
+    try {
+      const uri = await SharedImageModule.getSharedImageUri();
+      return uri ?? null;
+    } catch (e) {
+      console.warn('consumeSharedImage(android) failed:', e);
+      return null;
+    }
+  }
+
   if (Platform.OS !== 'ios') return null;
 
   try {

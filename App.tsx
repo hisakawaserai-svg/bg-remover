@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { consumeSharedImage, onShareSheetClosed } from './src/share/sharedInput';
+import { consumeSharedImage, onShareSheetClosed, onAndroidSharedImageReceived } from './src/share/sharedInput';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './src/components/ui/AnimatedPressable';
 
@@ -767,9 +767,14 @@ function AppScreens() {
         setTimeout(() => { void pickUpSharedImage(); }, 800);
       })();
     });
+    // Android: singleTask のため起動中の共有は onNewIntent 経由でしか気付けない。
+    const unsubscribeAndroidShare = onAndroidSharedImageReceived(() => {
+      void pickUpSharedImage();
+    });
     return () => {
       sub.remove();
       unsubscribeShare();
+      unsubscribeAndroidShare();
     };
     // マウント時に1度だけ購読する。startWithImage は毎レンダリング作り直されるので
     // 依存に入れない（入れると購読し直しになる）。
@@ -1711,6 +1716,27 @@ function AppScreens() {
           canUndoEdit={edits.length > 0}
           canRedoEdit={redoSteps.length > 0}
           bgVersion={bgVersion}
+          // 再透過。この画面は元画像そのものを編集しているので、cell_editing と
+          // 違って bbox 分のオフセットは不要（PolygonEditor から来る座標が
+          // そのまま元画像座標）。「画像全体」は cellTolerance のような専用の
+          // 軽い経路が無いので、全域を対象にした retransRegion として同じ
+          // pushEdit 経路に積む（undo/redo も自然に効く）。
+          onRetransparent={(tol, scope) => {
+            if (scope) {
+              pushEdit({
+                kind: 'retransRegion',
+                minX: scope.minX, minY: scope.minY, maxX: scope.maxX, maxY: scope.maxY,
+                maskPoints: scope.maskPoints,
+                tolerance: tol, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles,
+              });
+            } else {
+              pushEdit({
+                kind: 'retransRegion',
+                minX: 0, minY: 0, maxX: bgResult.width - 1, maxY: bgResult.height - 1,
+                tolerance: tol, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles,
+              });
+            }
+          }}
           // 確定操作ごとにポリゴンをセッションに保存。
           // プレビュー押下を待たず、頂点追加・削除・ドラッグ終了の都度 upsert する。
           // 毎フレームではなく「操作確定時のみ」発火するため頻度は低い（PolygonEditor 側で制御）。

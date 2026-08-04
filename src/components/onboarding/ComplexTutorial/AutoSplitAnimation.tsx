@@ -4,8 +4,11 @@
  * 器(ComplexStickerTutorialScreen)の STEPS[0] に差し込む中身。
  * OnboardingStep2 と同じ作法で SetupScreen の自動分割をそっくり再現し、
  *   A) 「自動分割は全段を同じ線で切る」という説明 + 分割線が上から伸びる
+ *   B) 線がずれてたら指でドラッグして動かせる、という独立の説明
  *   C) 「この行数で分割」をタップ
  * をループアニメで見せる。押した結果(真ん中の子が割れる)は次の STEP で扱う。
+ * A/B は同じ上スロットで話者を差し替え、C だけ下スロットへ移る
+ * (MergeCellsAnimation と同じ「フレーム位置でグルーピング」作法)。
  *
  * OnboardingStep2 との違いは題材だけ:
  *   2段×2列で、2段目は中央に1匹しか居ない。その1匹がちょうど縦の中央線を
@@ -35,14 +38,14 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import BirdMascot from '../BirdMascot';
 import SpeechBubble from '../SpeechBubble';
 import TouchIndicator from '../TouchIndicator';
-import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from '../shared';
+import { shared, norm, easeIO, fadeHold, jumpY, wiggle, SPEAK_FADE, FRAME_SLIDE } from '../shared';
 import { useT } from '../../../i18n';
 import type { TKey } from '../../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
-// OnboardingStep2 と同じくゆっくり(間込み)。
+// A/B/Cの3ビート分の間を確保するため、旧版(2ビート・12000ms)より長め。
 // 器(ComplexStickerTutorialScreen)の上部プログレスバーもこの長さで進むので export する。
-export const CYCLE_MS = 12000;
+export const CYCLE_MS = 15000;
 
 // プレビュー内のキャラの大きさ。2段×2列を収めるので Step2(84)より小さめ。
 const BIRD = 64;
@@ -55,7 +58,13 @@ const STRENGTHS = [
 ] as const;
 const STRENGTH_ON = 1; // つまみの位置(中)
 
-// 進行に合わせて差し替えるキャプション文言(後で調整しやすいよう定数化)
+// 分割線(v/h とも共通)が上から/左から伸びる窓。
+const LINE_GROW: [number, number] = [0.24, 0.34];
+// フェーズBの説明が終わった後、線を軽く揺らして実演する窓。
+const DRAG_WIGGLE: [number, number] = [0.52, 0.60];
+// 「この行数で分割」ボタンを押す窓(フェーズC末)。
+const BUTTON_PRESS: [number, number] = [0.86, 0.96];
+
 // 文言は描画時に t() で解決する。
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
@@ -86,73 +95,74 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
   }, [active]);
 
   // ── タイムライン(喋り→間→操作のリズム) ───────────────────────────────────
-  // A喋り[0.04,0.34] + 分割線[0.10,0.22] + バッジ[0.18,0.30]
-  //  → 間 → C喋り[0.46,0.92] → ボタン押下[0.80,0.92]
+  // A喋り[0.04,0.20] → 分割線[0.24,0.34]
+  //  → B喋り[0.34,0.50](線はドラッグで動かせる) → 線をゆらして実演[0.52,0.60]
+  //  → C喋り[0.66,0.82] → ボタン押下[0.86,0.96]
 
   // 分割線: 縦横とも同じ窓で動かすので出るタイミングが完全に一致する。
   // 縦は原点 top で上から、横は原点 left で左から伸ばす(SetupScreen と同じ)。
   const vLineStyle = useAnimatedStyle(() => {
     const p = phase.value;
-    const grow = p < 0.10 ? 0 : easeIO(norm(p, 0.10, 0.22));
-    return { transform: [{ scaleY: grow }] };
+    const grow = p < LINE_GROW[0] ? 0 : easeIO(norm(p, LINE_GROW[0], LINE_GROW[1]));
+    // 列境界線なので、実画面と同じ「左右」にゆらして見せる。
+    const nudge = wiggle(p, DRAG_WIGGLE[0], DRAG_WIGGLE[1], 5);
+    return { transform: [{ scaleY: grow }, { translateX: nudge }] };
   });
   const hLineStyle = useAnimatedStyle(() => {
     const p = phase.value;
-    const grow = p < 0.10 ? 0 : easeIO(norm(p, 0.10, 0.22));
-    return { transform: [{ scaleX: grow }] };
+    const grow = p < LINE_GROW[0] ? 0 : easeIO(norm(p, LINE_GROW[0], LINE_GROW[1]));
+    // 行境界線なので「上下」にゆらして見せる。
+    const nudge = wiggle(p, DRAG_WIGGLE[0], DRAG_WIGGLE[1], 5);
+    return { transform: [{ scaleX: grow }, { translateY: nudge }] };
   });
 
-  // バッジ: [0.18, 0.30] で opacity + translateY 出現、リセットで消す
-  const badgeStyle = useAnimatedStyle(() => {
-    const p = phase.value;
-    let t = 0;
-    if (p < 0.18)      t = 0;
-    else if (p < 0.30) t = norm(p, 0.18, 0.30);
-    else if (p < 0.94) t = 1;
-    else               t = 1 - norm(p, 0.94, 0.99);
-    return { opacity: t, transform: [{ translateY: (1 - t) * -6 }] };
-  });
-
-  // 「この行数で分割」ボタン押下: [0.80, 0.92] で軽く縮む
+  // 「この行数で分割」ボタン押下で軽く縮む
   const ctaStyle = useAnimatedStyle(() => {
     const p = phase.value;
+    const mid = (BUTTON_PRESS[0] + BUTTON_PRESS[1]) / 2;
     let scale = 1;
-    if (p >= 0.80 && p < 0.86)      scale = 1 - norm(p, 0.80, 0.86) * 0.05;
-    else if (p >= 0.86 && p < 0.92) scale = 0.95 + norm(p, 0.86, 0.92) * 0.05;
+    if (p >= BUTTON_PRESS[0] && p < mid)      scale = 1 - norm(p, BUTTON_PRESS[0], mid) * 0.05;
+    else if (p >= mid && p < BUTTON_PRESS[1]) scale = 0.95 + norm(p, mid, BUTTON_PRESS[1]) * 0.05;
     return { transform: [{ scale }] };
   });
 
-  // ── 字幕(キャラ＋吹き出し): 操作側に出す ──
-  // A(説明=上)→上。C(ボタン=下操作)→下へ移動。喋り始めに「ピョン」。
+  // ── 字幕(キャラ＋吹き出し) ──
+  // A・Bは同じ上スロットで話者を差し替え(概要説明/線の説明)。
+  // Cだけ下スロットへ移り、実際の操作(ボタン押下)を担当する。喋り始めに「ピョン」。
   const mascotAStyle = useAnimatedStyle(() => ({
-    opacity: fadeHold(phase.value, 0.02, 0.42, 0.03),
+    opacity: fadeHold(phase.value, 0.02, 0.30, 0.03),
     transform: [{ translateY: jumpY(phase.value, 0.04) }],
   }));
-  const bubbleAStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.04, 0.34, SPEAK_FADE) }));
-  const mascotCStyle = useAnimatedStyle(() => ({
-    opacity: fadeHold(phase.value, 0.44, 0.99, 0.03),
-    transform: [{ translateY: jumpY(phase.value, 0.46) }],
+  const bubbleAStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.04, 0.20, SPEAK_FADE) }));
+  const mascotBStyle = useAnimatedStyle(() => ({
+    opacity: fadeHold(phase.value, 0.30, 0.62, 0.03),
+    transform: [{ translateY: jumpY(phase.value, 0.34) }],
   }));
-  const bubbleCStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.46, 0.92, SPEAK_FADE) }));
+  const bubbleBStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.34, 0.50, SPEAK_FADE) }));
+  const mascotCStyle = useAnimatedStyle(() => ({
+    opacity: fadeHold(phase.value, 0.64, 0.99, 0.03),
+    transform: [{ translateY: jumpY(phase.value, 0.66) }],
+  }));
+  const bubbleCStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.66, 0.82, SPEAK_FADE) }));
 
-  // フレームのスライド(上下対称): A(上に喋る)=下へ(+) / C(下操作)=上へ(-)。
+  // フレームのスライド(上下対称): A・B(上に喋る)=下へ(+) / C(下操作)=上へ(-)。
   // キャラの出る側と反対へ寄せて、その側に1帯ぶんの空きを作る。translateY のみ。
   const frameStyle = useAnimatedStyle(() => {
     const p = phase.value;
     let y = 0;
     if (p < 0.02)      y = 0;
-    else if (p < 0.10) y = easeIO(norm(p, 0.02, 0.10));       // → +1(下げて上を空ける=A)
-    else if (p < 0.36) y = 1;
-    else if (p < 0.44) y = 1 - easeIO(norm(p, 0.36, 0.44));   // → 0
-    else if (p < 0.52) y = -easeIO(norm(p, 0.44, 0.52));      // → -1(上げて下を空ける=C)
-    else if (p < 0.94) y = -1;
-    else               y = -1 + easeIO(norm(p, 0.94, 0.99));  // → 0
+    else if (p < 0.08) y = easeIO(norm(p, 0.02, 0.08));       // → +1(下げて上を空ける=A/B)
+    else if (p < 0.62) y = 1;
+    else if (p < 0.66) y = 1 - easeIO(norm(p, 0.62, 0.66));   // → 0
+    else if (p < 0.70) y = -easeIO(norm(p, 0.66, 0.70));      // → -1(上げて下を空ける=C)
+    else if (p < 0.97) y = -1;
+    else               y = -1 + easeIO(norm(p, 0.97, 1));     // → 0
     return { transform: [{ translateY: FRAME_SLIDE * y }] };
   });
 
   return (
     <View style={shared.root}>
-      {/* ── 上キャプション(フェーズA: 説明 → キャラ＋吹き出しは上・overlay) ── */}
+      {/* ── 上キャプション(フェーズA/B: 同じスロットで話者を差し替え・overlay) ── */}
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
@@ -160,6 +170,15 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
+        />
+      </View>
+      <View style={shared.captionTop}>
+        <SpeechBubble
+          stepNumber={2}
+          text={t('complexTutorial.autoSplit.dragHint')}
+          direction="left"
+          mascotStyle={mascotBStyle}
+          bubbleStyle={bubbleBStyle}
         />
       </View>
 
@@ -198,17 +217,13 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
               <BirdMascot variant="sleep" size={BIRD} />
             </View>
 
-            {/* 分割線(列境界): 上から下へ伸びる(scaleY・原点 top) */}
+            {/* 分割線(列境界): 上から下へ伸びる(scaleY・原点 top)。
+                フェーズBの説明後、左右にゆれて「ドラッグできる」を実演する。 */}
             <Animated.View style={[s.vLineBg, vLineStyle]} pointerEvents="none" />
             <Animated.View style={[s.vLine, vLineStyle]} pointerEvents="none" />
-            {/* 分割線(行境界): 左から右へ伸びる(scaleX・原点 left) */}
+            {/* 分割線(行境界): 左から右へ伸びる(scaleX・原点 left)。上下にゆれて実演する。 */}
             <Animated.View style={[s.hLineBg, hLineStyle]} pointerEvents="none" />
             <Animated.View style={[s.hLine, hLineStyle]} pointerEvents="none" />
-
-            {/* 「4個に分かれます」バッジ(右上・薄青ピル) */}
-            <Animated.View style={[s.badge, badgeStyle]} pointerEvents="none">
-              <Text style={s.badgeTxt}>{t('setup.splitsInto', { count: 4 })}</Text>
-            </Animated.View>
           </View>
 
           {/* 行数(段数) / 列数ステッパー(静的表示) */}
@@ -258,7 +273,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
           <Animated.View style={[s.cta, ctaStyle]}>
             <Text style={s.ctaTxt}>{t('setup.splitWithRows')}</Text>
             {/* タップ表現: フェーズC末でボタンを押す */}
-            <TouchIndicator progress={phase} window={[0.80, 0.94]} />
+            <TouchIndicator progress={phase} window={BUTTON_PRESS} />
           </Animated.View>
         </View>
       </Animated.View>
@@ -266,7 +281,7 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
       {/* ── 下キャプション(フェーズC: ボタン=下操作 → キャラ＋吹き出しは下へ・overlay) ── */}
       <View style={shared.captionBottom}>
         <SpeechBubble
-          stepNumber={2}
+          stepNumber={3}
           text={t('complexTutorial.autoSplit.bubble')}
           direction="left"
           mascotStyle={mascotCStyle}
@@ -374,19 +389,6 @@ const s = StyleSheet.create({
     backgroundColor: '#007AFF',
     transformOrigin: 'left',
   },
-
-  badge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#EAF2FF',
-    borderColor: '#007AFF',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeTxt: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
 
   // カード(行数 / 列数)
   card: {

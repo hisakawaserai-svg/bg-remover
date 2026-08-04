@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
-import ToleranceSlider, { STRENGTH_SNAPS } from './ui/ToleranceSlider';
+import ToleranceSlider, { REMOVAL_SNAPS, SPOT_SNAPS } from './ui/ToleranceSlider';
 import AppHeader from './ui/AppHeader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -33,19 +33,36 @@ import Card from './ui/Card';
 import OnboardingScreen from './OnboardingScreen';
 import { useSettings } from '../settings/SettingsContext';
 import type { SplitLineColor } from '../settings/store';
-import { isSplashEnabled } from '../settings/store';
+import { DEFAULTS, isSplashEnabled } from '../settings/store';
 import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
-import type { AppIconSetting, LoupeMode, SplashAnimationSetting } from '../settings/store';
+import LoupeMagnifySlider from './ui/LoupeMagnifySlider';
+import LoupeSizeSlider from './ui/LoupeSizeSlider';
+import type { AppIconSetting, LoupeMode, LoupeZoomMode, SplashAnimationSetting } from '../settings/store';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
+import { useStats } from '../stats/StatsContext';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
 // require は TS の moduleResolution によっては型エラーになる場合がある。
 // その場合は直値にフォールバックしてコメントで TODO を残す。
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const APP_VERSION: string = (require('../../package.json') as { version: string }).version;
+
+/**
+ * 作業時間（累計ミリ秒）を「N時間M分」等の表示文字列にする。
+ * 1分未満はまとめて「1分未満」にする（0分と表示すると「計測されていない」ように見えるため）。
+ */
+function formatWorkTime(ms: number, t: ReturnType<typeof useT>['t']): string {
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes <= 0) return t('settings.statsTimeUnderMinute');
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0
+    ? t('settings.statsTimeHoursMinutes', { hours, minutes })
+    : t('settings.statsTimeMinutes', { minutes });
+}
 
 interface Props {
   onClose: () => void;
@@ -63,6 +80,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
   const { albumName } = useAlbumName();
+  const { stats } = useStats();
 
   // スライダーの操作中の値を local state で持ち、
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
@@ -109,16 +127,23 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               <Text style={styles.rowLabel}>{t('settings.autoTolerance')}</Text>
               <Text style={styles.rowSub}>{t('settings.autoToleranceHint')}</Text>
             </View>
-            {/* 現在値を数値でリアルタイム表示 */}
-            <Text style={styles.rowValue}>{Math.round(tolerance)}</Text>
+            {/* 現在値を数値でリアルタイム表示。既定値と一致する時だけ明示する。 */}
+            <Text style={styles.rowValue}>
+              {Math.round(tolerance)}
+              {Math.round(tolerance) === DEFAULTS.tolerance && (
+                <Text style={styles.rowValueDefaultTag}>  {t('common.default')}</Text>
+              )}
+            </Text>
           </View>
           {/* 共通スライダー（連続値＋弱/中/強ソフトスナップ）。
               セットアップ画面と同一コンポーネントを使う。Card 内なので bare 指定。 */}
           <ToleranceSlider
             bare
             showLabel={false}
-            snaps={STRENGTH_SNAPS}
+            edgeLabels
+            snaps={REMOVAL_SNAPS}
             value={tolerance}
+            defaultValue={DEFAULTS.tolerance}
             onChange={setTolerance}
             onComplete={v => void updateSettings({ tolerance: v })}
           />
@@ -143,13 +168,20 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               <Text style={styles.rowLabel}>{t('settings.eyedropperTolerance')}</Text>
               <Text style={styles.rowSub}>{t('settings.eyedropperToleranceHint')}</Text>
             </View>
-            <Text style={styles.rowValue}>{Math.round(eyeTolerance)}</Text>
+            <Text style={styles.rowValue}>
+              {Math.round(eyeTolerance)}
+              {Math.round(eyeTolerance) === DEFAULTS.eyedropperTolerance && (
+                <Text style={styles.rowValueDefaultTag}>  {t('common.default')}</Text>
+              )}
+            </Text>
           </View>
           <ToleranceSlider
             bare
             showLabel={false}
-            snaps={STRENGTH_SNAPS}
+            edgeLabels
+            snaps={SPOT_SNAPS}
             value={eyeTolerance}
+            defaultValue={DEFAULTS.eyedropperTolerance}
             onChange={setEyeTolerance}
             onComplete={v => void updateSettings({ eyedropperTolerance: v })}
           />
@@ -428,6 +460,85 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             ]}
             onChange={v => void updateSettings({ loupeMode: v })}
           />
+          <Divider />
+          <SelectRow<LoupeZoomMode>
+            label={t('settings.loupeZoomMode')}
+            sub={t('settings.loupeZoomModeHint')}
+            value={settings.loupeZoomMode}
+            options={[
+              { value: 'fixed',     label: t('settings.loupeZoomModeFixed') },
+              { value: 'matchZoom', label: t('settings.loupeZoomModeMatch') },
+              { value: 'inverse',   label: t('settings.loupeZoomModeInverse') },
+            ]}
+            onChange={v => void updateSettings({ loupeZoomMode: v })}
+          />
+          {/* loupeZoomMode の3モードすべてが、この基準値を起点に倍率を計算する
+              （一定＝そのまま、拡大して見る／全体を見渡す＝ズームに応じて
+              増減）ので、モードを問わず常に表示する。 */}
+          <Divider />
+          <LoupeMagnifySlider
+            label={t('settings.loupeBaseMagnify')}
+            sub={t('settings.loupeBaseMagnifyHint')}
+            value={settings.loupeBaseMagnify}
+            onChange={v => void updateSettings({ loupeBaseMagnify: v })}
+          />
+          <Divider />
+          <LoupeSizeSlider
+            label={t('settings.loupeBaseSize')}
+            sub={t('settings.loupeBaseSizeHint')}
+            value={settings.loupeBaseSize}
+            onChange={v => void updateSettings({ loupeBaseSize: v })}
+          />
+          <Divider />
+          {/* 倍率モードとは別設定（十分拡大した時だけ自動で出る）。 */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.loupeDotGrid')}</Text>
+              <Text style={styles.rowSub}>{t('settings.loupeDotGridHint')}</Text>
+            </View>
+            <Switch
+              value={settings.loupeDotGrid}
+              onValueChange={v => void updateSettings({ loupeDotGrid: v })}
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
+        </Card>
+
+        {/* ════════════════════════════════════════
+            セクション 2.95: 統計（端末内のみ保存・外部送信なし）
+        ════════════════════════════════════════ */}
+        <Text style={styles.sectionTitle}>{t('settings.sectionStats')}</Text>
+        <Card style={styles.card} padding={0}>
+          <Text style={styles.statsGroupLabel}>{t('settings.statsAchievementTitle')}</Text>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{t('settings.statsStampsCreated')}</Text>
+            <Text style={styles.rowValueMuted}>{t('settings.statsCountUnit', { count: stats.stampsCreated })}</Text>
+          </View>
+          <Divider />
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{t('settings.statsExportsCompleted')}</Text>
+            <Text style={styles.rowValueMuted}>{t('settings.statsTimesUnit', { count: stats.exportsCompleted })}</Text>
+          </View>
+          <Divider />
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{t('settings.statsImagesEdited')}</Text>
+            <Text style={styles.rowValueMuted}>{t('settings.statsImagesUnit', { count: stats.imagesEdited })}</Text>
+          </View>
+          <Divider />
+          <Text style={styles.statsGroupLabel}>{t('settings.statsUsageTitle')}</Text>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>{t('settings.statsTransparencyOps')}</Text>
+            <Text style={styles.rowValueMuted}>{t('settings.statsTimesUnit', { count: stats.transparencyOps })}</Text>
+          </View>
+          <Divider />
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.statsWorkTime')}</Text>
+              <Text style={styles.rowSub}>{t('settings.statsWorkTimeHint')}</Text>
+            </View>
+            <Text style={styles.rowValueMuted}>{formatWorkTime(stats.workTimeMs, t)}</Text>
+          </View>
         </Card>
 
         {/* ════════════════════════════════════════
@@ -543,6 +654,17 @@ const styles = StyleSheet.create({
   rowSub:       { fontSize: 12, color: IOS.secondary, marginTop: 2 },
   rowValue:     { fontSize: 22, fontWeight: '600', color: IOS.blue, minWidth: 36, textAlign: 'right' },
   rowValueMuted:{ fontSize: 16, color: IOS.secondary },
+  rowValueDefaultTag: { fontSize: 12, fontWeight: '600', color: IOS.secondary },
+
+  // ── 統計セクション内の小見出し（🏆 制作実績 / ⚙️ 利用状況）─────────────────
+  statsGroupLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: IOS.secondary,
+    paddingHorizontal: 16,
+    paddingTop: 13,
+    paddingBottom: 4,
+  },
 
   // ── セパレータ（Card 内の行区切り）─────────────────────────────────────────
   separator: {

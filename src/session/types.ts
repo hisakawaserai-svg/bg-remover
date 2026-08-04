@@ -39,7 +39,21 @@ export type EditStep =
   // restore = 復元ブラシ。消えすぎた部分の alpha を元画像の値へ戻す。
   // 1ストローク＝1ステップにしてある（点ごとに積むと undo が1画素ずつになり、
   // 操作列も一瞬で膨れ上がるため）。座標は元画像基準。
-  | { kind: 'restore'; points: Array<[number, number]>; radius: number };
+  | { kind: 'restore'; points: Array<[number, number]>; radius: number }
+  // retransRegion = 「選択範囲だけ再透過」。矩形(bbox)だけ元画像から作り直す。
+  // maskPoints があれば、その多角形の内側だけを貼り戻す（矩形の四隅は
+  // フラッドフィルの起点として使うだけで、実際に書き換えるのは多角形の
+  // 内側だけ）。無ければ従来どおり矩形全体を貼り戻す（旧セッションとの
+  // 互換のため optional）。座標はどちらも元画像基準、bbox は inclusive
+  // （min/max とも範囲に含む）。ポリゴン選択・ブラシでなぞる選択のどちらも
+  // 「点列」という同じ形に正規化してここへ渡す（描き方が違うだけで
+  // 中身は同じ扱いにする）。
+  | {
+      kind: 'retransRegion';
+      minX: number; minY: number; maxX: number; maxY: number;
+      maskPoints?: Array<[number, number]>;
+      tolerance: number; feather: boolean; fillHoles?: boolean;
+    };
 
 /**
  * セッションに保存するカット1枚分の情報。

@@ -45,7 +45,7 @@ const SLIDE_Y = 28;
 
 // 各ステップのアニメ1ループ長(ms)。プログレスバーをそのステップの再生に同期させる。
 // 各 OnboardingStepN の CYCLE_MS と対応(ズレたらここを合わせる)。
-const STEP_DURATIONS = [12000, 13000, 11000, 11000];
+const STEP_DURATIONS = [12000, 16000, 11000, 11000];
 
 /**
  * ProgressSegment — プログレスバーの1ステップ分。

@@ -42,6 +42,28 @@ export type AppIconSetting = 'day' | 'night' | 'sleep';
 export type LoupeMode = 'fixed' | 'adjust' | 'drag';
 
 /**
+ * ルーペの倍率が、キャンバスのズーム（ピンチ／スライダー）にどう追従するか。
+ *
+ *   'fixed'      … 従来どおり。ルーペ内の拡大率は常に一定（ズームしても
+ *                  ルーペの中の大きさは変わらない）。
+ *   'matchZoom'  … キャンバスを拡大するほど、ルーペの倍率も一緒に上がる
+ *                  （さらに大きく拡大して見たい時向け）。
+ *   'inverse'    … キャンバスを拡大するほど、ルーペの倍率は逆に下がる
+ *                  （キャンバス側で既に十分拡大されているので、ルーペまで
+ *                  過剰倍率にして粗いモザイクになるのを防ぐ）。
+ */
+export type LoupeZoomMode = 'fixed' | 'matchZoom' | 'inverse';
+
+/**
+ * ルーペの基準倍率（TouchLoupe の LOUPE_MAGNIFY 相当）。既定は 24。
+ * loupeZoomMode が 'matchZoom'/'inverse' の時も、この値が拡大・縮小の
+ * 基準点になる（PolygonEditor 側で LOUPE_MAGNIFY の代わりに使う）。
+ * 設定画面の LoupeMagnifySlider で 12〜64 の範囲を 1 刻みの連続値として選ぶ
+ * （プリセットへの丸め込みはしない）。
+ */
+export type LoupeBaseMagnify = number;
+
+/**
  * 起動アニメーション。'auto' は時間帯に合わせて選び、'off' は演出なしで
  * すぐホームへ入る。それ以外は毎回そのパターンを固定で再生する
  * (通常はレア枠の 'drop' も、明示指定なら毎回出る)。
@@ -153,6 +175,26 @@ export interface AppSettings {
    * 出すと、ツール切り替えのたびに目に入る割に押されない項目が増える。
    */
   loupeMode: LoupeMode;
+  /** ルーペ倍率のズーム追従モード。既定は 'fixed'（従来の挙動）。 */
+  loupeZoomMode: LoupeZoomMode;
+  /**
+   * ルーペにドットグリッド（マス目＋中央セルのハイライト）を出すか。
+   * 1ドットが画面上で十分大きく見える時だけ自動で出る（常時ではない）ので、
+   * この設定は「その自動表示機能自体を使うか」のON/OFF。既定 true。
+   */
+  loupeDotGrid: boolean;
+  /** ルーペの基準倍率。既定 '24'（従来の LOUPE_MAGNIFY 固定値と同じ）。 */
+  loupeBaseMagnify: LoupeBaseMagnify;
+  /**
+   * ルーペ基準サイズ（＝収納段階「大」の一辺 px）。範囲 80〜220。
+   *
+   * 「中」「収納」はここから比率で計算する（LoupeMagnifySlider ではなく
+   * PolygonEditor 側で MEDIUM = 基準×0.75 / MINI = 基準×0.35 を都度算出する
+   * ————固定値をそれぞれ持たないのは、切り替えロジック(大→中→収納)を
+   * 一切変えずに済ませるため。将来 端末ごとに既定値を変える(iPhone SE は
+   * 小さめ、iPad は大きめ等)場合も、この1値を差し替えるだけでよい）。
+   */
+  loupeBaseSize: number;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -179,6 +221,10 @@ export const DEFAULTS: AppSettings = {
   splashEnabled: true,
   splashAnimation: 'auto',
   loupeMode: 'fixed',
+  loupeZoomMode: 'fixed',
+  loupeDotGrid: true,
+  loupeBaseMagnify: 24,
+  loupeBaseSize: 160,
 };
 
 /**
@@ -197,7 +243,15 @@ export async function loadSettings(): Promise<AppSettings> {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
     // 保存済み値とデフォルトをマージ: 未来に追加したキーも DEFAULTS で補完される
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<AppSettings>) };
+    const merged = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<AppSettings>) };
+    // loupeBaseMagnify は以前バージョンで文字列（'24' 等）を保存していたことがあるため、
+    // 読み込み時に数値へ寄せる（壊れていたら既定値にフォールバック）。
+    merged.loupeBaseMagnify = Number(merged.loupeBaseMagnify) || DEFAULTS.loupeBaseMagnify;
+    // loupeBaseSize も同様に数値へ寄せつつ、スライダーの範囲(80〜220)にクランプする
+    // （旧バージョンの値や手編集された値が範囲外でも安全に収める）。
+    merged.loupeBaseSize = Math.min(220, Math.max(80,
+      Number(merged.loupeBaseSize) || DEFAULTS.loupeBaseSize));
+    return merged;
   } catch (e) {
     console.warn('[settings/store] loadSettings failed:', e);
     return { ...DEFAULTS };

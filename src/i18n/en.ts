@@ -37,6 +37,7 @@ const en: typeof ja = {
     preview: 'Preview',
     share: 'Share',
     unknownError: 'Unknown error',
+    default: 'Default',
   },
 
   colors: {
@@ -59,6 +60,15 @@ const en: typeof ja = {
     strong: 'Strong',
     label: 'Split detail',
     hint: 'Use finer if cutouts merge together',
+    // "Weak/Strong" didn't convey what actually happens, so the sliders that
+    // control removal strength (auto-removal, re-transparency) use this instead.
+    // Weak = keep subject, Strong = remove background.
+    personPriority: 'Keep subject',
+    backgroundPriority: 'Remove background',
+    // Eyedropper is a different action (how wide a color range a single tap
+    // clears), so it's described by what actually happens, not priority.
+    narrowRange: 'Narrow range',
+    wideRange: 'Wide range',
   },
 
   permission: {
@@ -117,7 +127,7 @@ const en: typeof ja = {
   },
 
   loading: {
-    editorTitle: 'Preparing the polygon editor',
+    editorTitle: 'Preparing area adjustment',
     editorSub: 'This will just take a moment',
     previewGenerating: 'Generating preview...',
   },
@@ -141,7 +151,7 @@ const en: typeof ja = {
     eyedropperHint: 'Erase background',
     manualDesc: 'Enclose the background-removed image with rectangles to cut out one character at a time.',
     noSplitButton: 'Cut out without splitting',
-    toPolygonEditor: 'Go to polygon editing',
+    toPolygonEditor: 'Go to adjust area',
     rePickImage: 'Choose a different image',
     resetTitle: 'Reset Edits',
     resetMessage:
@@ -158,7 +168,7 @@ const en: typeof ja = {
     needTwo: 'Select at least two pieces',
     shareCount: { one: 'Share {count} piece', other: 'Share {count} pieces' },
     needAdjacent: 'Select two pieces that are directly adjacent',
-    polygonCannotMerge: 'Cutouts edited with polygons cannot be merged',
+    polygonCannotMerge: 'Cutouts with an adjusted area cannot be merged',
     confirmTitle: 'Confirm',
     warningMessage: 'Some stickers may not have split correctly.\n\nAffected: #{targets}',
     resetMessage:
@@ -186,15 +196,33 @@ const en: typeof ja = {
     uncoveredProceed: 'Continue anyway',
     resetTitle: 'Reset Edits',
     resetMessage:
-      'Clears the polygons and undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
+      'Clears the enclosed shapes and undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
     retransTitle: 'Removal strength',
     retransApply: 'Re-apply to this cutout',
+    retransScopeLabel: 'Target area',
+    retransScopeAll: 'Whole image',
+    retransScopeSelection: 'Specify an area',
+    retransPickStart: 'Choose area',
+    retransApplyRegion: 'Re-transparent this area',
+    retransRedo: 'Redo selection',
+    retransResultTitle: 'How does this look?',
+    retransConfirm: 'Confirm',
+    retransResultDesc: 'Confirm if it looks good, or pick again / adjust strength to redo',
+    retransPickHint: 'Specify the area',
+    retransMethodPolygon: 'Enclose by tapping',
+    retransMethodBrush: 'Trace with brush',
+    retransHintDesc: 'Choose a target area and strength, then apply',
+    retransPickDesc: 'Tap it, or use the decide button on the D-pad',
+    retransBrushDesc: 'Trace around it with your finger. Lift to finish',
     eyedropDone: '💧 Color removed',
     eyedropNothing: '💧 No color to remove here',
-    moveNothingHere: 'No vertex or polygon here',
+    moveNothingHere: 'No vertex or shape here',
     eyedropBusy: 'Removing color...',
+    restoreBusy: 'Restoring...',
     undoBusy: 'Undoing the edit...',
     redoBusy: 'Reapplying the edit...',
+    retransBusy: 'Processing transparency...',
+    resetBusy: 'Resetting...',
     loadFailed: 'Failed to load the image',
   },
 
@@ -227,9 +255,9 @@ const en: typeof ja = {
     title: 'Settings',
     sectionTransparency: 'Transparency',
     autoTolerance: 'Auto-removal strength',
-    autoToleranceHint: 'Stronger removes colors further from the background. Raise it if background remains, lower it if artwork is eaten away.',
-    eyedropperTolerance: 'Eyedropper strength',
-    eyedropperToleranceHint: 'Stronger erases a wider range around the tapped color.',
+    autoToleranceHint: 'Toward "remove background" clears colors further from the background. Raise it if background remains, lower it (toward "keep subject") if artwork is eaten away.',
+    eyedropperTolerance: 'Eyedropper range',
+    eyedropperToleranceHint: 'Wider erases a broader range around the tapped color. Narrower removes only very similar colors.',
     feather: 'Soften edges',
     featherHint: 'Makes the 1px border semi-transparent to prevent white fringing',
     fillTextHoles: 'Remove background inside letters',
@@ -254,6 +282,17 @@ const en: typeof ja = {
     loupeModeFixed: 'Fixed crosshair (recommended)',
     loupeModeAdjust: 'Nudgeable crosshair',
     loupeModeDrag: 'Drag to adjust',
+    loupeBaseMagnify: 'Magnification baseline',
+    loupeBaseMagnifyHint: 'The base magnification used by all loupe magnification settings above (default ×24)',
+    loupeBaseSize: 'Loupe base size',
+    loupeBaseSizeHint: 'Side length (px) of the "large" loupe. "Medium" and "docked" are scaled from this (default 160)',
+    loupeZoomMode: 'Loupe magnification',
+    loupeZoomModeHint: 'Changes what the loupe shows while zoomed',
+    loupeZoomModeFixed: 'Constant',
+    loupeZoomModeMatch: 'Zoom in further',
+    loupeZoomModeInverse: 'See more area',
+    loupeDotGrid: 'Dot grid',
+    loupeDotGridHint: 'Shows a faint grid and the current dot once zoomed in enough',
 
     // ── Appearance (app icon / launch animation) ──
     sectionAppearance: 'Appearance',
@@ -283,6 +322,23 @@ const en: typeof ja = {
     deleteAllDataHint: 'Deletes all "Recent work" and source images (saved images are kept)',
     deleteAllDataMessage:
       'Deletes all "Recent work" along with the stored source images and thumbnails.\nWork currently being edited is included.\nThis cannot be undone.\n\nNote: images already saved to the "{album}" album are not deleted.',
+
+    // ── Stats ──
+    sectionStats: 'Stats',
+    statsAchievementTitle: '🏆 Your work',
+    statsStampsCreated: 'Stamps created',
+    statsExportsCompleted: 'Exports completed',
+    statsImagesEdited: 'Images edited',
+    statsUsageTitle: '⚙️ Usage',
+    statsTransparencyOps: 'Background removals',
+    statsWorkTime: 'Work time (approx.)',
+    statsWorkTimeHint: 'Approximate total time the editor was open (may include idle time)',
+    statsCountUnit: '{count}',
+    statsTimesUnit: '{count}',
+    statsImagesUnit: '{count}',
+    statsTimeUnderMinute: '< 1 min',
+    statsTimeMinutes: '{minutes} min',
+    statsTimeHoursMinutes: '{hours}h {minutes}m',
   },
 
   howto: {
@@ -296,13 +352,13 @@ const en: typeof ja = {
       'Supported formats: PNG, JPEG (JPG), HEIC\nNote: other image formats may not load correctly.',
     step2Title: 'STEP 2  Choose a split mode',
     step2Body:
-      'Choose a mode on the setup screen.\n\n[Auto split] Check and adjust the number of rows, then tap "Split with these rows". Split lines appear in the preview.\n\n[Adjust area] Enclose each character directly with polygons. Use this when the automatic mode does not work well.',
+      'Choose a mode on the setup screen.\n\n[Auto split] Check and adjust the number of rows, then tap "Split with these rows". Split lines appear in the preview.\n\n[Adjust area] Enclose each character directly by tapping. Use this when the automatic mode does not work well.',
     step2Note: 'Try the automatic mode first. It gets most sheets right.',
     step3Title: 'STEP 3  Review and adjust the result',
     step3Body:
-      'Review the split result and fix any misalignment or merged pieces.\n\n• Pieces are merged → tap "Back", raise the split detail and split again\n• Want to combine with the next cutout → long-press the cutout to select it, then tap "Merge"\n• Want to fix just one → tap the cutout to edit it with polygons\n• Want to start the edits over → tap "Reset" to return to the first split result\n• Want to redo everything → tap "Manual split" for polygon mode',
+      'Review the split result and fix any misalignment or merged pieces.\n\n• Pieces are merged → tap "Back", raise the split detail and split again\n• Want to combine with the next cutout → long-press the cutout to select it, then tap "Merge"\n• Want to fix just one → tap the cutout to adjust its area\n• Want to start the edits over → tap "Reset" to return to the first split result\n• Want to redo everything → tap "Manual split" to adjust areas',
     step3Note:
-      'It does not have to be perfect — "Save" writes transparent PNGs to the "{album}" album.\nIf rows contain different numbers of characters (for example only the last row has more columns), auto split uses the same lines for every row, so some rows may come out misaligned. Fix just those cells with "Merge" or polygon editing.',
+      'It does not have to be perfect — "Save" writes transparent PNGs to the "{album}" album.\nIf rows contain different numbers of characters (for example only the last row has more columns), auto split uses the same lines for every row, so some rows may come out misaligned. Fix just those cells with "Merge" or by adjusting the area.',
     complexTitle: 'How to split a complex image',
     complexDescription: 'Steps for separating merged characters',
     polygonTitle: 'How to adjust areas',
@@ -310,7 +366,7 @@ const en: typeof ja = {
     tipsTitle: 'Tips for Clean Cutouts',
     tip1: 'Illustrations on a plain white or light gray background come out cleanest',
     tip2: 'Start split detail at "Medium"; move to "Fine" if pieces merge together',
-    tip3: 'If the automatic mode never lines up, use "Manual split" and edit with polygons',
+    tip3: 'If the automatic mode never lines up, use "Manual split" and adjust the area',
     noticeTitle: 'Please Note',
     notice1:
       'Saving requires "Full Access" to Photos. With "Selected Photos" the app cannot save to an album (Settings → Privacy & Security → Photos)',
@@ -342,6 +398,7 @@ const en: typeof ja = {
     },
     step2: {
       caption: '"Auto split" cuts it up for you',
+      dragHint: "If a line's off, drag it with your finger",
       bubble: 'Set the rows and detail, then tap "Split"',
     },
     step3: {
@@ -356,6 +413,7 @@ const en: typeof ja = {
   complexTutorial: {
     autoSplit: {
       caption: 'Auto split uses the same lines for every row',
+      dragHint: "If a line's off, drag it with your finger",
       bubble: 'If you tap "Split" as-is...',
     },
     merge: {
@@ -396,6 +454,16 @@ const en: typeof ja = {
     choiceAndroid: '"Allow"',
     limitedNote: 'Note: with "Selected Photos" the app cannot save to an album.',
     detail: '(Details: {raw})',
+  },
+
+  transparency: {
+    preCutoutTitle: 'This image already has a transparent background',
+    preCutoutMessage: 'Open it in edit mode as-is?',
+    editAsIs: 'Edit as-is',
+    redoRemoval: 'Remove background anyway',
+    partialTitle: 'This image may already have transparency',
+    partialMessage: 'Running background removal again may reduce image quality.',
+    continueAnyway: 'Continue anyway',
   },
 };
 

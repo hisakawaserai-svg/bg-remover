@@ -18,6 +18,8 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  // 画面状態の AppState 型と名前がぶつかるので別名で入れる（App.tsx と同じ流儀）。
+  AppState as RNAppState,
   PanResponder,
   StyleSheet,
   Text,
@@ -45,8 +47,9 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import Slider from '@react-native-community/slider';
 import ImageZoomModal from './ui/ImageZoomModal';
-import TouchLoupe, { LOUPE_SIZE, DOCK_COMPACT_SIZE, DOCK_DOCKED_SIZE } from './ui/TouchLoupe';
+import TouchLoupe, { LOUPE_MAGNIFY } from './ui/TouchLoupe';
 import type { DockLevel } from './ui/TouchLoupe';
+import { LOUPE_MEDIUM_RATIO, LOUPE_MINI_RATIO, LOUPE_MINI_MIN } from './ui/LoupeSizeSlider';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {
   Canvas,
@@ -69,6 +72,7 @@ import type { UncoveredRegion } from '../imaging';
 import { useThumbBg } from '../hooks/useThumbBg';
 import type { ThumbBg } from '../settings/store';
 import { useSettings } from '../settings/SettingsContext';
+import { useStats } from '../stats/StatsContext';
 // イラスト輪郭切り抜きでは直線スナップの利得が小さく点が飛ぶ副作用が大きいため除去した。
 
 // ── 定数 ───────────────────────────────────────────────────────────────────
@@ -192,6 +196,7 @@ type GesPhase =
   | 'drag_vertex'  // 頂点ドラッグ中
   | 'drag_poly'    // ポリゴン全体移動中
   | 'drag_edge'    // 辺の両端頂点を同時移動中
+  | 'drag_reticle' // 'drag' 設定: レティクル(編集位置)を指ドラッグ中
   | 'restore';     // 復元ブラシでなぞり中
 
 interface ZoomState { scale: number; tx: number; ty: number }
@@ -232,8 +237,23 @@ interface Props {
   /**
    * 「透過強度」を変えてこのセルを作り直す。渡された画面でだけ UI を出す。
    * 実処理は親が持つ（元画像を持っているのは親のため）。
+   *
+   * scope を渡すと、セル全体ではなくその範囲だけを元画像から作り直す。
+   * 省略時（範囲を選ばなかった／選択が無い）は従来どおりセル全体。
+   * 「選択範囲だけ再透過」— 対象を絞ることで計算量が減って速く、無関係な
+   * 部分を壊さずに済む。
+   *   minX/minY/maxX/maxY: 対象の外接矩形に少し余白を足したもの
+   *     （このエディタの表示座標系＝画像座標系）。フラッドフィルの
+   *     処理範囲（＝起点の四隅）を決めるためだけに使う。
+   *   maskPoints: 実際にその結果を貼り戻す範囲（多角形）。ポリゴン選択
+   *     ならそのポリゴンの頂点列、ブラシで囲んだ選択ならなぞった軌跡を
+   *     閉じた多角形として渡す。矩形の四隅は背景を探すための起点に
+   *     過ぎず、実際に変化するのはこの多角形の内側だけ。
    */
-  onRetransparent?: (tolerance: number) => void;
+  onRetransparent?: (tolerance: number, scope?: {
+    minX: number; minY: number; maxX: number; maxY: number;
+    maskPoints?: Array<[number, number]>;
+  }) => void;
   /**
    * 復元ブラシの1ストローク。座標はこのエディタが表示している画像の座標系。
    * 元画像基準への変換（セル編集の bbox 加算）は親が行う。
@@ -438,6 +458,35 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const { settings } = useSettings();
 
+  // ── 作業時間（目安）計測 ─────────────────────────────────────────────────────
+  // 「編集画面を開いていた時間」の合計を統計に加算する。厳密に「操作していた時間」
+  // ではないため、放置・離席分も含まれ得る（設定画面には「作業時間（目安）」として出す）。
+  // アプリがバックグラウンドに回っている間（他アプリ利用・ロック中）は計測を止めることで、
+  // 「席を外して他のアプリを使う」ケースだけは実用的な精度で除外できる。
+  const { addWorkTimeMs } = useStats();
+  useEffect(() => {
+    let segmentStart: number | null = Date.now();
+    const flush = () => {
+      if (segmentStart == null) return;
+      addWorkTimeMs(Date.now() - segmentStart);
+      segmentStart = null;
+    };
+    const sub = RNAppState.addEventListener('change', next => {
+      if (next === 'active') {
+        segmentStart = Date.now();
+      } else {
+        flush();
+      }
+    });
+    return () => {
+      flush();
+      sub.remove();
+    };
+    // マウント〜アンマウントの1回だけ購読する（addWorkTimeMs は StatsProvider 内で
+    // useCallback([]) されており参照が安定しているため依存に入れても実害はないが、
+    // 明示不要な再購読を避けるため空配列にしている）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── SkImage ──────────────────────────────────────────────────────────────
   const skImage = useMemo<SkImage | null>(() => {
@@ -527,14 +576,76 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 走らせてから処理へ入る（そうしないと表示が出ないまま固まる）。
   const [eyeBusy, setEyeBusy] = useState(false);
   /** 処理中オーバーレイの文言キー。処理の種類で出し分ける。 */
-  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.undoBusy' | 'editor.redoBusy'>('editor.eyedropBusy');
+  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy'>('editor.eyedropBusy');
   // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
   const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
   // 透過強度パネルは既定で畳んでおく。開きっぱなしだと画像の上側を覆って
   // そこを編集できなくなるため、必要な時だけ開く。
   const [retransOpen, setRetransOpen] = useState(false);
+  /**
+   * 再透過の対象範囲。'selection' を選んで実行すると、まず対象ポリゴンを
+   * 選ぶ段階（retransPicking）を挟む。選択中のポリゴンが万一無いまま実行に
+   * 来た場合は 'all' 相当（scopeBBox を渡さない）にフォールバックする。
+   */
+  const [retransScope, setRetransScope] = useState<'all' | 'selection'>('all');
+  /**
+   * 「範囲を選択して再透過」を実行すると、まずこれを true にして「対象の
+   * ポリゴンをタップしてください」という案内だけの表示に切り替える。
+   * 選択（selectedId）が付いた瞬間に自動で false へ戻り、通常のカード表示
+   * （「この範囲を再透過」ボタン）に戻る。ユーザーが「今から範囲を選ぶんだな」
+   * と迷わず分かるよう、選択と設定を同じ画面に混ぜず段階を分けている。
+   */
+  const [retransPicking, setRetransPicking] = useState(false);
+  /**
+   * 「範囲を指定する」で対象をどう選ぶか。null の間（retransPicking の
+   * 最初の段階）は「ポリゴンで選択／ブラシで選択」の方式選択を出す。
+   * 'polygon' は既存のタップ選択（selectedId）、'brush' は指でなぞって
+   * 囲む新しい選択（下の retransMaskPoints）。復元ブラシ(restore)とは
+   * 完全に別物 — 復元ブラシは「なぞった場所だけ」処理するのに対し、
+   * こちらは「なぞって囲んだ内部全体」を処理する。
+   */
+  const [retransMethod, setRetransMethod] = useState<'polygon' | 'brush' | null>(null);
+  /**
+   * ブラシでなぞって確定した選択範囲（画像座標、閉多角形として扱う）。
+   * ズーム・パン・ルーペを使っても表示だけがズレないよう、常に画像座標で
+   * 保持し、描画時にその時点の zoom で表示座標へ変換し直す。
+   */
+  const [retransMaskPoints, setRetransMaskPoints] = useState<Array<[number, number]> | null>(null);
+  /**
+   * 範囲を選んで再透過を実行した直後、まだ確定していない「結果を見せている」
+   * 段階かどうか。true の間はカードを閉じずに残し、「確定」でそのまま閉じるか、
+   * 「やり直す」で選び直すか、スライダーで強さを変えて再実行するかを選べる
+   * ようにする。選択をやり直す／強さを変えると false に戻し、次に適用ボタンを
+   * 押した時にまた実際の再透過処理が走るようにする。
+   */
+  const [retransApplied, setRetransApplied] = useState(false);
+  /** なぞっている最中のライブプレビュー用（表示座標、指を離したら破棄）。 */
+  const [retransTraceLocal, setRetransTraceLocal] = useState<Array<[number, number]>>([]);
+  const retransTraceRef = useRef<Array<[number, number]>>([]);
+  /** なぞり始めの位置（表示座標）。移動量(gestureState.dx/dy)をここに足して現在位置を出す。 */
+  const retransTraceStartRef = useRef<[number, number]>([0, 0]);
+  /**
+   * ブラシでなぞる選択が有効かどうかを、メインの PanResponder（下の pan）が
+   * 参照するための ref。state は PanResponder のクロージャからは古い値しか
+   * 読めないため、ref を毎レンダー同期させる（selectedIdRef 等と同じ理由）。
+   * これが true の間、メイン側は onStartShouldSetPanResponder /
+   * onMoveShouldSetPanResponder を両方 false にして一切手を出さない —
+   * 2つの PanResponder 間の「responder 争奪戦」を無くし、なぞっている最中に
+   * 画面がパンしてしまう不具合を防ぐ。
+   */
+  const retransBrushActiveRef = useRef(false);
+  retransBrushActiveRef.current = retransPicking && retransMethod === 'brush' && !retransMaskPoints;
+  // メインの PanResponder は useRef で1度だけ作られる（クロージャが古いまま
+  // 固定される）ので、その中から最新の retransPicking/retransMethod を読むには
+  // ref 経由にする必要がある（retransBrushActiveRef と同じ理由）。
+  const retransPickingRef = useRef(retransPicking);
+  retransPickingRef.current = retransPicking;
+  const retransMethodRef = useRef(retransMethod);
+  retransMethodRef.current = retransMethod;
   // 下部のツール説明・ズームバーごと、重なるものを一時的に全部隠す。
   // 画像の端を直したい時に「どかす手段」が無いと詰むので用意する。
+  // ポリゴンの塗り・輪郭・連番バッジも同じ理由で一緒に隠す
+  // （画像を素の状態で確認したい、という目的が周辺パネルと共通のため）。
   const [chromeHidden, setChromeHidden] = useState(false);
   // 復元ブラシの太さ（BRUSH_SIZES の添字）と、なぞっている最中の軌跡（表示座標）。
   const [brushPx, setBrushPx] = useState(BRUSH_DEFAULT_PX);
@@ -600,22 +711,93 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   } | null>(null);
   const loupeRafRef = useRef<number | null>(null);
   const loupePendingRef = useRef<typeof loupe>(null);
-  /** タッチ位置(表示座標)からルーペを更新する。毎イベント setState しない。 */
-  const showLoupe = useCallback((lx: number, ly: number) => {
-    const z = zoomRef.current;
-    const { x, y } = localToImage(lx, ly, z);
-    loupePendingRef.current = { img: { x, y }, touch: { x: lx, y: ly } };
+  /** ルーペ更新を1フレーム1回にまとめる共通処理。毎イベント setState しない。 */
+  const scheduleLoupe = useCallback((next: NonNullable<typeof loupe>) => {
+    loupePendingRef.current = next;
     if (loupeRafRef.current != null) return;
     loupeRafRef.current = requestAnimationFrame(() => {
       loupeRafRef.current = null;
       setLoupe(loupePendingRef.current);
     });
   }, []);
+  /**
+   * move モードの素のパン中（頂点/辺/ポリゴン移動中を含む）、ルーペの中身が
+   * 追う画像座標を UI スレッドで直接持つ共有値。dragReticleSV と同じ理由 —
+   * showLoupe は毎タッチイベントで呼ばれるが、その都度 setState していると
+   * React の再レンダーがパンのたびに走ってカクつく。ここへは毎イベント
+   * 同期で書き込み、React state（loupe）は今まで通り rAF で間引く。
+   * ルーペの中身はこの共有値から直接追従させるので、間引き後の state 更新が
+   * JS スレッド側で遅れても見た目のヌルヌルさには影響しない。
+   */
+  const moveLoupeImgSV = useSharedValue<{ x: number; y: number }>({ x: 0, y: 0 });
+  /** タッチ位置(表示座標)からルーペを更新する。'fixed' モードなど、狙い所＝指の位置の時に使う。 */
+  const showLoupe = useCallback((lx: number, ly: number) => {
+    const z = zoomRef.current;
+    const { x, y } = localToImage(lx, ly, z);
+    moveLoupeImgSV.value = { x, y };
+    scheduleLoupe({ img: { x, y }, touch: { x: lx, y: ly } });
+  }, [scheduleLoupe, moveLoupeImgSV]);
+  /**
+   * showLoupe の間引き版。moveLoupeImgSV 導入だけではカクつきが直らなかった
+   * ことから追加した2段目の対策 ——
+   * moveLoupeImgSV はルーペの「見た目の追従」を担うが、scheduleLoupe 自体は
+   * rAF で間引いていても、パン中は毎フレーム（〜60/120Hz）loupe の setState を
+   * 呼び続けていて、この巨大なコンポーネントの再レンダーそのものがパンの
+   * カクつきの主因として残っていた。ルーペの中身は共有値側で既に滑らかなので、
+   * React state（loupe）は「隅寄せ判定用のタッチ位置」「触っていない間の
+   * フォールバック位置」が分かればよく、毎フレーム最新である必要がない。
+   * ここでは時間ベースで間引き、setState 自体の回数をパン中も大きく減らす。
+   * 呼び始め（ジェスチャー開始直後）だけは即座に反映し、出現が遅れて
+   * 見えないようにする。move モードの素のパン・辺/ポリゴン移動でのみ使う
+   * （moveLoupeImgSV を pointSV として使う経路と対にする）。
+   */
+  const loupeShowingRef = useRef(false);
+  const loupeStateLastCommitRef = useRef(0);
+  const LOUPE_STATE_THROTTLE_MS = 120;
+  const showLoupeThrottled = useCallback((lx: number, ly: number) => {
+    const z = zoomRef.current;
+    const { x, y } = localToImage(lx, ly, z);
+    moveLoupeImgSV.value = { x, y };
+    const now = Date.now();
+    if (!loupeShowingRef.current || now - loupeStateLastCommitRef.current >= LOUPE_STATE_THROTTLE_MS) {
+      loupeShowingRef.current = true;
+      loupeStateLastCommitRef.current = now;
+      scheduleLoupe({ img: { x, y }, touch: { x: lx, y: ly } });
+    }
+  }, [scheduleLoupe, moveLoupeImgSV]);
+  /**
+   * 画像座標を直接指定してルーペを更新する。'drag' 設定のレティクルのように、
+   * 狙い所がすでに画像座標で分かっている（指の位置とは独立している）時に使う。
+   * touch は指を避ける隅寄せ判定にのみ使うので、実際の指位置を渡す。
+   */
+  const showLoupeAtImg = useCallback((imgX: number, imgY: number, touchLx: number, touchLy: number) => {
+    scheduleLoupe({ img: { x: imgX, y: imgY }, touch: { x: touchLx, y: touchLy } });
+  }, [scheduleLoupe]);
+  /**
+   * 'drag' 設定のドラッグ中だけが使う、専用の rAF スケジューラ。
+   * dragReticleImg（React state）と loupe（React state）を1フレームに
+   * まとめて1回の setState 呼び出しにする。別々の rAF（loupeRafRef と
+   * dragReticleRafRef）に分けていると、同じフレーム内でも発火タイミングが
+   * ずれて2回の再レンダーになることがあり、それがカクつきの一因になって
+   * いた。ref・共有値(dragReticleSV)は毎イベント同期更新のままなので、
+   * 見た目のヌルヌルさ自体はこの間引きの影響を受けない — ここで間引くのは
+   * 「JSスレッドの再レンダー回数」だけ。
+   */
+  const dragMoveRafRef = useRef<number | null>(null);
+  const dragMovePendingRef = useRef<{ pos: { x: number; y: number }; touch: { x: number; y: number } } | null>(null);
   const hideLoupe = useCallback(() => {
+    loupeShowingRef.current = false;
     loupePendingRef.current = null;
     if (loupeRafRef.current != null) {
       cancelAnimationFrame(loupeRafRef.current);
       loupeRafRef.current = null;
+    }
+    // 'drag' 中の合成更新も、保留分が後から発火してルーペを復活させないよう
+    // ここでまとめて取り消す。
+    dragMovePendingRef.current = null;
+    if (dragMoveRafRef.current != null) {
+      cancelAnimationFrame(dragMoveRafRef.current);
+      dragMoveRafRef.current = null;
     }
     setLoupe(null);
   }, []);
@@ -641,6 +823,103 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const reticleFixedRef = useRef(reticleFixed);
   reticleFixedRef.current = reticleFixed;
 
+  /**
+   * 'drag' 設定: レティクル（編集位置）を指ドラッグで直接動かす方式。対象ツールは
+   * reticleFixed と同じ（スポイト・四角追加・復元ブラシ）。
+   *
+   * adjust（十字ボタン）との違いは操作方法だけでなく、動かす対象そのものが違う点。
+   * adjust はレティクルを画面中央に固定し、代わりにキャンバス（zoom.tx/ty）を
+   * 動かして狙いを合わせる。drag はキャンバス（拡大表示している画像位置）は
+   * 一切動かさず、レティクル位置そのものを独立した画像座標の state
+   * （dragReticleImg）として持ち、指のドラッグ量をその場のズーム倍率で
+   * 画像座標へ変換して加算する（頂点/辺ドラッグと同じ変換式）。
+   * ズームが高いほど同じ指の移動量でもレティクルは少ししか動かない。
+   */
+  const dragReticleMode = settings.loupeMode === 'drag'
+    && (appMode === 'eyedropper' || appMode === 'draw' || appMode === 'restore');
+  const dragReticleModeRef = useRef(dragReticleMode);
+  dragReticleModeRef.current = dragReticleMode;
+
+  /** 'drag' モードのレティクル位置（画像座標）。null は未初期化（初回に中央へ seed）。 */
+  const [dragReticleImg, setDragReticleImg] = useState<{ x: number; y: number } | null>(null);
+  const dragReticleImgRef = useRef(dragReticleImg);
+  dragReticleImgRef.current = dragReticleImg;
+  const dragReticleRafRef = useRef<number | null>(null);
+  const dragReticlePendingRef = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * dragReticleImg の setState を1フレーム1回にまとめる。指ドラッグ中の
+   * onPanResponderMove はネイティブ側のタッチサンプリング頻度（画面の
+   * リフレッシュレートより高いことがある）でそのまま呼ばれるため、毎回
+   * setState していると1フレームに何度も再レンダーが走ってカクつく
+   * （ルーペの showLoupe/scheduleLoupe と同じ理由・同じ対策）。
+   */
+  const scheduleDragReticleState = useCallback((next: { x: number; y: number }) => {
+    dragReticlePendingRef.current = next;
+    if (dragReticleRafRef.current != null) return;
+    dragReticleRafRef.current = requestAnimationFrame(() => {
+      dragReticleRafRef.current = null;
+      setDragReticleImg(dragReticlePendingRef.current);
+    });
+  }, []);
+  /**
+   * レティクル位置（画像座標）を UI スレッドで直接持つ共有値。TouchLoupe の
+   * 中身の追従と、実寸キャンバス側の印(mainReticle)の位置を、どちらも
+   * React の再レンダーを一切挟まずに毎フレーム更新する。他のモード（adjust
+   * のパン、二本指ピンチ）が zoomSV 経由でヌルヌル動くのと同じ仕組み。
+   * dragReticleImg（React state, rAFで間引き）は、触っていない間のルーペの
+   * 表示や決定ボタンの確定位置など、"最新の1点" が分かればよい用途にだけ使う。
+   */
+  const dragReticleSV = useSharedValue<{ x: number; y: number }>({ x: 0, y: 0 });
+  /** レティクル位置の3つの保持先（ref・共有値・React state）をまとめて更新する。 */
+  const setDragReticlePos = useCallback((next: { x: number; y: number }) => {
+    dragReticleImgRef.current = next;
+    dragReticleSV.value = next;
+    scheduleDragReticleState(next);
+  }, [dragReticleSV, scheduleDragReticleState]);
+  /**
+   * ドラッグ中（onPanResponderMove）専用の更新関数。ref・共有値は毎イベント
+   * 同期更新（見た目のヌルヌルさはここが担う）、dragReticleImg と loupe の
+   * React state 更新は dragMoveRafRef で1フレーム1回にまとめ、かつ同じ
+   * rAF コールバック内で両方の setState を呼ぶことで React のバッチング
+   * （1回の再レンダーにまとまる）を効かせる。scheduleDragReticleState と
+   * scheduleLoupe を別々に呼ぶと rAF が2本になり、同じフレームでも発火が
+   * ずれて再レンダーが2回に分かれることがあった（カクつきの一因）。
+   */
+  const updateDragReticleLive = useCallback((next: { x: number; y: number }, touchLx: number, touchLy: number) => {
+    dragReticleImgRef.current = next;
+    dragReticleSV.value = next;
+    dragMovePendingRef.current = { pos: next, touch: { x: touchLx, y: touchLy } };
+    if (dragMoveRafRef.current != null) return;
+    dragMoveRafRef.current = requestAnimationFrame(() => {
+      dragMoveRafRef.current = null;
+      const v = dragMovePendingRef.current;
+      if (!v) return;
+      setDragReticleImg(v.pos);
+      setLoupe({ img: v.pos, touch: v.touch });
+    });
+  }, [dragReticleSV]);
+  /**
+   * 画像範囲外にも自由に出せる（頂点/辺/ポリゴンのドラッグと同じく特にクランプ
+   * しない）。今のキャンバス表示範囲の外側を狙いたい場合もあるため。
+   */
+  const clampReticleImg = (x: number, y: number) => ({ x, y });
+  // 'drag' 設定に入った直後、まだレティクル座標が無ければキャンバス中央に相当する
+  // 画像座標を初期値にする。一度決めたらツール切替（スポイト⇄復元ブラシ等）を
+  // またいで保持し、毎回中央へ戻らないようにする。画像自体が変わった時
+  // （bgVersion 変化）は中央から seed し直す。
+  const dragReticleBgVersionRef = useRef(bgVersion);
+  useEffect(() => {
+    if (dragReticleBgVersionRef.current !== bgVersion) {
+      dragReticleBgVersionRef.current = bgVersion;
+      dragReticleImgRef.current = null;
+    }
+    if (!dragReticleMode || dragReticleImgRef.current) return;
+    const p = canvasCenter();
+    const z = zoomRef.current;
+    const seed = p ? localToImage(p.x, p.y, z) : { x: imageWRef.current / 2, y: imageHRef.current / 2 };
+    setDragReticlePos(seed);
+  }, [dragReticleMode, bgVersion, setDragReticlePos]);
+
   /** 画像1ドットぶんの表示px。倍率が変わっても「1押し＝1ドット」を保つ。 */
   const dotStepPx = () => Math.max(0.02, dsRef.current * zoomRef.current.scale);
 
@@ -661,9 +940,23 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 抑える（zoomCompact の状態には依らない。ズーム/ブラシパネルの開閉はルーペの
   // 下に浮かぶ小さなクラスタなので、ルーペ自体のサイズには影響しない）。
   const loupeIsAdjust = settings.loupeMode === 'adjust';
-  const loupeSize = (loupeIsAdjust && canvasSize.h > 0)
-    ? Math.round(Math.min(canvasSize.h * 0.36, 260))
-    : LOUPE_SIZE;
+  /**
+   * 収納段階「大」の一辺(px)。設定「ルーペ基準サイズ」(settings.loupeBaseSize,
+   * 80〜220) がそのまま上限になる。canvasSize が確定していればその4割弱で
+   * さらに抑える（小さい画面で大きすぎるルーペにならないための安全弁。
+   * 基準サイズ自体は 220 まで許すが、画面が低ければそこまで出さない）。
+   * 「中」「収納」はこの MAX から比率で計算する（LOUPE_MEDIUM_RATIO /
+   * LOUPE_MINI_RATIO）ので、大→中→収納の切り替えロジック自体は変わらない。
+   */
+  const loupeMax = settings.loupeBaseSize;
+  const loupeMedium = Math.round(loupeMax * LOUPE_MEDIUM_RATIO);
+  // 収納は比率のままだと基準サイズが小さい時(例: 80→28px)にタップ領域が
+  // 最小タップ目安(44pt)を割って押せなくなるため下限を設ける。中サイズは
+  // 同条件でも 60px 前後あり押しにくいと報告されていないためフロア無し。
+  const loupeMini = Math.max(LOUPE_MINI_MIN, Math.round(loupeMax * LOUPE_MINI_RATIO));
+  const loupeSize = canvasSize.h > 0
+    ? Math.round(Math.min(canvasSize.h * 0.36, loupeMax))
+    : loupeMax;
   // ルーペは常に画面最上部(topOffset=8)に置く。ズームバー/ツールメニューの
   // 位置は、ルーペ自体ではなく下の loupeDockLevel（収納段階）に応じて
   // ルーペの下・横へ回り込ませるので、モードごとに topOffset を変える必要は
@@ -679,14 +972,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 大きく使いたいので大(0)、それ以外は編集画面を広く使いたいので中(1)。
    */
   const [loupeDockLevel, setLoupeDockLevel] = useState<DockLevel>(loupeIsAdjust ? 0 : 1);
-  const effectiveLoupeSize = loupeDockLevel === 1 ? DOCK_COMPACT_SIZE
-    : loupeDockLevel === 2 ? DOCK_DOCKED_SIZE
+  const effectiveLoupeSize = loupeDockLevel === 1 ? loupeMedium
+    : loupeDockLevel === 2 ? loupeMini
     : loupeSize;
   // ルーペの設定（loupeMode）自体が変わったら、そのモードの既定段階に戻す
   // （'fixed'⇄'adjust' を切り替えた時、前のモードの収納状態を引きずらない）。
   useEffect(() => {
     setLoupeDockLevel(loupeIsAdjust ? 0 : 1);
   }, [loupeIsAdjust]);
+  /**
+   * ルーペの倍率（TouchLoupe の magnify prop）。設定の loupeZoomMode に応じて
+   * キャンバスの現在のズーム(zoom.scale)と連動させる。
+   *   'fixed'     … 常に既定値（従来どおり、ズームに関係なく一定）。
+   *   'matchZoom' … ズームが上がるほどルーペも一緒に拡大（さらに拡大して
+   *                 見たい時向け）。上限は既定値の4倍に抑え、極端な
+   *                 モザイク状態にならないようにする。
+   *   'inverse'   … ズームが上がるほどルーペは逆に縮小（キャンバス側で
+   *                 既に十分拡大されているぶん、ルーペまで過剰倍率に
+   *                 ならないようにする）。下限は既定値の1/4に留める。
+   */
+  const loupeBaseMagnify = Number(settings.loupeBaseMagnify) || LOUPE_MAGNIFY;
+  const loupeMagnify = settings.loupeZoomMode === 'matchZoom'
+    ? Math.min(loupeBaseMagnify * zoom.scale, loupeBaseMagnify * 4)
+    : settings.loupeZoomMode === 'inverse'
+    ? Math.max(loupeBaseMagnify / zoom.scale, loupeBaseMagnify / 4)
+    : loupeBaseMagnify;
   /** ズームバーと同様、ブラシ太さ/スポイト許容値パネルも畳んでいるかどうか。 */
   const panelCompact = loupeIsAdjust && zoomCompact;
   /**
@@ -694,10 +1004,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * ブラシ/スポイトのパネル(panelSlot, bottom:58)の上にくるよう空ける。
    * パネルが展開中（フルサイズのカード）だとかなり高さを食うので、
    * その時だけ余分に持ち上げる。
+   * 再透過カードが開いている間は、頂点を動かす十字ボタン自体が無意味
+   * （今欲しいのは「どのポリゴンを対象にするか」の選択だけ）なので矢印は
+   * 出さず、決定ボタン1個だけにする（onNudge 配線側で切り替え）。決定
+   * ボタン単体でも、再透過カードはスコープ選択の行が増えて縦に長いので、
+   * 同じ 172 だと被る。開いている間はさらに高く持ち上げる。
    */
   const panelVisibleNow = (appMode === 'restore' || appMode === 'eyedropper')
     && !retransOpen && !chromeHidden;
-  const dpadBottom = panelVisibleNow && !panelCompact ? 172 : 100;
+  const dpadBottom = retransOpen ? 190
+    : panelVisibleNow && !panelCompact ? 172
+    : 100;
   /**
    * 展開時のズームバーの幅。'adjust' モードでは親(floatingTop)が中身に
    * 合わせて縮む右寄せの塊になっているため、flex:1 のままだと際限なく
@@ -721,10 +1038,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const topClusterStyle = loupeDockLevel === 0
     ? { top: loupeTopOffset + effectiveLoupeSize + 6, left: undefined, right: 8, flexDirection: 'row' as const }
     : loupeDockLevel === 1
-    ? { top: loupeTopOffset, left: 8 + DOCK_COMPACT_SIZE + 8, right: 8, flexDirection: 'column' as const, alignItems: 'stretch' as const }
-    // 小(docked)状態はルーペの半分(DOCK_DOCKED_SIZE/2)が画面内に見えている
+    ? { top: loupeTopOffset, left: 8 + loupeMedium + 8, right: 8, flexDirection: 'column' as const, alignItems: 'stretch' as const }
+    // 小(docked)状態はルーペの半分(loupeMini/2)が画面内に見えている
     // ので、その右端より後ろから始めないとスライダーと重なる。
-    : { top: loupeTopOffset, left: DOCK_DOCKED_SIZE / 2 + 8, right: 8, flexDirection: 'row' as const };
+    : { top: loupeTopOffset, left: loupeMini / 2 + 8, right: 8, flexDirection: 'row' as const };
   /** 中(縦積み)の時だけ、ズームバーに横幅いっぱいを明示する（flex:1は縦方向の伸びになってしまうため）。 */
   const zoomTopRowStyle = loupeDockLevel === 0
     ? { flex: undefined, width: zoomRowWidth }
@@ -805,11 +1122,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   }, []);
   useEffect(() => () => {
     if (zoomRafRef.current != null) cancelAnimationFrame(zoomRafRef.current);
+    if (dragReticleRafRef.current != null) cancelAnimationFrame(dragReticleRafRef.current);
   }, []);
 
   const polygonsRef   = useRef(polygons);   polygonsRef.current   = polygons;
   const selectedIdRef = useRef(selectedId); selectedIdRef.current = selectedId;
   const appModeRef    = useRef(appMode);    appModeRef.current    = appMode;
+  // ポリゴンを非表示にしている間は、見えていないものに触れて誤操作しない
+  // よう、頂点/辺/ポリゴン全体のヒット判定も一緒に止める（PanResponder の
+  // クロージャから読むため ref 経由）。
+  const chromeHiddenRef = useRef(chromeHidden); chromeHiddenRef.current = chromeHidden;
   const pastRef       = useRef(past);       pastRef.current       = past;
   const dsRef         = useRef(ds);         dsRef.current         = ds;
   const imageWRef     = useRef(bgResult.width);  imageWRef.current  = bgResult.width;
@@ -898,7 +1220,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 戻し、実行経路を1本にする。1つ目でコミット、2つ目で描画が乗る。
    * 待ち時間は固定せず、処理が終わったら解除する。
    */
-  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.undoBusy' | 'editor.redoBusy') => {
+  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy') => {
     if (key) setBusyKey(key);
     eyeBusyRef.current = true;
     setEyeBusy(true);
@@ -914,11 +1236,19 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       } finally {
         // 例外が出ても必ず解除する（漏らすと以後スポイト・復元が死ぬ）。
         clearTimeout(failsafe);
-        eyeBusyRef.current = false;
-        setEyeBusy(false);
-        // 波紋はここで即消さない。処理が速いと出た瞬間に消えて
-        // 「押せたのか分からない」状態に戻るため、アニメの尺だけ残す。
-        setTimeout(() => setRipple(null), RIPPLE_MS);
+        // work() は同期的に画素(rgba)を書き換えて setState するが、その
+        // 結果が実際に画面に塗られる（親の再レンダー→ skImage の作り直し
+        // → Skia側の新しいテクスチャのアップロード）までには、この関数
+        // 呼び出しの中では終わらないもう数フレームかかることがある。
+        // ここで即座にローディングを消すと「消える前にローディングが
+        // 終わった」ように見えるため、もう2フレーム待ってから解除する。
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          eyeBusyRef.current = false;
+          setEyeBusy(false);
+          // 波紋はここで即消さない。処理が速いと出た瞬間に消えて
+          // 「押せたのか分からない」状態に戻るため、アニメの尺だけ残す。
+          setTimeout(() => setRipple(null), RIPPLE_MS);
+        }));
       }
     }));
   }, []);
@@ -983,11 +1313,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       setFuture([]);
       const radius = brushRadiusRef.current;
       const thinned = thinStroke(pts, radius);
-      runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.eyedropBusy');
+      runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.restoreBusy');
     }
   }, [runHeavy]);
 
-  /** 決定ボタン。録画中でなければ開始、録画中なら終了して確定する。 */
+  /**
+   * 決定ボタン。録画中でなければ開始、録画中なら終了して確定する。
+   * 開始点は 'adjust' 設定ならキャンバス中央、'drag' 設定なら指ドラッグで
+   * 動かしてきたレティクル位置（dragReticleImg）。
+   */
   const toggleRestoreRecording = useCallback(() => {
     if (restoreRecordingRef.current) {
       restoreRecordingRef.current = false;
@@ -996,10 +1330,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       finishRestoreStroke();
       return;
     }
-    const p = canvasCenter();
-    if (!p) return;
-    const { x, y } = localToImage(p.x, p.y, zoomRef.current);
-    strokeImgRef.current = [[x, y]];
+    let seed: { x: number; y: number } | null;
+    if (dragReticleModeRef.current) {
+      seed = dragReticleImgRef.current
+        ?? clampReticleImg(imageWRef.current / 2, imageHRef.current / 2);
+    } else {
+      const p = canvasCenter();
+      seed = p ? localToImage(p.x, p.y, zoomRef.current) : null;
+    }
+    if (!seed) return;
+    strokeImgRef.current = [[seed.x, seed.y]];
     flushStroke();
     restoreRecordingRef.current = true;
     restoreRecordingSV.value = true;
@@ -1239,7 +1579,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           text: t('common.reset'),
           style: 'destructive',
           onPress: () => {
-            onResetEditsRef.current?.(); // 画像の巻き戻しは親が行う
+            // 画像の巻き戻しは親が行う。undo と同じく元画像から作り直す重い
+            // 処理なので、他の重い操作と同じ処理中オーバーレイを出す。
+            runHeavy(() => onResetEditsRef.current?.(), 'editor.resetBusy');
             setPolygons([]);
             setSelectedId(null);
             setSelectedVertexIdx(null);
@@ -1298,6 +1640,71 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     setAppMode('move'); // 追加後すぐ移動モードでハンドル操作できるよう切替
     onPolygonsChange?.(next); // 確定操作: セッションに保存
   }, [pushHistory, onPolygonsChange]);
+
+  /**
+   * 「範囲を指定する」→「タップで囲む」で作った、使い捨ての一時ポリゴンの id。
+   *
+   * ペンと同じ操作感（頂点をつまんで微調整できる）にするため、この一時形も
+   * 本物と同じ `polygons` 配列に入れて selectedId で選択する（そうしないと
+   * 既存の頂点ドラッグ・辺タップでの頂点追加・長押し削除が一切使えない —
+   * それらは全部 `selectedId`/`polygons` 前提で書かれているため）。
+   * ただし本物の切り出し形状ではないので、退出時（確定・戻る・×・やり直す）に
+   * 必ず clearRetransTempPoly で取り除く。取り除き忘れるとセルの最終的な
+   * 切り出し結果に紛れ込んでしまう。
+   */
+  const retransTempPolyIdRef = useRef<number | null>(null);
+
+  /** 一時ポリゴンを片付ける。無ければ何もしない（何度呼んでも安全）。 */
+  const clearRetransTempPoly = useCallback(() => {
+    const id = retransTempPolyIdRef.current;
+    if (id == null) return;
+    retransTempPolyIdRef.current = null;
+    setPolygons(prev => prev.filter(p => p.id !== id));
+    setSelectedId(prev => (prev === id ? null : prev));
+    setSelectedVertexIdx(null);
+  }, []);
+
+  /**
+   * 「範囲を指定する」→「タップで囲む」専用のタップ処理。
+   *
+   * ペン（addRect）と同じ「タップ点を含むスタンプの bbox を検出して、
+   * 少し外側へ広げた四角にする」ロジックをそのまま流用し、その四角を
+   * move モードの頂点ドラッグで微調整できるようにする（詳しくは
+   * retransTempPolyIdRef 参照）。ヒットしない場所をタップした場合は
+   * addRect のフォールバックと同じくタップ点中心の正方形にする。
+   *
+   * addRect と違って pushHistory（ポリゴン形状のundo/redo）も
+   * onPolygonsChange（セッション保存）も呼ばない。使い捨ての作業用の形を
+   * 本物の編集履歴やセッションへ混ぜたくないため。
+   */
+  const retransTapEnclose = useCallback((imgX: number, imgY: number) => {
+    const iw = imageWRef.current, ih = imageHRef.current;
+    let hit: BBox | null = null;
+    for (const b of stampBboxesRef.current) {
+      if (imgX >= b.minX && imgX <= b.maxX && imgY >= b.minY && imgY <= b.maxY) {
+        if (!hit || b.area < hit.area) hit = b;
+      }
+    }
+    const points: [number, number][] = hit
+      ? initialRectFromBBox(hit, iw, ih)
+      : (() => {
+        const fallbackHalf = Math.min(iw, ih) * RECT_RATIO / 2;
+        const x0 = imgX - fallbackHalf, y0 = imgY - fallbackHalf;
+        const x1 = imgX + fallbackHalf, y1 = imgY + fallbackHalf;
+        return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      })();
+    // 前のタップで残っていた一時ポリゴンがあれば先に片付ける
+    // （通常は「やり直す」経由で既に片付いているはずだが、念のため）。
+    clearRetransTempPoly();
+    const id = nextIdRef.current;
+    const next = [...polygonsRef.current, { id, points }];
+    setPolygons(next);
+    setSelectedId(id);
+    setSelectedVertexIdx(null);
+    retransTempPolyIdRef.current = id;
+    setAppMode('move'); // 頂点ドラッグ操作を有効にする
+    setRetransPicking(false);
+  }, [clearRetransTempPoly]);
 
   // ── 頂点操作 ─────────────────────────────────────────────────────────────
 
@@ -1420,6 +1827,61 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     sy: iy * dsRef.current * z.scale + z.ty,
   });
 
+  /**
+   * 「範囲を指定する」→「ブラシで選択」専用のジェスチャー。メインの
+   * PanResponder（パン・ピンチ・頂点操作…）とは完全に分離した、なぞって
+   * 囲むためだけの単純な PanResponder。復元ブラシの「なぞった場所だけ」の
+   * 仕組みとは別物で、こちらは「なぞって閉じた形の内部全体」を選択範囲に
+   * する。指を離した時点の軌跡を画像座標へ変換して確定する（そのフレームの
+   * zoom を使うので、後でパン・ズームしても選択範囲自体はズレない）。
+   */
+  const retransTraceResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      const { locationX, locationY } = evt.nativeEvent;
+      retransTraceStartRef.current = [locationX, locationY];
+      retransTraceRef.current = [[locationX, locationY]];
+      setRetransTraceLocal([[locationX, locationY]]);
+    },
+    // 【重要】evt.nativeEvent.locationX/Y は move イベントの間 iOS だと
+    // 更新されず grant 時の値のまま固まることがある（このアプリの復元ブラシ
+    // 側でも同じ理由で使っていない）。代わりに gestureState.dx/dy
+    // （grant からの累積移動量）を、grant で覚えた開始位置に足して現在位置を
+    // 求める。これが「なぞっても線が出ない」不具合の原因だった。
+    onPanResponderMove: (_evt, gs) => {
+      const [startX, startY] = retransTraceStartRef.current;
+      const lx = startX + gs.dx;
+      const ly = startY + gs.dy;
+      const pts = retransTraceRef.current;
+      const last = pts[pts.length - 1];
+      // 点が近すぎると無駄に増えてギザギザ・重くなるので間引く。
+      if (last && Math.hypot(lx - last[0], ly - last[1]) < 3) return;
+      pts.push([lx, ly]);
+      setRetransTraceLocal([...pts]);
+    },
+    onPanResponderRelease: () => {
+      const pts = retransTraceRef.current;
+      retransTraceRef.current = [];
+      setRetransTraceLocal([]);
+      // 3点未満は面にならないので、選択なしとして描き直してもらう。
+      if (pts.length < 3) return;
+      const z = zoomRef.current;
+      const imgPts: Array<[number, number]> = pts.map(([lx, ly]) => {
+        const { x, y } = localToImage(lx, ly, z);
+        return [x, y];
+      });
+      setRetransMaskPoints(imgPts);
+      setRetransPicking(false); // 選択完了 → カード表示（「この範囲を再透過」）へ戻る
+    },
+    onPanResponderTerminate: () => {
+      // 電話の着信などでジェスチャーが強制終了された場合。中途半端な形を
+      // 選択範囲として確定させない。
+      retransTraceRef.current = [];
+      setRetransTraceLocal([]);
+    },
+  })).current;
+
   // ── タップ処理 (move モード) ──────────────────────────────────────────────
 
   /**
@@ -1430,6 +1892,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    *   4) 空白                     → 選択解除
    */
   const handleMoveTap = useCallback((lx: number, ly: number) => {
+    // ポリゴンを非表示にしている間は、見えていない図形に対してタップで
+    // 選択・選択解除・頂点挿入が起きるとかえって混乱するので何もしない。
+    if (chromeHiddenRef.current) return;
     const z      = zoomRef.current;
     const selId  = selectedIdRef.current;
     const polys  = polygonsRef.current;
@@ -1460,12 +1925,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   /**
    * 決定ボタン。ツールごとに「確定する場所／タイミング」が違うので振り分ける。
    *
-   * ・スポイト／四角追加: 画面中央にレティクルを固定し、画像の方をパンして
-   *   狙いを合わせる（詳しくは reticleFixed 参照）ので、中央＝狙っている点。
-   *   決定を押すとその場で1回確定する。
+   * ・スポイト／四角追加: 'adjust' 設定は画面中央に固定したレティクルの位置、
+   *   'drag' 設定は指ドラッグで動かしてきたレティクル位置（dragReticleImg）。
+   *   どちらも決定を押すとその場で1回確定する（指を離しただけでは確定しない
+   *   —— 'drag' で別指に持ち替えて位置合わせを続けても誤って確定しないように）。
    * ・復元ブラシ: 単発の点ではなく軌跡が要るので、決定は「録画」の開始／
-   *   終了トグルにしてある（toggleRestoreRecording）。開始後は中央固定の
-   *   まま画像をパンすると、そのパンの軌跡がそのままストロークになる。
+   *   終了トグルにしてある（toggleRestoreRecording）。
    * ・移動・調整: ハンドルを直接つまむ操作なので決定ボタン自体を出さない
    *   （呼び出し側の onDecide 条件で除外）。
    */
@@ -1473,6 +1938,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     const mode = appModeRef.current;
     if (mode === 'restore') {
       toggleRestoreRecording();
+      return;
+    }
+    if (dragReticleModeRef.current) {
+      const p = dragReticleImgRef.current
+        ?? clampReticleImg(imageWRef.current / 2, imageHRef.current / 2);
+      if (mode === 'eyedropper') {
+        const { sx, sy } = imageToLocal(p.x, p.y, zoomRef.current);
+        commitEyedropAt(sx, sy);
+      } else if (mode === 'draw') {
+        addRect(p.x, p.y);
+      }
       return;
     }
     const p = canvasCenter();
@@ -1595,12 +2071,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     // 終了イベントを1度でも取りこぼした瞬間にキャンバスのタップが全部死ぬ。
     // スライダーからタッチを奪うのは「移動」側なので、ガードは下の
     // onMoveShouldSetPanResponder だけで足りる。
-    onStartShouldSetPanResponder: () => !eyeBusyRef.current,
+    // retransBrushActiveRef: 「範囲を指定する」→「ブラシで選択」でなぞって
+    // いる間は、メイン側は一切 responder になろうとしない（詳しくは
+    // retransBrushActiveRef の定義コメント参照）。
+    onStartShouldSetPanResponder: () => !eyeBusyRef.current && !retransBrushActiveRef.current,
     // 微小なジッタ（タップ時の指ブレ）では responder を奪わず、明確なドラッグ
     // （PAN_THRESHOLD=8px 以上の移動）のときだけパンを開始する。これにより
     // キャンバス上のフローティングボタンの onPress が横取りされず生き残る。
     onMoveShouldSetPanResponder:  (_, gs) =>
-      !uiInteractingRef.current &&
+      !uiInteractingRef.current && !retransBrushActiveRef.current &&
       (Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD),
 
     onPanResponderGrant: (evt) => {
@@ -1621,15 +2100,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
+      // 'drag' 設定: レティクル（編集位置）を指ドラッグで直接動かす。3ツール共通。
+      // キャンバス自体はパンさせず、dragReticleImg（画像座標）だけを動かす。
+      // 指を離しても何も確定しない（下の release 側は 'drag_reticle' に反応する
+      // 分岐を持たない）。別指で改めて位置合わせを続けても誤って確定しないよう、
+      // 確定は必ず決定ボタン（decideAtReticle／復元ブラシは録画トグル）の役目にする。
+      if (dragReticleModeRef.current
+        && (appModeRef.current === 'draw' || appModeRef.current === 'eyedropper' || appModeRef.current === 'restore')) {
+        gPhase.current = 'drag_reticle';
+        gPrevLX.current = lx;
+        gPrevLY.current = ly;
+        const p = dragReticleImgRef.current
+          ?? clampReticleImg(imageWRef.current / 2, imageHRef.current / 2);
+        showLoupeAtImg(p.x, p.y, lx, ly);
+        return;
+      }
+
       // draw / eyedropper（'fixed' モード）はどちらも「タップで確定」。ここでは
       // pending にするだけで、release 側で移動量を見てタップかパンかを判定する。
       // こうすることでスポイト中でもキャンバスのパン・ピンチがそのまま使える
       // （grant で即実行すると、見回すためのパン開始で誤って色が消える）。
       if (appModeRef.current === 'draw' || appModeRef.current === 'eyedropper') {
         gPhase.current = 'pending';
-        // スポイトは押した瞬間に色が決まるので、押している間だけでも
-        // 「どこを吸うのか」を見せる価値がある。
-        if (appModeRef.current === 'eyedropper') showLoupe(lx, ly);
+        // どちらも押した瞬間の位置がそのまま確定候補になるので、押している
+        // 間だけでも「どこに置く／どこを吸うのか」を見せる価値がある。
+        showLoupe(lx, ly);
         return;
       }
 
@@ -1646,7 +2141,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       }
 
       // move モード: 選択中ポリゴンの頂点ヒット判定
-      const selId = selectedIdRef.current;
+      // chromeHidden 中は塗り・輪郭・ハンドルを隠しているので、見えない
+      // ポリゴンに触れて頂点/辺/全体ドラッグへ入ってしまわないよう、
+      // ここから先の3つの判定ブロックをまとめてスキップし、下の通常の
+      // パン処理へフォールスルーさせる。
+      const selId = chromeHiddenRef.current ? null : selectedIdRef.current;
       if (selId !== null) {
         const poly = polygonsRef.current.find(p => p.id === selId);
         if (poly) {
@@ -1741,8 +2240,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       if (gPhase.current === 'drag_vertex') {
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
-        // 頂点は指の真下に来るので、掴んでいる間はルーペで位置を見せる。
-        showLoupe(lx, ly);
+        // 頂点は既に丸ハンドルが画面に見えているので、掴んだだけではルーペを
+        // 出さない（他のドラッグと違い、隠れて見えなくなる情報が無いため）。
         const z  = zoomRef.current;
         const imgX = (lx - z.tx) / z.scale / dsRef.current;
         const imgY = (ly - z.ty) / z.scale / dsRef.current;
@@ -1772,6 +2271,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
         const z  = zoomRef.current;
+        // 辺も指の真下に来るので、頂点ドラッグと同じくルーペで位置を見せる。
+        showLoupe(lx, ly);
 
         // 最初の有意な移動でスナップショットを積む（タップ = 無移動の場合は push しない）
         if (!dragEdgeMovedRef.current) {
@@ -1811,6 +2312,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
         const z  = zoomRef.current;
+        // 指の真下が隠れるのは他のドラッグと同じなので、ルーペで位置を見せる。
+        showLoupe(lx, ly);
         // 表示px の差分 → 画像px の差分に変換（ズーム倍率で除算）
         const dxImg = (lx - gPrevLX.current) / z.scale / dsRef.current;
         const dyImg = (ly - gPrevLY.current) / z.scale / dsRef.current;
@@ -1833,7 +2336,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       // 以前は移動モードでしか効かず、スポイトや復元ブラシの最中に見る場所を
       // 変えたいときに、いちいちツールを切り替える必要があった。
       // 二本指はどのツールでも「見る場所を変える」操作として空いているので、
-      // そこに割り当てる（一本指はツールごとの操作のまま）。
+      // そこに割り当てる（一本指はツールごとの操作のまま）。'drag' 設定の
+      // レティクル調整中（drag_reticle）も対象— 二本目の指が乗ったら
+      // レティクル移動より優先してパン/ピンチへ切り替える。
       if (touches.length >= 2) {
         const d    = touchDist(touches[0], touches[1]);
         const offX = viewOffsetRef.current.x;
@@ -1877,19 +2382,49 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
       if (gPhase.current === 'pinch') return;
 
-      // スポイト: 押したまま動かして狙いを定められるよう、指を追ってルーペを
-      // 更新する。以前は押した瞬間の1回しか出しておらず、動かしても
+      // ── 'drag' 設定: レティクルを指ドラッグで動かす（3ツール共通）───────
+      // キャンバスはパンさせず、レティクル位置(dragReticleImg)だけを、頂点/辺/
+      // ポリゴンのドラッグと同じ変換式（表示px差分 ÷ ズーム倍率）で動かす。
+      // ズームが高いほど同じ指の移動量でもレティクルは少ししか動かない。
+      // 二本指チェックより後に置くことで、二本目の指が乗った瞬間はそちらの
+      // パン/ピンチへ切り替わり、片手でレティクル調整→もう一方の指で
+      // 見る場所を調整、が両立する。
+      if (gPhase.current === 'drag_reticle') {
+        const lx = evt.nativeEvent.locationX;
+        const ly = evt.nativeEvent.locationY;
+        const z  = zoomRef.current;
+        const dxImg = (lx - gPrevLX.current) / z.scale / dsRef.current;
+        const dyImg = (ly - gPrevLY.current) / z.scale / dsRef.current;
+        gPrevLX.current = lx;
+        gPrevLY.current = ly;
+        const base = dragReticleImgRef.current
+          ?? clampReticleImg(imageWRef.current / 2, imageHRef.current / 2);
+        const next = clampReticleImg(base.x + dxImg, base.y + dyImg);
+        updateDragReticleLive(next, lx, ly);
+        // 復元ブラシは「録画中」(決定ボタンで開始済み)の間だけ、動いた軌跡を積む。
+        // adjust 設定の recordCenterPoint と同じ考え方 — レティクルを動かすだけでは
+        // 何も確定せず、録画トグルが入っている時だけ軌跡として記録する。
+        if (appModeRef.current === 'restore' && restoreRecordingRef.current) {
+          strokeImgRef.current.push([next.x, next.y]);
+          flushStroke();
+        }
+        return;
+      }
+
+      // スポイト・ペン(draw): 押したまま動かして狙いを定められるよう、指を追って
+      // ルーペを更新する。以前は押した瞬間の1回しか出しておらず、動かしても
       // ルーペが固まったままだった。
       // reticleFixed 中はこの経路を使わず、下のパン処理に流す
       // （狙いは画面を動かして合わせるので、指の位置そのものは見せない）。
-      if (gPhase.current === 'pending' && appModeRef.current === 'eyedropper'
+      if (gPhase.current === 'pending'
+        && (appModeRef.current === 'eyedropper' || appModeRef.current === 'draw')
         && !reticleFixedRef.current) {
         showLoupe(gStartLX.current + gs.dx, gStartLY.current + gs.dy);
         return;
       }
 
-      // 復元ブラシ: 指の軌跡を貯める。実際の画素書き換えは離した時に1回だけ行う
-      // （毎フレーム画像全体を作り直すと重すぎるため）。
+      // 復元ブラシ（'fixed' モード）: 指の軌跡を貯める。実際の画素書き換えは
+      // 離した時に1回だけ行う（毎フレーム画像全体を作り直すと重すぎるため）。
       if (gPhase.current === 'restore') {
         const lx = gStartLX.current + gs.dx;
         const ly = gStartLY.current + gs.dy;
@@ -1917,8 +2452,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             canvasSizeRef.current.w, canvasSizeRef.current.h,
             imageWRef.current * dsRef.current, imageHRef.current * dsRef.current,
             reticleFixedRef.current));
-          // ルーペの追従・復元ブラシの軌跡積みは、下の
-          // useAnimatedReaction(zoomSV監視)がまとめて処理する。
+          // reticleFixed 中はレティクルが画面中央固定で、ルーペの追従・復元
+          // ブラシの軌跡積みは下の useAnimatedReaction(zoomSV監視)がまとめて
+          // 処理する。それ以外（'move' モードの素のパン）は、指の真下も他の
+          // ドラッグと同じく隠れるのでルーペで見せる。
+          if (!reticleFixedRef.current) {
+            showLoupeThrottled(evt.nativeEvent.locationX, evt.nativeEvent.locationY);
+          }
         }
       }
     },
@@ -1987,6 +2527,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
+      // 'drag' 設定: 指を離しただけでは何も確定しない。位置合わせを別指で
+      // 続けても誤って確定しないよう、確定は決定ボタン（decideAtReticle／
+      // 復元ブラシは録画トグル）だけの役目にする。ここでは何もせず、
+      // 下の共通処理（hideLoupe/commitZoom/idle化）だけを通す。
+
       if (gPhase.current === 'pending') {
         const moved = Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD;
         // スポイトだけは「動かしてから離す」を正式な操作にしているので、
@@ -1995,7 +2540,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         // reticleFixed 中は、タップだけでは何も確定しない（狙いは画面を
         // 動かして合わせ、確定は決定ボタンの役目）。
         if ((!moved || appModeRef.current === 'eyedropper') && !reticleFixedRef.current) {
-          if (appModeRef.current === 'draw' && !moved) {
+          if (retransPickingRef.current && retransMethodRef.current === 'polygon' && !moved) {
+            // 「範囲を指定する」→「タップで囲む」選択中: ペンと同じ
+            // bbox 検出でその場に四角を作り、そのまま選択範囲として確定する
+            // （addRect と違い polygons には積まない。詳しくは
+            // retransTapEnclose 参照）。
+            const z = zoomRef.current;
+            const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
+            retransTapEnclose(x, y);
+          } else if (appModeRef.current === 'draw' && !moved) {
             // draw モード: タップ座標に四角を追加
             const z = zoomRef.current;
             const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
@@ -2025,11 +2578,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           // 保存サイズ対策。操作列は永続化されるので、同じ場所に溜まった点を
           // 落としてから渡す。塗る側が補間するので結果は変わらない。
           const thinned = thinStroke(pts, radius);
-          runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.eyedropBusy');
+          runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.restoreBusy');
         }
       }
 
-      hideLoupe();
+      // 離した後もルーペは最後に触れていた位置を映したままにする（ここで
+      // hideLoupe() すると毎回キャンバス中央へ戻ってしまい、次に触る場所を
+      // 探す手がかりが消えてしまうため、明示的には隠さない）。
       commitZoom();   // ジェスチャー中は SharedValue だけ動かしているので確定する
       gPhase.current = 'idle';
     },
@@ -2051,7 +2606,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       // 中断されると緑の円が残り続け、ズームを動かすと一緒に動いていた。
       strokeImgRef.current = [];
       setStrokePts([]);
-      hideLoupe();
+      // release と同じく、中断時もルーペは最後の位置のまま残す。
       commitZoom();
       gPhase.current             = 'idle';
     },
@@ -2142,6 +2697,36 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
   const selectedPoly = selectedId !== null ? polygons.find(p => p.id === selectedId) : null;
 
+  // 「範囲を指定する」→「タップで囲む」で作った一時ポリゴンが選択された瞬間に
+  // ピッキング状態を終えてカード表示へ戻す（詳しくは retransTapEnclose 参照。
+  // 実際は retransTapEnclose が selectedId と retransPicking=false を同時に
+  // 設定するのでこの効果はほぼ発火しないが、保険として残す）。
+  // ブラシ方式の完了は別（トレース側の onPanResponderRelease で処理する）。
+  useEffect(() => {
+    if (retransPicking && retransMethod === 'polygon' && selectedId != null) {
+      setRetransPicking(false);
+    }
+  }, [retransPicking, retransMethod, selectedId]);
+
+  /**
+   * 再透過カードを開いた直後（まだ「範囲を指定する」を選んでいない段階）でも、
+   * 画面上に既にペンで囲んであるポリゴンがあってそれをタップして選択した場合は、
+   * わざわざ「範囲を指定する」→「タップで囲む」を経由させず、その場でそれを
+   * 対象として扱う。方式選択・ピッキングは「まだ何も囲んでいない」場合の
+   * ための手順であって、既にある形をもう一度囲み直させる必要は無いため。
+   *
+   * retransMethod がまだ null（このエフェクトより前に「タップで囲む」
+   * ／「ブラシで選択」を明示的に選んでいない）の時だけ発火する。一時ポリゴン
+   * (retransTapEnclose 由来) は退出のたびに片付けているので、ここで
+   * selectedId が指しているのは常に本物のポリゴンだけ。
+   */
+  useEffect(() => {
+    if (retransOpen && retransMethod === null && selectedId != null) {
+      setRetransScope('selection');
+      setRetransMethod('polygon');
+    }
+  }, [retransOpen, retransMethod, selectedId]);
+
   /**
    * move モードで十字ボタンを出すかどうか。
    *
@@ -2152,7 +2737,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 混乱を招いていた。頂点ハンドルをタップして選択してから出す設計にすれば、
    * 「今どれを動かすか」が常に一意に決まる。
    */
-  const moveNudgeEnabled = appMode === 'move' && selectedPoly != null && selectedVertexIdx != null;
+  const moveNudgeEnabled = loupeIsAdjust && appMode === 'move' && selectedPoly != null && selectedVertexIdx != null;
   /** 十字ボタンでの調整中、ルーペに映す狙い所（画像座標）＝選択中の頂点。 */
   const moveNudgePoint = moveNudgeEnabled && selectedPoly && selectedVertexIdx != null
     ? { x: selectedPoly.points[selectedVertexIdx][0], y: selectedPoly.points[selectedVertexIdx][1] }
@@ -2175,12 +2760,31 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * パン中も含めてキャンバス中央にフォールバック表示する
    * （ルーペ自体を常時表示にしているのと同じ理由 — adjust 設定の間は
    * レティクルが画面から消える瞬間を作らない）。
+   * 'drag' 設定は React state 経由のこの値では使わない（下の
+   * dragMainReticleStyle が dragReticleSV/zoomSV から直接、共有値ベースで
+   * 描画する — 指ドラッグの毎フレーム更新をヌルヌルさせるため）。
    */
   const mainReticlePos = reticleFixed
     ? canvasCenter()
     : (moveNudgeEnabled && moveNudgePoint
       ? (() => { const { sx, sy } = imageToLocal(moveNudgePoint.x, moveNudgePoint.y, zoom); return { x: sx, y: sy }; })()
       : (loupeIsAdjust ? canvasCenter() : null));
+  /**
+   * 'drag' 設定のレティクル印。dragReticleSV（画像座標）と zoomSV（キャンバスの
+   * パン/ズーム）から毎フレーム UI スレッドで表示座標を計算する。React の
+   * 再レンダーを挟まないので、指ドラッグにヌルヌル追従する
+   * （imageToLocal と同じ式: sx = ix*ds*scale + tx）。
+   */
+  const dragMainReticleStyle = useAnimatedStyle(() => {
+    const p = dragReticleSV.value;
+    const z = zoomSV.value;
+    const sx = p.x * ds * z.scale + z.tx;
+    const sy = p.y * ds * z.scale + z.ty;
+    return {
+      left: sx - MAIN_RETICLE_R,
+      top: sy - MAIN_RETICLE_R,
+    };
+  }, [ds]);
 
 
   // ── レンダー ──────────────────────────────────────────────────────────────
@@ -2306,8 +2910,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               />
             )}
 
-            {/* 確定ポリゴン */}
-            {polyPaths.map((path, idx) => {
+            {/* 確定ポリゴン。再透過カードが「範囲を指定する／画像全体」の
+                フォーム段階（retransOpen && !retransPicking）を出している間は、
+                色付きの塗り・枠が結果の見え方を邪魔して確認しづらいので隠す
+                （ピッキング中は逆にどのブロックを対象にするか見えないと困る
+                ので出したまま）。chromeHidden（周辺UIを隠すボタン）が押されて
+                いる間も同じ理由で隠す — 画像の境界を素の状態で確認したい、
+                という目的が共通のため。 */}
+            {!chromeHidden && !(retransOpen && !retransPicking) && polyPaths.map((path, idx) => {
               const c     = POLY_COLORS[idx % POLY_COLORS.length];
               const isSel = polygons[idx].id === selectedId;
               return (
@@ -2329,12 +2939,34 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 color="rgba(255, 59, 48, 0.32)"
               />
             ))}
+
+            {/* 「範囲を指定する」→「ブラシで選択」で確定した選択範囲。
+                この Group（画像と同じ zoomSV 駆動の transform）の内側に、
+                他のポリゴンと同じ「画像座標×ds」で描くことで、パン・ズーム
+                中も画像とまったく同じなめらかさで追従する（別レイヤーで
+                作ると zoom 中だけズレて見える）。retransPicking の間だけで
+                なく、確定待ち（「この範囲を再透過」）のレビュー中も出す。 */}
+            {retransMaskPoints && (
+              <Path
+                path={(() => {
+                  const p = Skia.Path.Make();
+                  p.moveTo(retransMaskPoints[0][0] * ds, retransMaskPoints[0][1] * ds);
+                  for (let i = 1; i < retransMaskPoints.length; i++) {
+                    p.lineTo(retransMaskPoints[i][0] * ds, retransMaskPoints[i][1] * ds);
+                  }
+                  p.close();
+                  return p;
+                })()}
+                color="rgba(10,132,255,0.28)"
+                style="fill"
+              />
+            )}
           </Group>
 
           {/* 選択中ポリゴンの頂点ハンドル (Group 外: 常に固定サイズ)。
               位置は VertexHandle 内部で zoomSV から直接計算する
               （パン中も塗り・輪郭と同じなめらかさで追従させるため）。 */}
-          {selectedPoly?.points.map(([px, py], vi) => (
+          {!chromeHidden && selectedPoly?.points.map(([px, py], vi) => (
             <VertexHandle
               key={vi}
               px={px} py={py} ds={ds} zoomSV={zoomSV}
@@ -2343,6 +2975,37 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           ))}
 
         </Canvas>}
+
+        {/* 「範囲を指定する」→「ブラシで選択」。メインの PanResponder（パン・
+            ピンチ・頂点操作…）とは別の、なぞって囲むためだけの透明レイヤーを
+            キャンバスの上に重ねる。なぞっている間だけタッチを奪う（それ以外は
+            下の pan.panHandlers がそのまま効く）。 */}
+        {canvasReady && retransPicking && retransMethod === 'brush' && !retransMaskPoints && (
+          <View
+            style={{ position: 'absolute', left: 0, top: 0, width: canvasSize.w, height: canvasSize.h, zIndex: 1 }}
+            {...retransTraceResponder.panHandlers}
+          >
+            <Canvas style={{ width: canvasSize.w, height: canvasSize.h }} pointerEvents="none">
+              {retransTraceLocal.length > 1 && (
+                <Path
+                  path={(() => {
+                    const p = Skia.Path.Make();
+                    p.moveTo(retransTraceLocal[0][0], retransTraceLocal[0][1]);
+                    for (let i = 1; i < retransTraceLocal.length; i++) {
+                      p.lineTo(retransTraceLocal[i][0], retransTraceLocal[i][1]);
+                    }
+                    return p;
+                  })()}
+                  color="rgba(10,132,255,0.9)"
+                  style="stroke"
+                  strokeWidth={2.5}
+                  strokeCap="round"
+                  strokeJoin="round"
+                />
+              )}
+            </Canvas>
+          </View>
+        )}
 
         {/* スポイトのタップ波紋。押した瞬間に出して「効いている」ことを示す。
             処理中は JS が止まってアニメも止まるが、押した位置は残るので
@@ -2359,46 +3022,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         )}
 
         {/* 透過強度 + 再適用。親が onRetransparent を渡した画面（セル編集）だけ出す。
-            元画像の該当セル範囲から作り直すので、消えすぎも消え足りないも直せる。 */}
-        {onRetransparent && retransOpen && !chromeHidden && (
-          <View style={styles.panelSlot} pointerEvents="box-none">
-            <View style={styles.retransCard}>
-              <View style={styles.retransHead}>
-                <Text style={styles.retransTitle}>{t('editor.retransTitle')}</Text>
-                <View style={styles.retransHeadRight}>
-                  <Text style={styles.retransValue}>{Math.round(cellTol)}</Text>
-                  <AnimatedPressable onPress={() => setRetransOpen(false)} pressedScale={0.9}>
-                    <Icon name="close" size={18} color="rgba(255,255,255,0.8)" />
-                  </AnimatedPressable>
-                </View>
-              </View>
-              <View style={styles.retransRow}>
-                <Text style={styles.retransEnd}>{t('granularity.weak')}</Text>
-                <Slider
-                  style={styles.retransSlider}
-                  minimumValue={0}
-                  maximumValue={100}
-                  value={cellTol}
-                  onSlidingStart={() => { uiInteractingRef.current = true; discardStroke(); }}
-                  onValueChange={setCellTol}
-                  onSlidingComplete={() => { uiInteractingRef.current = false; discardStroke(); }}
-                  minimumTrackTintColor={IOS.blue}
-                  maximumTrackTintColor="rgba(255,255,255,0.28)"
-                  thumbTintColor="#FFF"
-                />
-                <Text style={styles.retransEnd}>{t('granularity.strong')}</Text>
-              </View>
-              <AnimatedPressable
-                style={styles.retransApply}
-                onPress={() => { onRetransparent(cellTol); setRetransOpen(false); }}
-                pressedScale={0.96}
-              >
-                <Icon name="auto-fix-high" size={16} color="#FFF" />
-                <Text style={styles.retransApplyTxt}>{t('editor.retransApply')}</Text>
-              </AnimatedPressable>
-            </View>
-          </View>
-        )}
+            元画像の該当セル範囲から作り直すので、消えすぎも消え足りないも直せる。
+            「範囲を選択して再透過」を選んで実行すると、まず対象ポリゴンを選ぶ
+            段階（retransPicking）を挟む。設定と選択を同じ画面に混ぜず段階を
+            分けることで、「今から範囲を選ぶんだな」と迷わず伝わるようにする。 */}
 
         {/* ブラシサイズ調整中だけ、画面中央に実寸の円を出す。
             スライダーを動かしながら太さを確かめるためのもので、
@@ -2415,29 +3042,503 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           </View>
         )}
 
-        {/* ブラシの太さ。復元モードの時だけ出す。連続値で、現在値を px で示す。 */}
-        {/* スポイトの許容値。ブラシの太さと同じ枠を使い、スポイト選択中だけ出す。
-            設定画面まで行かずに「もう少し広く／狭く」を調整できるようにする。 */}
-        {appMode === 'eyedropper' && !retransOpen && !chromeHidden && (
-          <View style={styles.panelSlot} pointerEvents="box-none">
-            {panelCompact ? (
-              <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
+        {/* レティクルの実寸表示。ルーペの中の照準と対になる、等倍キャンバス側の印。
+            画面中央固定（reticleFixed）なので純粋な表示専用、操作は受けない。 */}
+        {mainReticlePos && (
+          <View
+            pointerEvents="none"
+            style={[styles.mainReticle, {
+              left: mainReticlePos.x - MAIN_RETICLE_R,
+              top: mainReticlePos.y - MAIN_RETICLE_R,
+            }]}
+          >
+            {/* 十字＋中心ドットだけにする。以前あった固定サイズの丸（mrRing）は
+                実際のブラシ半径と連動しない飾りで、「何を表しているのか
+                分からない緑の円」だったため削除した。実際に塗る範囲を示す
+                緑の縁は、ルーペ内（TouchLoupe の reticle、brushRadius で
+                半径が決まる）の方にだけ出す。
+                十字の腕は白地に暗い縁取り（borderWidth）を入れて、明るい絵の
+                上でも暗い絵の上でも輪郭が消えないようにしてある。 */}
+            <View style={[styles.mrArmH, styles.mrArmLeft]} />
+            <View style={[styles.mrArmH, styles.mrArmRight]} />
+            <View style={[styles.mrArmV, styles.mrArmTop]} />
+            <View style={[styles.mrArmV, styles.mrArmBottom]} />
+            <View style={styles.mrDot} />
+          </View>
+        )}
+
+        {/* 'drag' 設定のレティクル印。上と見た目は同じだが、位置は
+            dragMainReticleStyle（dragReticleSV/zoomSV から UI スレッドで直接
+            計算）で決めるので、指ドラッグに完全に同じなめらかさで追従する。 */}
+        {dragReticleMode && dragReticleImg && (
+          <Animated.View pointerEvents="none" style={[styles.mainReticle, dragMainReticleStyle]}>
+            <View style={[styles.mrArmH, styles.mrArmLeft]} />
+            <View style={[styles.mrArmH, styles.mrArmRight]} />
+            <View style={[styles.mrArmV, styles.mrArmTop]} />
+            <View style={[styles.mrArmV, styles.mrArmBottom]} />
+            <View style={styles.mrDot} />
+          </Animated.View>
+        )}
+
+        {/* ポリゴン連番バッジ。位置は PolyBadge 内部で zoomSV から直接計算する
+            （パン中も塗り・輪郭と同じなめらかさで追従させるため）。
+            ルーペ（この下）より先に描く — 後から描く方が上に乗るので、
+            バッジがルーペの上に透けて見えないよう、ここで先に描いておく。 */}
+        {!chromeHidden && labelCentroids.map((c, idx) => (
+          <PolyBadge
+            key={polygons[idx].id}
+            cxImg={c[0]} cyImg={c[1]} ds={ds} zoomSV={zoomSV}
+            selected={polygons[idx].id === selectedId}
+            label={idx + 1}
+          />
+        ))}
+
+        {/* ルーペ。'fixed' モードでは従来どおりドラッグ中だけ出す。
+            'adjust' モードは常時出しておく。reticleFixed（スポイト・四角追加）中は
+            レティクルが画面中央固定なので、ルーペが映す位置も loupe.touch では
+            なく毎回キャンバス中央（＝ zoom 状態）から直接計算する。触っていない
+            間の loupe.img は使わない。それ以外（復元ブラシ）は最後に触れた場所。 */}
+        {!chromeHidden && (
+          <TouchLoupe
+            image={skImage}
+            ds={ds}
+            point={
+              reticleFixed
+                ? (canvasSize.w > 0 && canvasSize.h > 0
+                  ? localToImage(canvasSize.w / 2, canvasSize.h / 2, zoom)
+                  : null)
+                // 'fixed' 設定でも常時表示にする（触っていない間はキャンバス
+                // 中央を映す）。以前は 'adjust' の時だけ常時表示にしていたが、
+                // 「固定レティクルの時も常に表示してほしい」というフィード
+                // バックを受けて、設定に関わらず常時表示に揃えた。
+                // 'drag' 設定は触っていない間も dragReticleImg（指ドラッグで
+                // 動かしてきた位置）を映す — キャンバス中央にフォールバックすると
+                // 決定ボタンで確定する位置と食い違って見えるため。
+                : (loupe?.img ?? (
+                  moveNudgePoint ?? (
+                    dragReticleMode && dragReticleImg
+                      ? dragReticleImg
+                      : (canvasSize.w > 0 && canvasSize.h > 0
+                        ? localToImage(canvasSize.w / 2, canvasSize.h / 2, zoom)
+                        : null)
+                  )
+                ))
+            }
+            touch={loupe?.touch ?? null}
+            canvasW={canvasSize.w}
+            canvasH={canvasSize.h}
+            // ルーペが「画面中央にある画像座標」を映している間（reticleFixed、
+            // または move モードで頂点未選択の時のキャンバス中央フォールバック
+            // ——上の point の分岐と同じ条件）は、zoomSV から直接(UIスレッドで)
+            // 追従させ、React の再レンダーを挟まない。メインキャンバスの
+            // パン・ピンチと完全に同じなめらかさになる（詳しくは TouchLoupe 参照）。
+            // 選択中の頂点など「画像上の固定点」を映している時は、パンしても
+            // その点自体は動かないので、ここは不要（静的な point のままでよい）。
+            // 'drag' 設定のレティクルも画像上の固定点（キャンバスはパンしない）
+            // なので、ここでは zoomSV 追従の対象から外す（下の pointSV で
+            // 直接、共有値ベースの追従をする）。
+            panZoomSV={(reticleFixed || (!loupe?.img && !moveNudgePoint && !dragReticleMode)) ? zoomSV : undefined}
+            // 'drag' 設定: レティクル位置を共有値から直接（UI スレッドで）
+            // 追従させる。指ドラッグの毎フレーム更新を React の再レンダー
+            // なしで反映できるので、adjust のパンや二本指ピンチと同じ
+            // なめらかさになる（詳しくは TouchLoupe の pointSV 参照）。
+            // dragReticleImg (state) が seed される前は共有値がまだ初期値
+            // {x:0,y:0} のままなので、それまでは point prop 側の
+            // フォールバック（キャンバス中央）に任せ、一瞬だけ左上に飛んで
+            // 見える事故を防ぐ。
+            // move モードの素のパン（頂点/辺/ポリゴン移動を含む、上の
+            // panZoomSV が undefined になる場合と同じ条件）中は、showLoupe が
+            // 毎イベント書き込む moveLoupeImgSV から直接追従させる。これも
+            // React の再レンダーを挟まないので、上の 'drag' 設定と同じ
+            // なめらかさになる。
+            pointSV={
+              dragReticleMode && dragReticleImg
+                ? dragReticleSV
+                : (appMode === 'move' && !reticleFixed && loupe?.img)
+                  ? moveLoupeImgSV
+                  : undefined
+            }
+            // ルーペ倍率の loupeZoomMode 設定。panZoomSV がある間は、この
+            // base値とモードを使って毎フレーム倍率も滑らかに追従させる
+            // （詳しくは TouchLoupe の zoomMode/baseMagnify 参照）。
+            baseMagnify={loupeBaseMagnify}
+            zoomMode={settings.loupeZoomMode}
+            dotGridEnabled={settings.loupeDotGrid}
+            checkerImage={bgMode === 'checker' ? checkerImage : null}
+            checkerTile={CHECKER_TILE}
+            brushRadius={appMode === 'restore' ? brushRadius : undefined}
+            strokePoints={appMode === 'restore' ? strokePts : undefined}
+            size={loupeSize}
+            compactSize={loupeMedium}
+            dockedSize={loupeMini}
+            magnify={loupeMagnify}
+            topOffset={loupeTopOffset}
+            fullWidth
+            // move モードはハンドルを直接つまむ操作が基本だが、十字ボタンは
+            // 常時出しておく（moveSelectEnabled）。頂点未選択の間は
+            // 「レティクル（中央固定）を狙いに合わせるためのパン」として
+            // 働かせ（nudgeReticle）、頂点選択後だけその頂点をドット単位に
+            // 動かす（nudgeSelection）よう切り替える。頂点未選択のまま
+            // 押しても何もしない仕様だと、スポイト等と違って十字が反応せず
+            // 壊れて見える、という指摘への対応。
+            // 再透過カードが開いている間は、欲しいのは「どのポリゴンを対象に
+            // するか」の選択だけで、頂点をドット単位に動かす場面ではない。
+            // 矢印を出さず決定ボタン1個にして、カードとぶつからない省スペース
+            // な見た目にする（onDecide 側は decideMoveSelect のまま生かして
+            // 対象ポリゴンの選択に使う）。
+            onNudge={
+              retransOpen ? undefined
+                : reticleFixed ? nudgeReticle
+                : (moveSelectEnabled ? (moveNudgeEnabled ? nudgeSelection : nudgeReticle) : undefined)
+            }
+            // move モードの決定はトグル。何も選択していなければ「レティクルに
+            // 一番近い頂点／ポリゴンを選ぶ」、既に選択中なら「解除する」。
+            // 頂点ハンドルを直接タップする代わりに、パン(1本指/2本指どちらも)
+            // で狙いを合わせてから押す — ズームで拡大していて小さな丸を
+            // 正確にタップしにくい時の代替手段。
+            // 再透過カードが開いていても、まだ「範囲を指定する」を選んで
+            // いない（対象範囲を選ぶ段階の前）間は決定ボタンは無関係で
+            // 邪魔なだけなので出さない。実際に選択段階(retransPicking)に
+            // 入った時だけ生かす。
+            onDecide={
+              retransOpen && !retransPicking ? undefined
+                : appMode === 'move'
+                ? (moveSelectEnabled ? decideMoveSelect : undefined)
+                : ((loupeIsAdjust || dragReticleMode) ? decideAtReticle : undefined)
+            }
+            decideActive={
+              appMode === 'restore' ? restoreRecording
+                : (appMode === 'move' ? selectedVertexIdx != null : false)
+            }
+            decideActiveKind={appMode === 'move' ? 'selected' : 'recording'}
+            dpadBottom={loupeIsAdjust || moveSelectEnabled || dragReticleMode ? dpadBottom : undefined}
+            dockLevel={loupeDockLevel}
+            onDockLevelChange={setLoupeDockLevel}
+          />
+        )}
+
+        {/* 一言フィードバック。操作の結果を必ず言葉で返す。 */}
+        {toast && (
+          <View style={styles.toastWrap} pointerEvents="none">
+            <Text style={styles.toastTxt}>{toast}</Text>
+          </View>
+        )}
+
+        {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
+            eyeBusy の描画が確定してから実処理に入る（下の useEffect が担保）。 */}
+        {eyeBusy && (
+          <View style={styles.busyOverlay}>
+            <View style={styles.busyCard}>
+              <ActivityIndicator color="#FFF" />
+              <Text style={styles.busyTxt}>{t(busyKey)}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 現在のツールの説明。常時出す。
+            アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
+            画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。
+            再透過カードが開いている間は、素の appMode の説明のままだと
+            「今は再透過中」だと伝わらないため、内容を差し替える。 */}
+        {!chromeHidden && (
+          <ToolHint
+            icon={retransOpen ? 'auto-fix-high' : TOOL_HINTS[appMode].icon}
+            title={retransOpen
+              ? (retransPicking ? t('editor.retransPickHint')
+                : retransApplied ? t('editor.retransResultTitle') : t('editor.retransTitle'))
+              : t(TOOL_HINTS[appMode].titleKey)}
+            desc={retransOpen
+              ? (retransPicking
+                ? (retransMethod === 'brush' ? t('editor.retransBrushDesc') : t('editor.retransPickDesc'))
+                : retransApplied ? t('editor.retransResultDesc') : t('editor.retransHintDesc'))
+              : t(TOOL_HINTS[appMode].descKey)}
+            // ズームは右端へ移したので、下端は説明とブラシ設定だけになった。
+            bottom={12}
+            // 収納中（'adjust' 設定でパネルを畳んでいる間）のスポイト/復元
+            // ブラシは、以前は別の小さいピルボタンとして浮いていたが、値の
+            // 増減も含めてここに統合する。上下矢印が無いと「値をタップで
+            // 増減できる」と伝わらないため必ず添える。
+            titleExtra={(!retransOpen && panelCompact && (appMode === 'eyedropper' || appMode === 'restore')) ? (
+              <View style={styles.toolHintStepperRow}>
+                <Text style={styles.zoomCompactTxt}>
+                  {appMode === 'restore' ? `${Math.round(brushPx)}px` : Math.round(eyeTol)}
+                </Text>
                 <AnimatedPressable
-                  style={styles.zoomCompactBtn}
+                  style={styles.toolHintStepperBtn}
                   onPress={() => setZoomCompact(false)}
-                  pressedScale={0.94}
+                  pressedScale={0.85}
                 >
-                  <Icon name="colorize" size={14} color="#FFF" />
-                  <Text style={styles.zoomCompactTxt}>{Math.round(eyeTol)}</Text>
                   <Icon name="unfold-more" size={14} color="rgba(255,255,255,0.85)" />
                 </AnimatedPressable>
-              </Animated.View>
-            ) : (
-              <Animated.View
-                style={styles.brushCard}
-                entering={FadeIn.duration(160)}
-                exiting={FadeOut.duration(120)}
-              >
+              </View>
+            ) : undefined}
+            // 再透過カード本体をここに差し込む（説明行の下に divider 付きで
+            // 積む）。以前は別のフローティングカードだったが、「同じ場所に
+            // まとまっている方が分かりやすい」という要望で統合した。
+            onClose={onRetransparent && retransOpen ? () => {
+              if (retransPicking && retransMethod === null) {
+                // 方式選択の段階でのクローズ: カードごと閉じる。
+                clearRetransTempPoly();
+                setRetransPicking(false);
+                setRetransOpen(false);
+              } else if (retransPicking) {
+                // ピッキング中のクローズ: 選びかけの状態を残さずカードごと閉じる。
+                clearRetransTempPoly();
+                setRetransPicking(false);
+                setRetransOpen(false);
+                setRetransMethod(null);
+              } else {
+                // フォーム段階のクローズ。「これでどうですか？」の結果確認中
+                // （retransApplied）なら、確定せずに閉じる＝この結果は要らない
+                // ということなので、適用済みの再透過をここで取り消してから
+                // 閉じる。確定したい時は必ず「確定」ボタンを押させ、×は常に
+                // 「今の結果を捨てる」で統一する。
+                if (retransApplied) handleUndo();
+                clearRetransTempPoly();
+                setRetransOpen(false);
+                setRetransMethod(null);
+                setRetransMaskPoints(null);
+                setRetransApplied(false);
+              }
+            } : undefined}
+          >
+            {onRetransparent && retransOpen ? (
+              retransPicking && retransMethod === null ? (
+                // 選択段階・最初の一歩: どちらの方式でなぞる/選ぶかを決める。
+                // 決めた瞬間にその方式の操作へ入る（ポリゴン=タップ選択、
+                // ブラシ=キャンバス上をなぞる）。
+                <View style={styles.retransFormBody}>
+                  <View style={styles.retransScopeRow}>
+                    <AnimatedPressable
+                      style={styles.retransScopeBtn}
+                      onPress={() => {
+                        setSelectedId(null);
+                        setSelectedVertexIdx(null);
+                        setRetransMethod('polygon');
+                      }}
+                      pressedScale={0.96}
+                    >
+                      <Text style={styles.retransScopeTxt}>{t('editor.retransMethodPolygon')}</Text>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      style={styles.retransScopeBtn}
+                      onPress={() => setRetransMethod('brush')}
+                      pressedScale={0.96}
+                    >
+                      <Text style={styles.retransScopeTxt}>{t('editor.retransMethodBrush')}</Text>
+                    </AnimatedPressable>
+                  </View>
+                  {/* 「範囲を指定する」を押した直後の一歩戻る。他の戻るボタンと
+                      統一して左下に置く。スコープ選択(画像全体/範囲を指定する)
+                      のフォームへ戻るだけで、カードごとは閉じない（カードごと
+                      閉じたい時は×）。 */}
+                  <AnimatedPressable
+                    style={styles.retransBackBtn}
+                    onPress={() => setRetransPicking(false)}
+                    pressedScale={0.9}
+                  >
+                    <Icon name="arrow-back" size={16} color="rgba(255,255,255,0.8)" />
+                    <Text style={styles.retransBackTxt}>{t('common.back')}</Text>
+                  </AnimatedPressable>
+                </View>
+              ) : retransPicking ? (
+                // 選択段階・方式決定後: 案内は上の説明行側に出ているので、
+                // ここでは方式選択に戻るボタンだけ残す（×はヘッダ側にある）。
+                <AnimatedPressable
+                  style={styles.retransBackBtn}
+                  onPress={() => {
+                    // ポリゴン選択・タップで囲んだ一時形の途中だった場合、
+                    // 選びかけの状態を残さない。
+                    clearRetransTempPoly();
+                    setRetransMethod(null);
+                  }}
+                  pressedScale={0.9}
+                >
+                  <Icon name="arrow-back" size={16} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.retransBackTxt}>{t('common.back')}</Text>
+                </AnimatedPressable>
+              ) : (
+                <View style={styles.retransFormBody}>
+                  <View style={styles.retransHeadRight}>
+                    <Text style={styles.retransValue}>{Math.round(cellTol)}</Text>
+                  </View>
+                  {/* 再透過の対象範囲。ピル自体の文言（画像全体/範囲を指定する）で
+                      何を選ぶかは伝わるので、上のキャプションは省く。 */}
+                  <View style={styles.retransScopeRow}>
+                    <AnimatedPressable
+                      style={[styles.retransScopeBtn, retransScope === 'all' && styles.retransScopeBtnOn]}
+                      onPress={() => setRetransScope('all')}
+                      pressedScale={0.96}
+                    >
+                      <Text style={[styles.retransScopeTxt, retransScope === 'all' && styles.retransScopeTxtOn]}>
+                        {t('editor.retransScopeAll')}
+                      </Text>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      style={[styles.retransScopeBtn, retransScope === 'selection' && styles.retransScopeBtnOn]}
+                      onPress={() => setRetransScope('selection')}
+                      pressedScale={0.96}
+                    >
+                      <Text style={[styles.retransScopeTxt, retransScope === 'selection' && styles.retransScopeTxtOn]}>
+                        {t('editor.retransScopeSelection')}
+                      </Text>
+                    </AnimatedPressable>
+                  </View>
+                  <View style={styles.retransRow}>
+                    {/* 「弱⇄強」だと初心者に伝わりにくいため、透過の強さを扱う
+                        スライダー全般（自動除去・再透過）と統一した語彙を使う
+                        （granularity.personPriority/backgroundPriority 参照。
+                        値・アルゴリズムはそのまま、ラベルだけの変更）。 */}
+                    <Text style={styles.retransEnd}>{t('granularity.personPriority')}</Text>
+                    <Slider
+                      style={styles.retransSlider}
+                      minimumValue={0}
+                      maximumValue={100}
+                      value={cellTol}
+                      onSlidingStart={() => { uiInteractingRef.current = true; discardStroke(); }}
+                      onValueChange={v => { setCellTol(v); setRetransApplied(false); }}
+                      onSlidingComplete={() => { uiInteractingRef.current = false; discardStroke(); }}
+                      minimumTrackTintColor={IOS.blue}
+                      maximumTrackTintColor="rgba(255,255,255,0.28)"
+                      thumbTintColor="#FFF"
+                    />
+                    <Text style={styles.retransEnd}>{t('granularity.backgroundPriority')}</Text>
+                  </View>
+                  {/* 選択済み（マスク確定 or ポリゴン選択済み）の時だけ出す
+                      「戻る」「やり直す」。
+                      ・戻る    : 方式選択（ポリゴン/ブラシ）からやり直す。
+                      ・やり直す: 方式は変えず、今の選択だけ捨ててもう一度
+                                  なぞり直す/選び直す。
+                      ——「戻るはナビゲーション、これはundo」という区別。 */}
+                  {retransScope === 'selection' && (retransMethod === 'brush' ? retransMaskPoints : selectedPoly) && (
+                    <View style={styles.retransPickCancelRow}>
+                      <AnimatedPressable
+                        style={styles.retransBackBtn}
+                        onPress={() => {
+                          if (retransMethod === 'brush') {
+                            setRetransMaskPoints(null);
+                          } else {
+                            clearRetransTempPoly();
+                          }
+                          setRetransApplied(false);
+                          setRetransMethod(null);
+                          setRetransPicking(true);
+                        }}
+                        pressedScale={0.9}
+                      >
+                        <Icon name="arrow-back" size={16} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.retransBackTxt}>{t('common.back')}</Text>
+                      </AnimatedPressable>
+                      <AnimatedPressable
+                        style={styles.retransUndoBtn}
+                        onPress={() => {
+                          if (retransMethod === 'brush') {
+                            setRetransMaskPoints(null);
+                          } else {
+                            clearRetransTempPoly();
+                          }
+                          setRetransApplied(false);
+                          setRetransPicking(true);
+                        }}
+                        pressedScale={0.96}
+                      >
+                        <Icon name="undo" size={14} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.retransUndoTxt}>{t('editor.retransRedo')}</Text>
+                      </AnimatedPressable>
+                    </View>
+                  )}
+                  <AnimatedPressable
+                    style={styles.retransApply}
+                    onPress={() => {
+                      // ポリゴン選択・ブラシで囲んだ選択、どちらも「点列」という
+                      // 同じ形なので、対象範囲を1つの変数にそろえてから共通処理する。
+                      const targetPoints = retransMethod === 'brush' ? retransMaskPoints
+                        : retransMethod === 'polygon' ? (selectedPoly?.points ?? null)
+                        : null;
+
+                      if (retransScope === 'selection' && !targetPoints) {
+                        // まだ何も選んでいない: 方式選択（ポリゴン/ブラシ）へ進む。
+                        // 既存の選択が残っていると紛らわしいので一旦解除する。
+                        clearRetransTempPoly();
+                        setRetransMaskPoints(null);
+                        setRetransMethod(null);
+                        setRetransPicking(true);
+                        return;
+                      }
+                      if (retransScope === 'selection' && targetPoints) {
+                        if (retransApplied) {
+                          // 結果を見せている段階で押した＝「これでいい」の確定。
+                          // 選択も範囲も既に反映済みなので、ここでは閉じるだけ。
+                          clearRetransTempPoly();
+                          setRetransMaskPoints(null);
+                          setRetransMethod(null);
+                          setRetransOpen(false);
+                          setRetransApplied(false);
+                          return;
+                        }
+                        // 対象の外接矩形に余白を足した範囲だけ元画像から作り直し、
+                        // 実際に貼り戻すのは多角形（targetPoints）の内側だけにする。
+                        // 余白が無いと矩形の四隅が背景ではなく被写体自身に乗る
+                        // ことがあり、そこを起点にするフラッドフィルが誤動作する
+                        // （このアプリの背景除去は「矩形の四隅＝背景」が前提のため）。
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        for (const [x, y] of targetPoints) {
+                          if (x < minX) minX = x; if (x > maxX) maxX = x;
+                          if (y < minY) minY = y; if (y > maxY) maxY = y;
+                        }
+                        const pad = Math.max(24, Math.round(Math.max(maxX - minX, maxY - minY) * 0.15));
+                        // スポイト・復元ブラシと同じく、この操作を undo/redo 履歴に積む。
+                        // ここを忘れると canUndoEdit（親の edits 件数）だけが増えて
+                        // undo ボタンは活性表示になるのに、押しても pastRef.current が
+                        // 空のまま(handleUndo 冒頭で即 return)で何も起きない、という
+                        // 見た目だけ動くボタンになってしまう。
+                        setPast(p => [...p, { kind: 'edit' }]);
+                        setFuture([]);
+                        // 元画像から作り直す重い処理なので、他の重い操作と同じく
+                        // 処理中オーバーレイを出す（時間がかかることが伝わるように）。
+                        runHeavy(() => {
+                          onRetransparent(cellTol, {
+                            minX: Math.max(0, Math.floor(minX - pad)),
+                            minY: Math.max(0, Math.floor(minY - pad)),
+                            maxX: Math.min(bgResult.width - 1, Math.ceil(maxX + pad)),
+                            maxY: Math.min(bgResult.height - 1, Math.ceil(maxY + pad)),
+                            maskPoints: targetPoints,
+                          });
+                          // すぐには閉じない。「これでどうですか？」の結果確認段階へ。
+                          setRetransApplied(true);
+                        }, 'editor.retransBusy');
+                        return;
+                      }
+                      // 「画像全体」も、選択範囲の再透過と同じく結果をすぐには
+                      // 閉じずに見せる（「これでどうですか？」段階を挟む）。
+                      if (retransApplied) {
+                        setRetransOpen(false);
+                        setRetransApplied(false);
+                        return;
+                      }
+                      // 元画像からセルを作り直す重い処理なので、選択範囲の再透過と
+                      // 同じく処理中オーバーレイを出す。
+                      runHeavy(() => {
+                        onRetransparent(cellTol);
+                        setRetransApplied(true);
+                      }, 'editor.retransBusy');
+                    }}
+                    pressedScale={0.96}
+                  >
+                    <Icon name={retransApplied ? 'check' : 'auto-fix-high'} size={16} color="#FFF" />
+                    <Text style={styles.retransApplyTxt}>
+                      {retransApplied ? t('editor.retransConfirm')
+                        : retransScope === 'all' ? t('editor.retransApply')
+                          : (retransMethod === 'brush' ? retransMaskPoints : selectedPoly)
+                            ? t('editor.retransApplyRegion') : t('editor.retransPickStart')}
+                    </Text>
+                  </AnimatedPressable>
+                </View>
+              )
+            ) : appMode === 'eyedropper' && !panelCompact ? (
+              // スポイトの許容値。設定画面まで行かずに「もう少し広く／狭く」を
+              // 調整できるようにする。
+              <>
                 <View style={styles.brushHead}>
                   <Text style={styles.brushLabel}>{t('settings.eyedropperTolerance')}</Text>
                   <View style={styles.brushHeadRight}>
@@ -2465,33 +3566,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   maximumTrackTintColor="rgba(255,255,255,0.28)"
                   thumbTintColor="#FFF"
                 />
-              </Animated.View>
-            )}
-          </View>
-        )}
-
-        {/* ブラシの太さ。透過強度が開いている間は出さない（同じ場所を使うため）。
-            ペン/スポイト等のツール切替と同じで、常にどちらか一方だけが出る。 */}
-        {appMode === 'restore' && !retransOpen && !chromeHidden && (
-          <View style={styles.panelSlot} pointerEvents="box-none">
-            {panelCompact ? (
-              <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
-                <AnimatedPressable
-                  style={styles.zoomCompactBtn}
-                  onPress={() => setZoomCompact(false)}
-                  pressedScale={0.94}
-                >
-                  <Icon name="brush" size={14} color="#FFF" />
-                  <Text style={styles.zoomCompactTxt}>{Math.round(brushPx)}px</Text>
-                  <Icon name="unfold-more" size={14} color="rgba(255,255,255,0.85)" />
-                </AnimatedPressable>
-              </Animated.View>
-            ) : (
-              <Animated.View
-                style={styles.brushCard}
-                entering={FadeIn.duration(160)}
-                exiting={FadeOut.duration(120)}
-              >
+              </>
+            ) : appMode === 'restore' && !panelCompact ? (
+              // 復元ブラシの太さ。透過強度が開いている間は出さない（同じ場所を
+              // 使うため、appMode === 'restore' の間だけ出るのでその心配は無い）。
+              <>
                 <View style={styles.brushHead}>
                   <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
                   <View style={styles.brushHeadRight}>
@@ -2542,150 +3621,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   maximumTrackTintColor="rgba(255,255,255,0.28)"
                   thumbTintColor="#FFF"
                 />
-              </Animated.View>
-            )}
-          </View>
-        )}
-
-        {/* レティクルの実寸表示。ルーペの中の照準と対になる、等倍キャンバス側の印。
-            画面中央固定（reticleFixed）なので純粋な表示専用、操作は受けない。 */}
-        {mainReticlePos && (
-          <View
-            pointerEvents="none"
-            style={[styles.mainReticle, {
-              left: mainReticlePos.x - MAIN_RETICLE_R,
-              top: mainReticlePos.y - MAIN_RETICLE_R,
-            }]}
-          >
-            {/* 十字＋中心ドットだけにする。以前あった固定サイズの丸（mrRing）は
-                実際のブラシ半径と連動しない飾りで、「何を表しているのか
-                分からない緑の円」だったため削除した。実際に塗る範囲を示す
-                緑の縁は、ルーペ内（TouchLoupe の reticle、brushRadius で
-                半径が決まる）の方にだけ出す。
-                十字の腕は白地に暗い縁取り（borderWidth）を入れて、明るい絵の
-                上でも暗い絵の上でも輪郭が消えないようにしてある。 */}
-            <View style={[styles.mrArmH, styles.mrArmLeft]} />
-            <View style={[styles.mrArmH, styles.mrArmRight]} />
-            <View style={[styles.mrArmV, styles.mrArmTop]} />
-            <View style={[styles.mrArmV, styles.mrArmBottom]} />
-            <View style={styles.mrDot} />
-          </View>
-        )}
-
-        {/* ポリゴン連番バッジ。位置は PolyBadge 内部で zoomSV から直接計算する
-            （パン中も塗り・輪郭と同じなめらかさで追従させるため）。
-            ルーペ（この下）より先に描く — 後から描く方が上に乗るので、
-            バッジがルーペの上に透けて見えないよう、ここで先に描いておく。 */}
-        {labelCentroids.map((c, idx) => (
-          <PolyBadge
-            key={polygons[idx].id}
-            cxImg={c[0]} cyImg={c[1]} ds={ds} zoomSV={zoomSV}
-            selected={polygons[idx].id === selectedId}
-            label={idx + 1}
-          />
-        ))}
-
-        {/* ルーペ。'fixed' モードでは従来どおりドラッグ中だけ出す。
-            'adjust' モードは常時出しておく。reticleFixed（スポイト・四角追加）中は
-            レティクルが画面中央固定なので、ルーペが映す位置も loupe.touch では
-            なく毎回キャンバス中央（＝ zoom 状態）から直接計算する。触っていない
-            間の loupe.img は使わない。それ以外（復元ブラシ）は最後に触れた場所。 */}
-        {!chromeHidden && (
-          <TouchLoupe
-            image={skImage}
-            ds={ds}
-            point={
-              reticleFixed
-                ? (canvasSize.w > 0 && canvasSize.h > 0
-                  ? localToImage(canvasSize.w / 2, canvasSize.h / 2, zoom)
-                  : null)
-                // 'fixed' 設定でも常時表示にする（触っていない間はキャンバス
-                // 中央を映す）。以前は 'adjust' の時だけ常時表示にしていたが、
-                // 「固定レティクルの時も常に表示してほしい」というフィード
-                // バックを受けて、設定に関わらず常時表示に揃えた。
-                : (loupe?.img ?? (
-                  moveNudgePoint ?? (
-                    canvasSize.w > 0 && canvasSize.h > 0
-                      ? localToImage(canvasSize.w / 2, canvasSize.h / 2, zoom)
-                      : null
-                  )
-                ))
-            }
-            touch={loupe?.touch ?? null}
-            canvasW={canvasSize.w}
-            canvasH={canvasSize.h}
-            // reticleFixed 中はルーペの中身を zoomSV から直接(UIスレッドで)
-            // 追従させ、React の再レンダーを挟まない。メインキャンバスの
-            // パンと完全に同じなめらかさになる（詳しくは TouchLoupe 参照）。
-            panZoomSV={reticleFixed ? zoomSV : undefined}
-            checkerImage={bgMode === 'checker' ? checkerImage : null}
-            checkerTile={CHECKER_TILE}
-            brushRadius={appMode === 'restore' ? brushRadius : undefined}
-            strokePoints={appMode === 'restore' ? strokePts : undefined}
-            size={loupeSize}
-            topOffset={loupeTopOffset}
-            fullWidth={loupeIsAdjust}
-            // move モードはハンドルを直接つまむ操作が基本だが、十字ボタンは
-            // 常時出しておく（moveSelectEnabled）。頂点未選択の間は
-            // 「レティクル（中央固定）を狙いに合わせるためのパン」として
-            // 働かせ（nudgeReticle）、頂点選択後だけその頂点をドット単位に
-            // 動かす（nudgeSelection）よう切り替える。頂点未選択のまま
-            // 押しても何もしない仕様だと、スポイト等と違って十字が反応せず
-            // 壊れて見える、という指摘への対応。
-            onNudge={
-              reticleFixed ? nudgeReticle
-                : (moveSelectEnabled ? (moveNudgeEnabled ? nudgeSelection : nudgeReticle) : undefined)
-            }
-            // move モードの決定はトグル。何も選択していなければ「レティクルに
-            // 一番近い頂点／ポリゴンを選ぶ」、既に選択中なら「解除する」。
-            // 頂点ハンドルを直接タップする代わりに、パン(1本指/2本指どちらも)
-            // で狙いを合わせてから押す — ズームで拡大していて小さな丸を
-            // 正確にタップしにくい時の代替手段。
-            onDecide={
-              appMode === 'move'
-                ? (moveSelectEnabled ? decideMoveSelect : undefined)
-                : (loupeIsAdjust ? decideAtReticle : undefined)
-            }
-            decideActive={
-              appMode === 'restore' ? restoreRecording
-                : (appMode === 'move' ? selectedVertexIdx != null : false)
-            }
-            decideActiveKind={appMode === 'move' ? 'selected' : 'recording'}
-            dpadBottom={loupeIsAdjust || moveSelectEnabled ? dpadBottom : undefined}
-            dockLevel={loupeDockLevel}
-            onDockLevelChange={setLoupeDockLevel}
-          />
-        )}
-
-        {/* 一言フィードバック。操作の結果を必ず言葉で返す。 */}
-        {toast && (
-          <View style={styles.toastWrap} pointerEvents="none">
-            <Text style={styles.toastTxt}>{toast}</Text>
-          </View>
-        )}
-
-        {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
-            eyeBusy の描画が確定してから実処理に入る（下の useEffect が担保）。 */}
-        {eyeBusy && (
-          <View style={styles.busyOverlay}>
-            <View style={styles.busyCard}>
-              <ActivityIndicator color="#FFF" />
-              <Text style={styles.busyTxt}>{t(busyKey)}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* 現在のツールの説明。常時出す。
-            アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
-            画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。*/}
-        {!chromeHidden && (
-          <ToolHint
-            icon={TOOL_HINTS[appMode].icon}
-            title={t(TOOL_HINTS[appMode].titleKey)}
-            desc={t(TOOL_HINTS[appMode].descKey)}
-            // ズームは右端へ移したので、下端は説明とブラシ設定だけになった。
-            bottom={12}
-          />
+              </>
+            ) : undefined}
+          </ToolHint>
         )}
 
         {/* ── フローティング上部: ズーム + ツール ──
@@ -2861,6 +3799,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                       setChromeHidden(false);
                       // 下部パネルを共有しているので、開くときは復元ブラシから抜ける。
                       if (next && appMode === 'restore') setAppMode('move');
+                      if (next) {
+                        // 開く前に選択していたポリゴンをそのまま対象として拾って
+                        // しまわないよう、開く瞬間に選択を解除する（既存ポリゴンを
+                        // 対象にしたい時は、開いた後で改めてタップし直してもらう）。
+                        setSelectedId(null);
+                        setSelectedVertexIdx(null);
+                      }
                       setToolMenuOpen(false);
                     }}
                   >
@@ -3082,6 +4027,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'flex-end',
     gap: 8,
+    zIndex: 2,
   },
 
   // ── ツールドロップダウン ────────────────────────────────────────────────
@@ -3123,6 +4069,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontVariant: ['tabular-nums'],
   },
+  // ToolHint の見出し行に差し込む、収納中のスポイト/復元ブラシの値＋増減。
+  // 上下矢印が無いと「これは触れる値なんだ」と伝わらないため付けている。
+  toolHintStepperRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  toolHintStepperBtn: { padding: 4 },
   // ブラシ太さ/スポイト許容値パネルを畳むボタン。zoomResetBtn と同じ見た目。
   panelCollapseBtn: {
     width: 26, height: 26,
@@ -3240,6 +4190,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12, right: 12, bottom: 58,
     alignItems: 'center',
+    zIndex: 2,
   },
   retransCard: {
     width: '100%',
@@ -3253,7 +4204,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   retransHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  retransHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  retransHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-end' },
+  // ToolHint に差し込むフォーム段階の中身。以前は retransCard 自体が
+  // gap を持っていたが、今は ToolHint 側のカード枠に同居するので、
+  // ここで縦の間隔だけ引き継ぐ。
+  retransFormBody: { gap: 6 },
+  retransPickCancelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // 戻るボタンは常に左下（自身が単独の行にいる時は左寄せ）に統一する。
+  retransBackBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
+  retransBackTxt: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
   retransTitle: { color: '#FFF', fontSize: 13, fontWeight: '600' },
   retransValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
   retransRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -3266,6 +4225,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   retransApplyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  retransUndoBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    paddingVertical: 6,
+  },
+  retransUndoTxt: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
+  retransScopeLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 },
+  retransScopeRow: { flexDirection: 'row', gap: 6 },
+  retransScopeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  retransScopeBtnOn: { backgroundColor: 'rgba(10,132,255,0.35)' },
+  retransScopeTxt: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
+  retransScopeTxtOn: { color: '#FFF', fontWeight: '600' },
 
   // ── 復元ブラシ ────────────────────────────────────────────────────────────
   // ブラシサイズ調整中に中央へ出す実寸の円。
@@ -3327,6 +4308,10 @@ const styles = StyleSheet.create({
     left: 0, right: 0, top: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center', justifyContent: 'center',
+    // floatingTop・panelSlot（zIndex:2、なぞり用レイヤーより上に来るよう
+    // 明示した）よりさらに上に出す。ここが負けると処理中でも再透過カードの
+    // ボタンが押せてしまう。
+    zIndex: 3,
   },
   busyCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

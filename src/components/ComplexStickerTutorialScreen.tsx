@@ -23,7 +23,6 @@ import {
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
   cancelAnimation,
   Easing,
@@ -112,26 +111,20 @@ export default function ComplexStickerTutorialScreen({
 
   const scrollRef = useRef<ScrollView>(null);
 
-  // 上部プログレスバーの進行。表示中ステップのループ長に合わせて 0→1 を繰り返す。
-  // ページが変わったら頭出しし直す（中のアニメも active 切り替えで頭から再生される）。
+  // 上部プログレスバーの進行。OnboardingScreen と同じく「1周流したら満タンで止める」
+  // 動画風の見せ方(ループさせない)。中身のデモ(各 ComplexStepN)は active 切り替えで
+  // 頭から再生されるが別物で、こちらはループさせ続けない。
+  // ページが変わったら頭出しし直す。
   const barProgress = useSharedValue(0);
   useEffect(() => {
     cancelAnimation(barProgress);
     barProgress.value = 0;
-    barProgress.value = withRepeat(
-      withTiming(1, {
-        duration: STEPS[currentIndex].durationMs,
-        easing: Easing.linear,
-        reduceMotion: ReduceMotion.Never,
-      }),
-      -1,
-      false,
-      undefined,
-      // 【重要】withRepeat 自身にも指定が要る。withTiming 側だけだと
-      // OSの「視差効果を減らす/アニメーションを減らす」でループが無効化され、
-      // 1周しただけで止まる（説明用のアニメなので必ず動かす）。
-      ReduceMotion.Never,
-    );
+    barProgress.value = withTiming(1, {
+      duration: STEPS[currentIndex].durationMs,
+      easing: Easing.linear,
+      // OSの「視差効果を減らす/アニメーションを減らす」でも進捗表示は動かす。
+      reduceMotion: ReduceMotion.Never,
+    });
     return () => cancelAnimation(barProgress);
   }, [currentIndex, barProgress]);
 

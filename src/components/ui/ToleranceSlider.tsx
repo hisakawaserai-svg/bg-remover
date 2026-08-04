@@ -41,17 +41,32 @@ const SNAPS: Snap[] = [
 ];
 
 /**
- * 許容値（自動除去・スポイト）用の目盛り。
+ * 自動除去・再透過用の目盛り。値が大きいほど背景寄りの色まで広く消える。
  *
- * 既定の SNAPS は「分割の細かさ」の語彙で、値が大きいほど『細かい』。
- * 一方この2つは値が大きいほど『広く抜ける＝強い』で、意味の向きが逆になる。
- * 同じスライダーに『細かい』と出しながら説明文には『広く抜ける』と書いていたため、
- * つまみを右に寄せる操作が何を強めるのか読み取れなかった。語彙を分けて解消する。
+ * 以前はここも「弱/標準/強」だったが、値を上げると何が起きるかが直感的に
+ * 伝わらなかった（弱⇄強という抽象的な軸では、初心者は「強くすると何が
+ * 起きるか」が読み取れない）。この2つ（自動除去・再透過）は同じ tolerance
+ * を扱う操作なので、「人物優先(弱)⇄背景優先(強)」という同じ語彙に揃える。
+ * 中間点は「標準」という文字を置くと窮屈になる上、両端の意味さえ分かれば
+ * 迷わないため、あえて置かない（左右2点だけ）。
+ * スナップ値(吸い付き先)は edgeLabels のラベル位置（左端0・右端100）に
+ * 合わせてある。ラベルは端にあるのに吸い付き先が15/50のままだと、
+ * 「どちらの端に寄せても中途半端な値で止まる」というズレが出るため。
  */
-export const STRENGTH_SNAPS: Snap[] = [
-  { value: 15, labelKey: 'granularity.weak' },
-  { value: 30, labelKey: 'granularity.normal' },
-  { value: 50, labelKey: 'granularity.strong' },
+export const REMOVAL_SNAPS: Snap[] = [
+  { value: 0, labelKey: 'granularity.personPriority' },
+  { value: 100, labelKey: 'granularity.backgroundPriority' },
+];
+
+/**
+ * スポイト用の目盛り。こちらは「その場でタップした色の周りをどれだけ
+ * 広く消すか」という別の操作（人物/背景の優先度ではない）なので、
+ * 起きること（消える範囲の広さ）をそのまま語彙にする。中間点・スナップ値の
+ * 考え方は REMOVAL_SNAPS と同じ（ラベル位置＝端に吸い付き先を揃える）。
+ */
+export const SPOT_SNAPS: Snap[] = [
+  { value: 0, labelKey: 'granularity.narrowRange' },
+  { value: 100, labelKey: 'granularity.wideRange' },
 ];
 
 // Slider のつまみ半径ぶん、トラック両端は内側にオフセットしてつまみが移動する。
@@ -79,6 +94,17 @@ interface Props {
   /** カード装飾（背景・影・パディング）を外して素のスライダーだけ描く。
    *  既にカード内に置く場合（設定画面など）に二重カードを避けるため。 */
   bare?: boolean;
+  /**
+   * true にすると、目盛りラベルを「実値の比率位置」ではなく、スライダーの
+   * 左端・右端に固定した2つのラベルとして出す（snaps の最初と最後だけを
+   * 使う。中間点があっても文字は出さない）。
+   * 「人物優先⇄背景優先」「狭い範囲⇄広い範囲」のような “どちらの方向か”
+   * だけを示せば十分な2択の軸で使う。値に応じて位置が動く従来の目盛りだと、
+   * 中間寄りの値（15/50 等）に置いたラベルが中途半端な位置に見えてしまうため。
+   */
+  edgeLabels?: boolean;
+  /** 既定値。指定するとトラック上に控えめなマーカーを表示する（スナップとは別枠）。 */
+  defaultValue?: number;
 }
 
 export default function ToleranceSlider({
@@ -91,6 +117,8 @@ export default function ToleranceSlider({
   max = 100,
   showLabel = true,
   bare = false,
+  edgeLabels = false,
+  defaultValue,
 }: Props) {
   const { t } = useT();
   // つまみ位置の表示用。スナップ時はここをアニメで動かす（親の値とは別管理）。
@@ -181,31 +209,43 @@ export default function ToleranceSlider({
               ]}
             />
           ))}
+          {/* 既定値マーカー。スナップ点とは別枠（吸い付きはしない、位置の目安のみ）。 */}
+          {defaultValue != null && (
+            <View style={[styles.defaultTick, { left: `${pct(defaultValue)}%` }]} />
+          )}
         </View>
       </View>
 
-      {/* ラベルもスナップ点の実値の比率位置に置く（吸い付く点の真下）。 */}
-      <View style={styles.labelLayer}>
-        {snaps.map(s => (
-          // 幅0のアンカーを目盛りの真上に置き、その中で中央揃えする。
-          // 以前は Text を直接 left:% に置いて translateX(-8) で寄せていたが、
-          // -8 は日本語2文字ぶんの決め打ちで、英語(Coarse/Medium/Fine)では
-          // 中心がずれて隣のラベルとぶつかっていた。
-          // 幅0＋alignItems:'center' なら文字数に関係なく中心が合う。
-          <View
-            key={s.value}
-            style={[styles.stepLabelAnchor, { left: `${pct(s.value)}%` }]}
-            pointerEvents="none"
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.stepLabel, activeSnap === s.value && styles.stepLabelActive]}
+      {edgeLabels ? (
+        // 左端・右端に固定した2ラベルだけ（詳しくは Props.edgeLabels 参照）。
+        <View style={styles.edgeLabelRow} pointerEvents="none">
+          <Text numberOfLines={1} style={styles.stepLabel}>{t(snaps[0].labelKey)}</Text>
+          <Text numberOfLines={1} style={styles.stepLabel}>{t(snaps[snaps.length - 1].labelKey)}</Text>
+        </View>
+      ) : (
+        // ラベルもスナップ点の実値の比率位置に置く（吸い付く点の真下）。
+        <View style={styles.labelLayer}>
+          {snaps.map(s => (
+            // 幅0のアンカーを目盛りの真上に置き、その中で中央揃えする。
+            // 以前は Text を直接 left:% に置いて translateX(-8) で寄せていたが、
+            // -8 は日本語2文字ぶんの決め打ちで、英語(Coarse/Medium/Fine)では
+            // 中心がずれて隣のラベルとぶつかっていた。
+            // 幅0＋alignItems:'center' なら文字数に関係なく中心が合う。
+            <View
+              key={s.value}
+              style={[styles.stepLabelAnchor, { left: `${pct(s.value)}%` }]}
+              pointerEvents="none"
             >
-              {t(s.labelKey)}
-            </Text>
-          </View>
-        ))}
-      </View>
+              <Text
+                numberOfLines={1}
+                style={[styles.stepLabel, activeSnap === s.value && styles.stepLabelActive]}
+              >
+                {t(s.labelKey)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -272,10 +312,26 @@ const styles = StyleSheet.create({
     opacity: 1,
     height: 14,
   },
+  // 既定値マーカー。スナップ目盛りより細く低くして、区別できるようにする。
+  defaultTick: {
+    position: 'absolute',
+    width: 2,
+    height: 6,
+    marginLeft: -1,
+    borderRadius: 1,
+    backgroundColor: colors.secondary,
+    opacity: 0.35,
+  },
   labelLayer: {
     position: 'relative',
     height: 18,
     marginHorizontal: THUMB_INSET,
+    marginTop: -spacing.xs,
+  },
+  // edgeLabels 用。左右2つだけを両端に固定表示する。
+  edgeLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: -spacing.xs,
   },
   /**

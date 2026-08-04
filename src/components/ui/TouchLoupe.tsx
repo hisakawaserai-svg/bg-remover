@@ -61,6 +61,12 @@ const AVOID_MARGIN = 24;
  * 上端に出すと、そのまま操作パネルと重なって両方見えなくなる。
  */
 export const LOUPE_TOP_OFFSET = 52;
+/**
+ * ドットグリッドを出す最低倍率（1ドットあたりの画面px）。これより広く映って
+ * いる（＝1ドットが小さい）間はグリッドを出さない。線だらけになるだけで
+ * 見づらくなるため。
+ */
+const DOT_GRID_MIN_SCALE = 8;
 
 /** 十字ボタン1マスの一辺(px)。ボタン本体はここから margin ぶん引いた大きさになる。 */
 const DPAD_CELL = 58;
@@ -70,21 +76,28 @@ const DPAD_W = DPAD_CELL * 3;
 /**
  * ルーペのサイズ段階。iOS の動画ピクチャー・イン・ピクチャーのように、
  * 好きな時に小さく収納できるようにする。ボタン1つで循環する。
- *   0 'default' … 呼び出し側が渡した size/fullWidth をそのまま使う
- *                 （adjust モードなら大きく・全幅、fixed モードなら通常サイズ）。
+ *   0 'default' … 呼び出し側が渡した size/fullWidth をそのまま使う。全モード共通で
+ *                 全幅・キャンバス高さ基準のサイズを渡す想定（モードによらず同じ大きさに見える）。
  *   1 'compact' … LOUPE_SIZE 固定の正方形（指を避ける隅寄せは有効）。
  *   2 'docked'  … 画面左端に小さく寄せ、半分ほど画面外へ逃がす
  *                 （PinP を左端へスワイプした時のような「収納」見た目）。
  */
 export type DockLevel = 0 | 1 | 2;
+/**
+ * compactSize/dockedSize prop 省略時のフォールバック値。設定「ルーペ基準サイズ」
+ * (settings/store.ts の loupeBaseSize) から比率計算した値を呼び出し側
+ * （PolygonEditor）が渡すのが通常運用で、これらの定数は未使用の呼び出し元や
+ * canvasSize 未確定の最初のフレームなど向けの保険。
+ */
 export const DOCK_COMPACT_SIZE = LOUPE_SIZE;
+export const DOCK_LARGE_SIZE = Math.round(LOUPE_SIZE * 1.5);
 export const DOCK_DOCKED_SIZE = 64;
 /**
- * 収納時、左端からどれだけ画面外へ逃がすか(px)。PinP のように「半分だけ
- * 隠れる」を狙う。8pxしか出さない案は矢印ごと隠れて押しづらかったため、
- * 半分(32px)は画面内に残し、矢印がちゃんと見える/押せるようにする。
+ * 収納時、左端からどれだけ画面外へ逃がすか(px)は dockedSize/2 で計算する
+ * （PinP のように「半分だけ隠れる」を狙う。8pxしか出さない案は矢印ごと
+ * 隠れて押しづらかったため、半分は画面内に残し、矢印がちゃんと見える/
+ * 押せるようにする — 詳しくは left の計算式を参照）。
  */
-const DOCK_DOCKED_HIDE = DOCK_DOCKED_SIZE / 2;
 const DOCK_ANIM_MS = 260;
 
 /** panZoomSV に渡す値の形。PolygonEditor の ZoomState と同じ形。 */
@@ -121,6 +134,15 @@ interface Props {
    * （point は他の用途 — null 判定・パン開始前の初期表示 — のためだけに残す）。
    */
   panZoomSV?: SharedValue<ZoomLike>;
+  /**
+   * 渡すと、ルーペの中身をこの共有値（画像座標の注目点）から直接
+   * （UI スレッドで）追従させる。'drag' 設定のレティクル — 指ドラッグで
+   * 動かす、キャンバス自体はパンしない独立した点 — のように、panZoomSV の
+   * ような「キャンバス中央にある画像座標」の計算式に当てはまらないが、
+   * それでも毎フレーム React の再レンダーなしになめらかに追従させたい時に使う。
+   * panZoomSV と同時に渡された場合は panZoomSV を優先する。
+   */
+  pointSV?: SharedValue<{ x: number; y: number }>;
   /** 市松模様。渡すと透過部分が分かりやすくなる。 */
   checkerImage?: SkImage | null;
   checkerTile?: number;
@@ -137,7 +159,31 @@ interface Props {
    * 気づきにくいため、拡大された絵の上にも同じ線を出す。
    */
   strokePoints?: Array<[number, number]>;
+  /**
+   * ルーペの倍率。panZoomSV が無い（＝ライブ追従しない）時、またはまだ
+   * 最初のフレームが来ていない時のフォールバックとして使う。
+   * panZoomSV がある間は、baseMagnify/zoomMode を使って毎フレーム
+   * UI スレッドで計算し直すため、この値は実質「初期値」の意味になる。
+   */
   magnify?: number;
+  /**
+   * loupeZoomMode のライブ計算に使う「基準倍率」（設定に関わらない生の値、
+   * 通常は LOUPE_MAGNIFY）。zoomMode が 'fixed' 以外の時、panZoomSV.value.scale
+   * と組み合わせて毎フレーム倍率を出す。省略時は magnify と同じ値を使う。
+   */
+  baseMagnify?: number;
+  /**
+   * ルーペ倍率のズーム追従モード（設定 loupeZoomMode と同じ値をそのまま渡す）。
+   * 'matchZoom'/'inverse' の時、panZoomSV がある間はキャンバスのズームに
+   * 毎フレーム連動して滑らかに変化する。省略時 'fixed'（常に一定）。
+   */
+  zoomMode?: 'fixed' | 'matchZoom' | 'inverse';
+  /**
+   * ドットグリッドを出すか。渡すと、1ドットが画面上で十分大きく見える時
+   * （DOT_GRID_MIN_SCALE 以上）だけ自動でマス目＋中央セルのハイライトを
+   * 出す。渡さない（false/undefined）間は常に出さない。
+   */
+  dotGridEnabled?: boolean;
   /** ルーペの高さ(px)。既定 LOUPE_SIZE。ズームバーを畳んだ時など、大きくして見やすくする用途。 */
   size?: number;
   /** ルーペ上端の位置(px)。既定 LOUPE_TOP_OFFSET。 */
@@ -200,6 +246,14 @@ interface Props {
   dockLevel?: DockLevel;
   /** ルーペ本体タップで次の段階へ進めたい時に呼ぶ（次の値を渡す）。 */
   onDockLevelChange?: (level: DockLevel) => void;
+  /**
+   * dockLevel===1（中）の実サイズ(px)。省略時 DOCK_COMPACT_SIZE。
+   * 呼び出し側が設定「ルーペ基準サイズ」から比率計算した値を渡す想定
+   * （詳しくは settings/store.ts の loupeBaseSize 参照）。
+   */
+  compactSize?: number;
+  /** dockLevel===2（収納）の実サイズ(px)。省略時 DOCK_DOCKED_SIZE。compactSize と同様。 */
+  dockedSize?: number;
 }
 
 export default function TouchLoupe({
@@ -214,6 +268,9 @@ export default function TouchLoupe({
   brushRadius,
   strokePoints,
   magnify = LOUPE_MAGNIFY,
+  baseMagnify,
+  zoomMode = 'fixed',
+  dotGridEnabled = false,
   size = LOUPE_SIZE,
   topOffset = LOUPE_TOP_OFFSET,
   fullWidth = false,
@@ -224,7 +281,10 @@ export default function TouchLoupe({
   dpadBottom,
   dockLevel = 0,
   onDockLevelChange,
+  compactSize = DOCK_COMPACT_SIZE,
+  dockedSize = DOCK_DOCKED_SIZE,
   panZoomSV,
+  pointSV,
 }: Props) {
   const { t } = useT();
   // 長押しでの連続移動用タイマー。setState を伴わないので描画には影響しない。
@@ -253,8 +313,8 @@ export default function TouchLoupe({
 
   // level に応じて実際のサイズ・隅寄せの有無を決める。default(0) だけ
   // 呼び出し側の size/fullWidth をそのまま使う。
-  const effSize = dockLevel === 1 ? DOCK_COMPACT_SIZE
-    : dockLevel === 2 ? DOCK_DOCKED_SIZE
+  const effSize = dockLevel === 1 ? compactSize
+    : dockLevel === 2 ? dockedSize
     : size;
   const effFullWidth = dockLevel === 0 ? fullWidth : false;
 
@@ -274,22 +334,47 @@ export default function TouchLoupe({
   /**
    * ルーペの中身を動かす Group の transform。
    * panZoomSV が無ければ従来どおり point から計算した固定値（React の
-   * 再レンダー任せ）。panZoomSV がある（reticleFixed でパン中）時は、
+   * 再レンダー任せ）。panZoomSV がある（パン中、または画面中央追従）時は、
    * 「今キャンバス中央にある画像座標」を毎フレーム UI スレッドで計算し直す
    * ワークレットにする。JS スレッドの再レンダーを経由しないので、
    * メインキャンバスのパンと完全に同じなめらかさで追従する。
+   * 倍率（scale）も同様に、zoomMode が 'fixed' 以外なら panZoomSV.value.scale
+   * から毎フレーム計算し直す（loupeZoomMode 設定のライブ追従）。
+   * translate と scale が食い違うと絵が歪んで見えるため、両方とも
+   * このフレームの liveMag/liveScale で揃えて計算する。
    */
   const groupTransform = useDerivedValue(() => {
     'worklet';
     if (panZoomSV && canvasH != null) {
       const z = panZoomSV.value;
+      let liveMag = magnify;
+      if (zoomMode !== 'fixed') {
+        const base = baseMagnify ?? magnify;
+        liveMag = zoomMode === 'matchZoom'
+          ? Math.min(base * z.scale, base * 4)
+          : Math.max(base / z.scale, base / 4);
+      }
+      const liveScale = ds * liveMag;
       const refX = canvasW / 2;
       const refY = canvasH / 2;
       const imgX = (refX - z.tx) / (ds * z.scale);
       const imgY = (refY - z.ty) / (ds * z.scale);
       return [
-        { translateX: cx - imgX * scale },
-        { translateY: cy - imgY * scale },
+        { translateX: cx - imgX * liveScale },
+        { translateY: cy - imgY * liveScale },
+        { scale: liveMag },
+      ];
+    }
+    // 'drag' 設定のレティクルなど、独立した画像座標の注目点を共有値で
+    // 直接持っている場合。panZoomSV と違い、追う対象はキャンバスの
+    // パン/ズームではなく点そのものなので、倍率は magnify を固定で使う
+    // （loupeZoomMode によるライブ追従は主キャンバスのズームに連動する
+    // 機能なので、キャンバスをパンしない 'drag' モードでは対象外）。
+    if (pointSV) {
+      const p = pointSV.value;
+      return [
+        { translateX: cx - p.x * scale },
+        { translateY: cy - p.y * scale },
         { scale: magnify },
       ];
     }
@@ -298,7 +383,7 @@ export default function TouchLoupe({
       { translateY: ty },
       { scale: magnify },
     ];
-  }, [panZoomSV, canvasW, canvasH, ds, scale, cx, cy, tx, ty, magnify]);
+  }, [panZoomSV, pointSV, canvasW, canvasH, ds, scale, cx, cy, tx, ty, magnify, baseMagnify, zoomMode]);
 
   /**
    * 復元ブラシの軌跡プレビュー。メインキャンバス側（PolygonEditor の
@@ -327,7 +412,7 @@ export default function TouchLoupe({
     && touch.x < boxW + AVOID_MARGIN
     && touch.y < topOffset + boxH + AVOID_MARGIN;
   const left = dockLevel === 2
-    ? -DOCK_DOCKED_HIDE
+    ? -(dockedSize / 2)
     : (effFullWidth ? 8 : (nearLeft ? canvasW - boxW - 8 : 8));
 
   /**
@@ -365,6 +450,52 @@ export default function TouchLoupe({
   const reticle = brushRadius != null
     ? Math.max(2, brushRadius * scale)
     : null;
+
+  /**
+   * ドットグリッド。1ドットが画面上で DOT_GRID_MIN_SCALE px 以上（＝十分
+   * 拡大されている時）だけ自動で出す。狭い時（数ドットしか映っていない時）は
+   * 元々見た目で分かるので邪魔になるだけ、広い時（大量のドットが映っている時）
+   * は線だらけになるだけなので、この閾値の間だけ意味がある。
+   * 中央のセル（今狙っているドット）だけ薄く塗って「今編集する1ドット」を
+   * 一目で分かるようにする。
+   * Group（画像と同じ transform）の子として描くことで、パン中も画像と
+   * 完全に同じ位置関係を保つ（別レイヤーで描くとパン中にズレて見える）。
+   */
+  const showGrid = !!dotGridEnabled && scale >= DOT_GRID_MIN_SCALE;
+  let gridLines: React.ReactNode = null;
+  let centerCell: React.ReactNode = null;
+  if (showGrid) {
+    const leftPx = Math.floor(-tx / scale) - 1;
+    const rightPx = Math.ceil((boxW - tx) / scale) + 1;
+    const topPx = Math.floor(-ty / scale) - 1;
+    const bottomPx = Math.ceil((boxH - ty) / scale) + 1;
+    const hairline = 1 / magnify;
+    const gridColor = 'rgba(255,255,255,0.18)';
+    const verticals = [];
+    for (let px = leftPx; px <= rightPx; px++) {
+      verticals.push(
+        <Line key={`gv${px}`} p1={vec(px * ds, topPx * ds)} p2={vec(px * ds, bottomPx * ds)}
+          color={gridColor} strokeWidth={hairline} />,
+      );
+    }
+    const horizontals = [];
+    for (let py = topPx; py <= bottomPx; py++) {
+      horizontals.push(
+        <Line key={`gh${py}`} p1={vec(leftPx * ds, py * ds)} p2={vec(rightPx * ds, py * ds)}
+          color={gridColor} strokeWidth={hairline} />,
+      );
+    }
+    gridLines = <>{verticals}{horizontals}</>;
+    centerCell = (
+      <Rect
+        x={Math.floor(point.x) * ds}
+        y={Math.floor(point.y) * ds}
+        width={ds}
+        height={ds}
+        color="rgba(255,255,255,0.08)"
+      />
+    );
+  }
 
   // decideActive中は色を反転させ、「今はトグルがONの状態」だと分かるように
   // する。意味はケースによって違う（復元ブラシ＝録画中／moveモード＝選択中）
@@ -440,6 +571,10 @@ export default function TouchLoupe({
                 fit="fill"
                 sampling={{ filter: FilterMode.Nearest, mipmap: MipmapMode.None }}
               />
+              {/* ドットグリッド＋中央セルのハイライト。画像と同じ Group の
+                  子にすることで、パン中も画像とズレずに追従する。 */}
+              {centerCell}
+              {gridLines}
               {/* 復元ブラシの軌跡プレビュー。メインキャンバスの緑の線と同じ色。
                   太さは ds だけ掛けておく（magnify は Group の scale が担う）。 */}
               {strokePath && (

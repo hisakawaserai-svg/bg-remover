@@ -49,6 +49,10 @@ import {
   rebuildCellFromOriginal,
   isBBoxInside,
   cropFromOriginal,
+  analyzeExistingTransparency,
+  INIT_PAD_RATIO,
+  INIT_PAD_MIN_RATIO,
+  INIT_PAD_MIN_PX,
 } from './src/imaging';
 import { splitConnected } from './src/imaging/splitConnected';
 import type { BBox, RemoveBgResult } from './src/imaging';
@@ -143,6 +147,9 @@ import { useSettings } from './src/settings/SettingsContext';
 import { isSplashEnabled } from './src/settings/store';
 import { useAlbumName } from './src/settings/useAlbumName';
 
+// ── 利用統計（端末内のみ・外部送信なし）───────────────────────────────────────
+import { useStats } from './src/stats/StatsContext';
+
 // ── 広告 ──────────────────────────────────────────────────────────────────────
 // 置くのはホーム・保存完了・保存先の3画面だけ。SetupScreen / PolygonEditor などの
 // 編集画面には置かない（キャンバスをタッチ操作するため誤タップの温床になる）。
@@ -171,6 +178,17 @@ const SPLASH_ANIMATION: SplashAnimationType | undefined = undefined;
 
 const DEFAULT_TOLERANCE = 30;
 const DEFAULT_ROWS = 4;
+
+/**
+ * 読み込んだ画像の透明画素率がこれ以上なら「既に透過されている可能性がある」
+ * と警告する（そのまま続行 or キャンセルの確認）。
+ */
+const PARTIAL_TRANSPARENCY_RATIO = 0.05;
+/**
+ * これ以上（または四隅が全部透明）なら「かなりの確率で既に背景除去済み」と
+ * みなし、そのまま編集モードへ進む選択肢を出す（自動除去をスキップできる）。
+ */
+const HIGH_TRANSPARENCY_RATIO = 0.40;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -210,6 +228,8 @@ function AppScreens() {
   const { width: winW, height: winH } = useWindowDimensions();
   const [splitMode, setSplitMode] = useState<SplitMode>('auto');
   const [appState,  setAppState]  = useState<AppState>('idle');
+  const appStateRef = useRef<AppState>('idle');
+  appStateRef.current = appState;
   // 設定画面を開く直前の state を退避し、閉じた時に元の画面へ戻すために使う
   const prevStateRef = useRef<AppState>('idle');
   // 使い方(howto)画面の戻り先。prevStateRef を上書きすると設定→使い方→戻る後に
@@ -264,6 +284,14 @@ function AppScreens() {
   const [bgResult,  setBgResult]  = useState<RemoveBgResult | null>(null);
   const bgResultRef = useRef<RemoveBgResult | null>(null);
   bgResultRef.current = bgResult;
+  /**
+   * セル個別編集(cell_editing)の間、bg.rgba（シート全体サイズ）の作り直しを
+   * サボっているかどうか。cell_editing 中の画面表示は buildCellRgba が
+   * base+editsRef からセル範囲だけ直接作るので bg.rgba を見ておらず、undo/redo
+   * のたびに元画像全体×自動背景除去からやり直す重い処理を挟む必要がない。
+   * セルを抜ける時（flushBgRgba）に1回だけまとめて計算し直す。
+   */
+  const bgRgbaDirtyRef = useRef(false);
   const [polygons,  setPolygons]  = useState<Polygon[]>([]);
 
   // ── ポリゴン変換ヘルパー ────────────────────────────────────────────────────
@@ -287,6 +315,9 @@ function AppScreens() {
   // App.tsx 側での useState / loadSettings / saveSettings は不要になった。
   const { settings: appSettings, loaded: settingsLoaded, updateSettings } = useSettings();
   const thumbBg = useThumbBg();
+
+  // ── 利用統計（端末内のみ）───────────────────────────────────────────────────
+  const { recordImageEdited, recordTransparencyOp, recordStampsCreated, recordExportCompleted } = useStats();
 
   // ── アプリアイコン ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -325,20 +356,29 @@ function AppScreens() {
       console.warn('[App] 元画像が無いため編集を適用できません', { hasBase: !!base, hasBg: !!bg });
     }
     if (base && bg) {
-      const cur = editsRef.current;
-      // 追加は [...cur, step] で作るので、先頭は同じ参照のまま並ぶ。
-      // 参照比較で「続きかどうか」を安く判定できる。
-      const isAppend = next.length >= cur.length && cur.every((s, i) => s === next[i]);
-
-      if (isAppend) {
-        // 増えた分だけ掛ける（0件なら何もしない）。
-        if (next.length > cur.length) {
-          applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length), base);
-        }
+      // セル個別編集(cell_editing)の間は、この画面が見ているのはセル範囲だけ
+      // (buildCellRgba が base+editsRef から直接作る)なので、シート全体サイズの
+      // bg.rgba をここで作り直す必要が無い。背景除去からの全段掛け直しは重く、
+      // undo のたびに走ると体感できるほど待たされるため、セルを抜けて全体表示に
+      // 戻る時（flushBgRgba）まで先延ばしにする。
+      if (appStateRef.current === 'cell_editing') {
+        bgRgbaDirtyRef.current = true;
       } else {
-        // 取り消し・リセットなど。操作は巻き戻せないので元画像から作り直す。
-        bg.rgba.set(base);
-        applyEditSteps(bg.rgba, bg.width, bg.height, next, base);
+        const cur = editsRef.current;
+        // 追加は [...cur, step] で作るので、先頭は同じ参照のまま並ぶ。
+        // 参照比較で「続きかどうか」を安く判定できる。
+        const isAppend = next.length >= cur.length && cur.every((s, i) => s === next[i]);
+
+        if (isAppend) {
+          // 増えた分だけ掛ける（0件なら何もしない）。
+          if (next.length > cur.length) {
+            applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length), base);
+          }
+        } else {
+          // 取り消し・リセットなど。操作は巻き戻せないので元画像から作り直す。
+          bg.rgba.set(base);
+          applyEditSteps(bg.rgba, bg.width, bg.height, next, base);
+        }
       }
       setBgVersion(v => v + 1);
     }
@@ -389,6 +429,22 @@ function AppScreens() {
     const first = editsRef.current[0];
     applyEdits(first?.kind === 'autoBg' ? [first] : [], []);
   }, [applyEdits]);
+
+  /**
+   * cell_editing 中にサボっていた bg.rgba（シート全体サイズ）の作り直しを
+   * まとめて片付ける。セルを抜けて全体表示(ResultScreen・書き出し等)へ
+   * 戻る直前に必ず呼ぶこと。dirty でなければ何もしない（毎回呼んでも安全）。
+   */
+  const flushBgRgba = useCallback(() => {
+    if (!bgRgbaDirtyRef.current) return;
+    const base = baseRgbaRef.current;
+    const bg = bgResultRef.current;
+    if (base && bg) {
+      bg.rgba.set(base);
+      applyEditSteps(bg.rgba, bg.width, bg.height, editsRef.current, base);
+    }
+    bgRgbaDirtyRef.current = false;
+  }, []);
 
 
   // AsyncStorage からセッション一覧と設定を再取得（マウント時に1回）
@@ -460,6 +516,8 @@ function AppScreens() {
     const uri = await persistSourceImage(pngUri, id);
     await upsertSession({ id, imageUri: uri, step: 'picked', updatedAt: Date.now() });
     void reloadSessions(); // UI を非同期で更新（processImage と並行してよい）
+    // 画像読み込み成功 → 統計「編集した画像」を加算（新規に選んだ画像のみ。セッション再開はカウントしない）
+    recordImageEdited();
 
     setSplitMode('auto'); // 新規画像は常に自動モードからスタート
     editsRef.current = []; redoStepsRef.current = []; // 前の画像の編集を持ち越さない
@@ -487,10 +545,71 @@ function AppScreens() {
       // 保存済みの操作列があればそれを、無ければ自動背景除去1件から始める。
       const result = await loadImagePixels(uri);
       baseRgbaRef.current = result.rgba.slice();
-      const steps: EditStep[] = resumeEdits?.length
-        ? resumeEdits
-        : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
+
+      let steps: EditStep[];
+      if (resumeEdits?.length) {
+        // セッション再開: 保存済みの操作列をそのまま使う。透過チェックは
+        // 新規に画像を選んだ時だけの話なので、再開時はスキップする。
+        steps = resumeEdits;
+      } else {
+        const defaultStep: EditStep = {
+          kind: 'autoBg',
+          tolerance: appSettings.tolerance,
+          feather: appSettings.featherEdges,
+          fillHoles: appSettings.fillTextHoles,
+        };
+        // 「既に透過済みの画像」チェック。ChatGPT等で書き出された画像は
+        // 見た目は普通でも実は背景が抜けていることがあり、気づかずもう一度
+        // 背景除去を掛けると（既に透明な縁をさらに侵食して）画質が落ちる。
+        const stats = analyzeExistingTransparency(result.rgba, result.width, result.height);
+        // 四隅が全部透明なら、割合が低くても「既に抜かれている」可能性が高い
+        // （背景除去は画像の端から広がるため）。
+        const likelyPreCutout = stats.cornersTransparent || stats.ratio >= HIGH_TRANSPARENCY_RATIO;
+
+        if (likelyPreCutout) {
+          // かなり高い確率で既に透過済み: そのまま編集モードへ進む選択肢を出す
+          // （＝自動除去をスキップし、読み込んだ画像自身の alpha をそのまま使う）。
+          const editAsIs = await new Promise<boolean>(resolve => {
+            Alert.alert(
+              t('transparency.preCutoutTitle'),
+              t('transparency.preCutoutMessage'),
+              [
+                { text: t('transparency.redoRemoval'), onPress: () => resolve(false) },
+                { text: t('transparency.editAsIs'), onPress: () => resolve(true) },
+              ],
+            );
+          });
+          steps = editAsIs ? [] : [defaultStep];
+        } else if (stats.ratio >= PARTIAL_TRANSPARENCY_RATIO) {
+          // 部分的に透過されているかも: 止めるのではなく教えるだけ。
+          // デフォルトの動線は「そのまま続行」（普通の写真にもよくある誤検知の
+          // 余地があるため、キャンセル一択にはしない）。
+          const proceed = await new Promise<boolean>(resolve => {
+            Alert.alert(
+              t('transparency.partialTitle'),
+              t('transparency.partialMessage'),
+              [
+                { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+                { text: t('transparency.continueAnyway'), onPress: () => resolve(true) },
+              ],
+            );
+          });
+          if (!proceed) {
+            setAppState('idle');
+            return;
+          }
+          steps = [defaultStep];
+        } else {
+          // 透明画素がほぼ無い、普通の写真: 従来どおり何も聞かず進む。
+          steps = [defaultStep];
+        }
+      }
       applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
+      // 透過処理完了 → 統計「透過処理」を加算。セッション再開時の再生（resumeEdits）は
+      // 既に実行済みの操作をなぞるだけなので数えない。新規に autoBg を実行した時だけ数える。
+      if (!resumeEdits?.length && steps.some(s => s.kind === 'autoBg')) {
+        recordTransparencyOp();
+      }
       editsRef.current = steps;
       setEdits(steps);
       redoStepsRef.current = [];
@@ -587,6 +706,8 @@ function AppScreens() {
       return newCells;
     });
     setAppState('preview');
+    // スタンプ生成完了 → 統計「作成したスタンプ」を加算
+    recordStampsCreated(newCells.length);
 
     // 分割完了後にセッションへカット一覧を保存（復元用）
     if (currentSessionId) {
@@ -613,7 +734,7 @@ function AppScreens() {
       });
       void reloadSessions();
     }
-  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t]);
+  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t, recordStampsCreated]);
 
   // ── 共有シートから渡された画像の引き取り ─────────────────────────────────
   // Share Extension が App Group に置いた画像があれば、画像選択と同じ流れへ流す。
@@ -743,9 +864,19 @@ function AppScreens() {
    * セル1枚ぶんの RGBA を作る。描画（cell_editing）と確定（handleCellEditConfirm）で
    * 必ず同じものを使うため、生成元をこの1箇所に集約する。
    *
-   * cellTolerance が null なら従来どおり bgResult（シート全体の透過結果）から切り出す。
-   * 値が入っていれば、元画像 baseRgbaRef から作り直す。透過済みの bgResult を
-   * 作り直しの入力にすると、消えた画素が戻らず「透過しすぎ」を直せないため。
+   * 常に元画像 baseRgbaRef + 操作列(editsRef) からセル範囲だけを作り直す
+   * （bg.rgba＝シート全体サイズのバッファは一切見ない）。
+   * 透過済みの bgResult を作り直しの入力にしてはいけない（消えた画素は戻らず
+   * 「透過しすぎ」を弱める方向に直せない）ので、必ず元画像から作る。
+   *
+   * この「bg.rgba を見ない」性質のおかげで、cell_editing 中は bg.rgba を
+   * 都度作り直さずに済む（applyEdits 側の遅延評価とセットで効く。詳しくは
+   * bgRgbaDirtyRef 参照）。
+   *
+   * cellTolerance が null（このセルの強さをまだ調整していない）場合は、
+   * シート作成時に実際に使われた強さ（先頭の autoBg ステップの tolerance）を
+   * 使う。ここで appSettings.tolerance を使ってしまうと、シート作成後に
+   * 設定画面で既定値を変えた時に見た目が変わってしまう。
    */
   const buildCellRgba = useCallback((bbox: {
     minX: number; minY: number; maxX: number; maxY: number;
@@ -753,25 +884,18 @@ function AppScreens() {
     const bg = bgResultRef.current;
     if (!bg) return null;
     const base = baseRgbaRef.current;
+    if (!base || !isBBoxInside(bbox, bg.width, bg.height)) return null;
 
-    if (cellTolerance !== null && base && isBBoxInside(bbox, bg.width, bg.height)) {
-      return rebuildCellFromOriginal(base, bg.width, bg.height, bbox, {
-        tolerance: cellTolerance,
-        feather: appSettings.featherEdges,
-        fillHoles: appSettings.fillTextHoles,
-        steps: editsRef.current,
-      });
-    }
+    const firstStep = editsRef.current[0];
+    const sheetTolerance = firstStep?.kind === 'autoBg' ? firstStep.tolerance : appSettings.tolerance;
 
-    const subW = bbox.maxX - bbox.minX + 1;
-    const subH = bbox.maxY - bbox.minY + 1;
-    const rgba = new Uint8Array(subW * subH * 4);
-    for (let y = 0; y < subH; y++) {
-      const srcOff = ((bbox.minY + y) * bg.width + bbox.minX) * 4;
-      rgba.set(bg.rgba.subarray(srcOff, srcOff + subW * 4), y * subW * 4);
-    }
-    return { rgba, width: subW, height: subH };
-  }, [cellTolerance, appSettings.featherEdges, appSettings.fillTextHoles]);
+    return rebuildCellFromOriginal(base, bg.width, bg.height, bbox, {
+      tolerance: cellTolerance ?? sheetTolerance,
+      feather: appSettings.featherEdges,
+      fillHoles: appSettings.fillTextHoles,
+      steps: editsRef.current,
+    });
+  }, [cellTolerance, appSettings.tolerance, appSettings.featherEdges, appSettings.fillTextHoles]);
 
   /**
    * セル編集で復元ブラシの透かしに使う、元画像の切り出し。
@@ -849,18 +973,35 @@ function AppScreens() {
       const thumbUri = await saveThumbToFile(img);
       img.dispose();
       // 後から編集し直せるように、元画像上の位置とポリゴンを残す。
-      // tight は subRgba 内の座標なので、bbox の分だけ足して元画像座標にする。
+      //
+      // tight（マスク後に残った画素だけの最小範囲）をそのまま srcBBox にすると、
+      // 再編集で開いた時のキャンバスが前回の輪郭ぴったりに切り詰められてしまい、
+      // 「輪郭が少し内側すぎた」を後から直そうとしても、はみ出したかった部分の
+      // 画素データ自体がそもそも含まれておらず直せない（＝開始位置がズレて見える
+      // 不具合の原因）。tight の周りに少し余白を足した範囲を srcBBox にすることで、
+      // 再編集時に前回の輪郭より外側へも調整できる余地を残す。
+      // 最終的な書き出し画像（cropped/thumbUri）は従来どおり tight のまま変えない
+      // （書き出しサイズに余白入りの透明ピクセルを含めたくないため）。
+      const padW = Math.max(
+        INIT_PAD_MIN_PX,
+        Math.round(Math.min(subW, subH) * INIT_PAD_MIN_RATIO),
+        Math.round(Math.min(cw, ch) * INIT_PAD_RATIO),
+      );
+      const padMinX = Math.max(0, tight.minX - padW);
+      const padMinY = Math.max(0, tight.minY - padW);
+      const padMaxX = Math.min(subW - 1, tight.maxX + padW);
+      const padMaxY = Math.min(subH - 1, tight.maxY + padW);
       const srcBBox = {
-        minX: bbox.minX + tight.minX,
-        minY: bbox.minY + tight.minY,
-        maxX: bbox.minX + tight.maxX,
-        maxY: bbox.minY + tight.maxY,
-        area: cw * ch,
+        minX: bbox.minX + padMinX,
+        minY: bbox.minY + padMinY,
+        maxX: bbox.minX + padMaxX,
+        maxY: bbox.minY + padMaxY,
+        area: (padMaxX - padMinX + 1) * (padMaxY - padMinY + 1),
       };
-      // ポリゴンは切り出し原点（tight の左上）基準へ移す。再編集で開いた時に
+      // ポリゴンは切り出し原点（余白込みの左上）基準へ移す。再編集で開いた時に
       // そのまま initialPolygons として使える。
       const polygon = p.points.map(
-        ([px, py]) => [px - tight.minX, py - tight.minY] as [number, number],
+        ([px, py]) => [px - padMinX, py - padMinY] as [number, number],
       );
       return { kind: 'poly' as const, rgba: cropped, w: cw, h: ch, thumbUri, srcBBox, polygon };
     }));
@@ -869,6 +1010,8 @@ function AppScreens() {
     // ポリゴンがなければ元のセルを維持してプレビューに戻る
     const replacement = newCells.length > 0 ? newCells : [editedCell];
     if (newCells.length > 0) {
+      // スタンプ生成完了 → 統計「作成したスタンプ」を加算（編集元1枚→newCells.length枚に置き換わる）
+      recordStampsCreated(newCells.length);
       // 編集元セルのサムネは新セルに置き換わるため削除（孤児化防止）
       const filePath = editedCell.thumbUri.startsWith('file://') ? editedCell.thumbUri.slice(7) : editedCell.thumbUri;
       try {
@@ -889,6 +1032,8 @@ function AppScreens() {
     // 透過強度はセル単位の調整。確定したらここで捨てる（次のセルへ持ち越さない）。
     setCellTolerance(null);
     setAppState('preview');
+    // セルを抜けるので、サボっていた bg.rgba の作り直しをここで片付ける。
+    flushBgRgba();
 
     // 編集確定後のセル一覧をセッションに保存
     if (currentSessionId) {
@@ -913,7 +1058,7 @@ function AppScreens() {
       });
       void reloadSessions();
     }
-  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows]);
+  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, flushBgRgba, recordStampsCreated]);
 
   // ── 自動分割の書き出し ─────────────────────────────────────────────────────
 
@@ -960,6 +1105,8 @@ function AppScreens() {
 
       const { count, paths } = await saveSkImages(skImages, await ensureAlbumName());
       skImages.forEach(img => img.dispose());
+      // 書き出し成功 → 統計「書き出し完了」を加算（枚数ではなく成功回数）
+      recordExportCompleted();
 
       // 書き出し完了 → step を 'done' に更新
       const sessionToFinish = currentSessionId
@@ -998,7 +1145,7 @@ function AppScreens() {
       Alert.alert(t('errors.exportTitle'), describeSaveError(e));
       setAppState('preview');
     }
-  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, ensureAlbumName, t]);
+  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, ensureAlbumName, t, recordExportCompleted]);
 
   // ── リセット ──────────────────────────────────────────────────────────────
 
@@ -1477,6 +1624,8 @@ function AppScreens() {
               // 残すと次に開いた別のセルへ意図せず引き継がれる。
               setCellTolerance(null);
               setAppState('preview');
+              // セルを抜けるので、サボっていた bg.rgba の作り直しをここで片付ける。
+              flushBgRgba();
             }}
             onSettings={() => goToSettings()}
             // スポイトはセルの切り出し座標で来るので、元画像の座標へ戻して積む。
@@ -1500,8 +1649,36 @@ function AppScreens() {
             // 透過強度を変えるたびに再生成するので、画像の差し替えを伝える。
             bgVersion={bgVersion + (cellTolerance ?? 0)}
             cellTolerance={cellTolerance ?? appSettings.tolerance}
-            // 「再適用」。元画像の該当セル範囲から作り直す（透過済みは入力にしない）。
-            onRetransparent={tol => setCellTolerance(tol)}
+            // 「再適用」。scopeBBox が無ければ従来どおりセル全体を作り直す
+            // （元画像の該当セル範囲から、透過済みは入力にしない）。
+            // scopeBBox がある（選択範囲だけ再透過）場合は、セル全体は作り直さず
+            // 通常の編集操作（スポイト等）と同じ「元画像1枚に対する操作列」に
+            // 1件積む —— こうするとその範囲だけが変わり、undo/redo も効く。
+            // 座標はこのエディタのセル内基準で来るので、bbox 分だけ元画像基準へ
+            // 戻す（スポイト・復元ブラシと同じ変換）。
+            onRetransparent={(tol, scope) => {
+              // 再透過処理完了 → 統計「透過処理」を加算（範囲限定・セル全体どちらも対象）
+              recordTransparencyOp();
+              if (scope) {
+                pushEdit({
+                  kind: 'retransRegion',
+                  minX: scope.minX + bbox.minX,
+                  minY: scope.minY + bbox.minY,
+                  maxX: scope.maxX + bbox.minX,
+                  maxY: scope.maxY + bbox.minY,
+                  // ポリゴン/ブラシどちらの選択でも同じ「点列」として来る。
+                  // 矩形と同じくセルのローカル座標→元画像座標へ戻す。
+                  maskPoints: scope.maskPoints?.map(
+                    ([x, y]) => [x + bbox.minX, y + bbox.minY] as [number, number],
+                  ),
+                  tolerance: tol,
+                  feather: appSettings.featherEdges,
+                  fillHoles: appSettings.fillTextHoles,
+                });
+              } else {
+                setCellTolerance(tol);
+              }
+            }}
           />
         </>
       );
@@ -1553,6 +1730,9 @@ function AppScreens() {
           }}
           onPreview={polys => {
             setPolygons(polys);
+            // スタンプ生成完了 → 統計「作成したスタンプ」を加算（自動モードの doSplit に相当する、
+            // 手動モードでの「区切りが確定した」タイミング）。3頂点未満は書き出し対象外なので数えない。
+            recordStampsCreated(polys.filter(p => p.points.length >= 3).length);
             // プレビュー遷移のタイミングでポリゴンを session に保存する。
             // 書き出し前に中断しても「どこまで確定したか」を復元できる。
             if (currentSessionId) {
@@ -1608,6 +1788,8 @@ function AppScreens() {
           onBack={() => goToEditor('editing')}
           onRequestSave={requestSave}
           onSave={async (count: number, paths: string[]) => {
+            // 書き出し成功 → 統計「書き出し完了」を加算（枚数ではなく成功回数）
+            recordExportCompleted();
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」
             // できるよう頂点を残す。done セッションを再開しても復元できる。
@@ -2015,7 +2197,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 14,
+    marginTop: 8,
+    marginBottom: 8,
   },
   latestThumb: {
     width: 40,
@@ -2023,6 +2206,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     backgroundColor: IOS.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.15)',
   },
   latestTexts: { flex: 1 },
   latestCaption: {
@@ -2113,6 +2298,8 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 10,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.15)',
   },
   sessionCardInfo: {
     flex: 1,

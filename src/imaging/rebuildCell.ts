@@ -14,6 +14,7 @@
  */
 import { removeBackgroundInPlace, removeColorAt, TOLERANCE } from './removeBackground';
 import { applyRestoreStroke } from './restoreBrush';
+import { pointInPolygon } from './maskPolygon';
 import type { EditStep } from '../session/types';
 import type { RemoveBgResult } from './removeBackground';
 
@@ -95,6 +96,44 @@ export function rebuildCellFromOriginal(
         cell.rgba, baseRgba, cell.width, cell.height, width, height,
         { points: s.points, radius: s.radius }, bbox.minX, bbox.minY,
       );
+    } else if (s.kind === 'retransRegion') {
+      // 「選択範囲だけ再透過」。元画像基準の矩形を切り出して掛け直し、
+      // このセルのローカル座標へ貼り戻す（セルの外へはみ出た分は捨てる）。
+      //
+      // 【重要】このステップの矩形がこのセルの bbox と1pxも重ならないなら、
+      // 貼り戻す画素が無いので丸ごとスキップする。editsRef は元画像1枚に
+      // 対する操作列を全カット分溜め込んでいくため、他のカットに対する
+      // retransRegion もここへ全部流れてくる。ここで弾かないと、無関係な
+      // カットを開くたびに他カットぶんの背景除去（重い）まで毎回走ってしまう。
+      if (s.maxX < bbox.minX || s.minX > bbox.maxX || s.maxY < bbox.minY || s.minY > bbox.maxY) {
+        continue;
+      }
+      const rw = s.maxX - s.minX + 1;
+      const rh = s.maxY - s.minY + 1;
+      if (rw <= 0 || rh <= 0) continue;
+      const region = new Uint8Array(rw * rh * 4);
+      for (let y = 0; y < rh; y++) {
+        const srcOff = ((s.minY + y) * width + s.minX) * 4;
+        region.set(baseRgba.subarray(srcOff, srcOff + rw * 4), y * rw * 4);
+      }
+      removeBackgroundInPlace(region, rw, rh, s.tolerance, s.feather, s.fillHoles ?? false);
+      const mask = s.maskPoints && s.maskPoints.length >= 3 ? s.maskPoints : null;
+      for (let ry = 0; ry < rh; ry++) {
+        const cy = s.minY + ry - bbox.minY;
+        if (cy < 0 || cy >= cell.height) continue;
+        for (let rx = 0; rx < rw; rx++) {
+          const cx = s.minX + rx - bbox.minX;
+          if (cx < 0 || cx >= cell.width) continue;
+          // 多角形（ポリゴン選択／ブラシで囲んだ範囲）があれば、その内側だけ貼り戻す。
+          if (mask && !pointInPolygon(s.minX + rx + 0.5, s.minY + ry + 0.5, mask)) continue;
+          const srcI = (ry * rw + rx) * 4;
+          const dstI = (cy * cell.width + cx) * 4;
+          cell.rgba[dstI] = region[srcI];
+          cell.rgba[dstI + 1] = region[srcI + 1];
+          cell.rgba[dstI + 2] = region[srcI + 2];
+          cell.rgba[dstI + 3] = region[srcI + 3];
+        }
+      }
     }
   }
 

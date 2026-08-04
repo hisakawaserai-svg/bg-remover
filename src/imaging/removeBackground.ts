@@ -909,6 +909,48 @@ export function isTransparentAt(
   return rgba[clampedPixelIndex(width, height, x, y) * 4 + 3] === 0;
 }
 
+export interface TransparencyStats {
+  /** alpha=0 の画素が全体に占める割合（0〜1）。 */
+  ratio: number;
+  /** 四隅（左上・右上・左下・右下）が全部 alpha=0 か。 */
+  cornersTransparent: boolean;
+}
+
+/**
+ * 読み込んだ直後の画像が、既に（他のアプリ等で）背景を透過済みかどうかを
+ * 判定するための統計を取る。
+ *
+ * ChatGPT等で生成・書き出された画像は、見た目は普通の写真でも実はアルファ
+ * チャンネルで背景が抜かれていることがある。それに気づかずこのアプリの
+ * 背景除去（フラッドフィル）をもう一度掛けると、既に透明な縁をさらに侵食して
+ * 画質が落ちる。呼び出し側（App.tsx の processImage）はこの統計を見て、
+ * 必要ならユーザーに確認する。
+ *
+ * 判定は2つの根拠を組み合わせる:
+ *   - ratio: 透明画素の割合。写真全体にどれだけ透明部分があるか。
+ *   - cornersTransparent: 四隅が全部透明か。背景除去は普通「画像の端＝背景」
+ *     から広がるので、これが true なら「既に抜かれている」可能性がかなり高い
+ *     （ratio が低くても、複雑な構図で背景面積自体が小さいだけの場合がある）。
+ */
+export function analyzeExistingTransparency(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+): TransparencyStats {
+  const total = width * height;
+  let transparentCount = 0;
+  for (let i = 3; i < rgba.length; i += 4) {
+    if (rgba[i] === 0) transparentCount++;
+  }
+  const ratio = total > 0 ? transparentCount / total : 0;
+  const cornersTransparent =
+    isTransparentAt(rgba, width, height, 0, 0) &&
+    isTransparentAt(rgba, width, height, width - 1, 0) &&
+    isTransparentAt(rgba, width, height, 0, height - 1) &&
+    isTransparentAt(rgba, width, height, width - 1, height - 1);
+  return { ratio, cornersTransparent };
+}
+
 // タップした1点の色を基準に、そこから隣接ピクセルへ伝播して同系色を透過する。
 // removeBackground の四隅フラッドフィルと同じアルゴリズムを、任意の起点(x,y)に対して
 // 1回だけ実行する版。スポイト機能(SetupScreen)から呼ばれる。

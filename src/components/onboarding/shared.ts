@@ -113,3 +113,16 @@ export function jumpY(p: number, start: number) {
   if (t <= 0 || t >= 1) return 0;
   return -Math.sin(t * Math.PI) * JUMP_H;
 }
+
+/**
+ * 「この線は指でドラッグできる」を示す小刻みな左右(上下)ゆれ。
+ * 窓[start,end]の外は0、窓の頭と尻尾は sin envelope で滑らかに0へ収める
+ * (段差なし)。cycles は窓内で何往復するか。
+ */
+export function wiggle(p: number, start: number, end: number, amplitude: number, cycles = 2) {
+  'worklet';
+  if (p <= start || p >= end) return 0;
+  const t = norm(p, start, end);
+  const envelope = Math.sin(t * Math.PI);
+  return Math.sin(t * Math.PI * 2 * cycles) * envelope * amplitude;
+}

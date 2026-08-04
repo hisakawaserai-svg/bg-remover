@@ -9,7 +9,8 @@ import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
 import type { BBox } from './splitObjects';
 
-export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace } from './removeBackground';
+export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace, analyzeExistingTransparency } from './removeBackground';
+export type { TransparencyStats } from './removeBackground';
 
 /**
  * 元画像の画素に編集操作を順番に掛け直して、現在の見た目を作る（破壊的）。
@@ -24,8 +25,8 @@ export function applyEditSteps(
   height: number,
   steps: EditStep[],
   /**
-   * 元画像の画素。復元ブラシ(restore)だけが必要とする。
-   * 渡さない場合 restore は何もしない（元の alpha が分からないため）。
+   * 元画像の画素。復元ブラシ(restore)と選択範囲だけ再透過(retransRegion)が
+   * 必要とする。渡さない場合はどちらも何もしない（元の画素が分からないため）。
    */
   baseRgba?: Uint8Array | null,
 ): void {
@@ -36,6 +37,45 @@ export function applyEditSteps(
       if (!baseRgba) continue;
       applyRestoreStroke(rgba, baseRgba, width, height, width, height,
         { points: s.points, radius: s.radius });
+    } else if (s.kind === 'retransRegion') {
+      // 「選択範囲だけ再透過」。矩形を元画像から切り出し、その小さい範囲だけ
+      // フラッドフィルし直してから、結果を元の位置へ貼り戻す。矩形の外は
+      // 一切触らない（＝「全体を壊さず直せる」）ぶん、四隅が本当に背景で
+      // ないと誤動作するので、呼び出し側で十分な余白を付けてもらう前提。
+      if (!baseRgba) continue;
+      const bw = s.maxX - s.minX + 1;
+      const bh = s.maxY - s.minY + 1;
+      if (bw <= 0 || bh <= 0) continue;
+      const region = new Uint8Array(bw * bh * 4);
+      for (let y = 0; y < bh; y++) {
+        const srcOff = ((s.minY + y) * width + s.minX) * 4;
+        region.set(baseRgba.subarray(srcOff, srcOff + bw * 4), y * bw * 4);
+      }
+      removeBackgroundInPlace(region, bw, bh, s.tolerance, s.feather, s.fillHoles ?? false);
+      if (s.maskPoints && s.maskPoints.length >= 3) {
+        // 多角形の内側だけ貼り戻す（矩形の四隅はフラッドフィルの起点として
+        // 使っただけで、実際に見た目が変わるのは多角形の内側だけにする）。
+        for (let y = 0; y < bh; y++) {
+          const imgY = s.minY + y;
+          const dstRowOff = imgY * width;
+          for (let x = 0; x < bw; x++) {
+            const imgX = s.minX + x;
+            // ピクセル中心(+0.5)で判定して端部の誤差を減らす（maskOutsidePolygon と同じ）。
+            if (!pointInPolygon(imgX + 0.5, imgY + 0.5, s.maskPoints)) continue;
+            const srcI = (y * bw + x) * 4;
+            const dstI = (dstRowOff + imgX) * 4;
+            rgba[dstI] = region[srcI];
+            rgba[dstI + 1] = region[srcI + 1];
+            rgba[dstI + 2] = region[srcI + 2];
+            rgba[dstI + 3] = region[srcI + 3];
+          }
+        }
+      } else {
+        for (let y = 0; y < bh; y++) {
+          const dstOff = ((s.minY + y) * width + s.minX) * 4;
+          rgba.set(region.subarray(y * bw * 4, y * bw * 4 + bw * 4), dstOff);
+        }
+      }
     } else {
       removeColorAt(rgba, width, height, s.x, s.y, s.tolerance, s.feather);
     }

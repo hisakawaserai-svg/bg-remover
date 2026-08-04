@@ -4,9 +4,10 @@
  * 器(OnboardingScreen)の STEPS[1] に差し込む中身。
  * 実画面(SetupScreen の自動分割)をそっくり再現し、
  *   A) 「自動分割」で切り分ける案内
- *   B) 分割線が上から伸びる + 「2個に分かれます」バッジ出現
+ *   B) 分割線が上から伸びる → ズレてたら指で動かせる、という独立の説明
  *   C) 行数・細かさを整えて「分割」をタップ
- * をループアニメで見せる。
+ * をループアニメで見せる。A/B は同じ上スロットで話者を差し替え、
+ * C だけ下スロットへ移る(MergeCellsAnimation と同じ「フレーム位置でグルーピング」作法)。
  *
  * アニメ作法は OnboardingStep1 / SetupScreen と同じ:
  *   1つの進行用 SharedValue(phase) でタイムラインを作り、
@@ -32,13 +33,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import BirdMascot from './BirdMascot';
 import SpeechBubble from './SpeechBubble';
 import TouchIndicator from './TouchIndicator';
-import { shared, norm, easeIO, fadeHold, jumpY, SPEAK_FADE, FRAME_SLIDE } from './shared';
+import { shared, norm, easeIO, fadeHold, jumpY, wiggle, SPEAK_FADE, FRAME_SLIDE } from './shared';
 import { useT } from '../../i18n';
 import type { TKey } from '../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
-// ゆっくり(間込み)。
-const CYCLE_MS = 13000;
+// A/B/Cの3ビート分の間を確保するため、旧版(バッジのみ・13000ms)より長め。
+const CYCLE_MS = 16000;
 
 // 細かさスライダーのスナップラベル(粗い/中/細かい)。位置は簡略のため等間隔(25/50/75%)。
 const STRENGTHS = [
@@ -48,7 +49,17 @@ const STRENGTHS = [
 ] as const;
 const STRENGTH_ON = 1; // つまみの位置(中)
 
-// 進行に合わせて差し替えるキャプション文言(後で調整しやすいよう定数化)
+// 「自動分割」タブをタップする窓(フェーズA末)。
+const TAB_TAP: [number, number] = [0.24, 0.30];
+// 分割線が上から伸びる窓。
+const LINE_GROW: [number, number] = [0.32, 0.42];
+// フェーズB(線はドラッグで動かせる)の説明が終わった後、線を軽く揺らして実演する窓。
+const DRAG_WIGGLE: [number, number] = [0.50, 0.60];
+// 細かさスライダーのつまみをタップする窓(フェーズC中)。
+const SLIDER_TAP: [number, number] = [0.82, 0.90];
+// 「この行数で分割」ボタンを押す窓(フェーズC末)。
+const BUTTON_PRESS: [number, number] = [0.92, 0.97];
+
 // 文言は描画時に t() で解決する。
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
@@ -79,75 +90,75 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
   }, [active]);
 
   // ── タイムライン(喋り→間→操作のリズム) ───────────────────────────────────
-  // A喋り[0.05,0.31] → 間 → タブtap[0.36,0.48] → 分割線[0.50,0.62]+バッジ
-  //  → C喋り[0.70,0.92] → スライダーtap[0.80,0.90] → ボタン押下[0.92,0.97]
+  // A喋り[0.04,0.20] → タブtap[0.24,0.30] → 分割線[0.32,0.42]
+  //  → B喋り[0.32,0.48](線はドラッグで動かせる) → 線をゆらして実演[0.50,0.60]
+  //  → C喋り[0.64,0.80] → スライダーtap[0.82,0.90] → ボタン押下[0.92,0.97]
 
-  // 「自動分割」タブのハイライト: タップ前後で脈打つ [0.34,0.50]
+  // 「自動分割」タブのハイライト: タップ前後で脈打つ
   const tabHiStyle = useAnimatedStyle(() => {
     const p = phase.value;
-    const o = p >= 0.34 && p < 0.50 ? 0.6 + 0.4 * Math.sin(norm(p, 0.34, 0.50) * Math.PI) : 0;
+    const o = p >= 0.20 && p < TAB_TAP[1] + 0.02
+      ? 0.6 + 0.4 * Math.sin(norm(p, 0.20, TAB_TAP[1] + 0.02) * Math.PI)
+      : 0;
     return { opacity: o };
   });
 
-  // 分割線: [0.50, 0.62] で上から下へ伸びる(scaleY のみ・原点 top)
+  // 分割線: 上から下へ伸びる(scaleY・原点 top)。
+  // フェーズBの説明が終わった後、空き時間に左右へゆらして「ドラッグできる」を実演する。
   const lineStyle = useAnimatedStyle(() => {
     const p = phase.value;
-    const grow = p < 0.50 ? 0 : easeIO(norm(p, 0.50, 0.62));
-    return { transform: [{ scaleY: grow }] };
+    const grow = p < LINE_GROW[0] ? 0 : easeIO(norm(p, LINE_GROW[0], LINE_GROW[1]));
+    const nudge = wiggle(p, DRAG_WIGGLE[0], DRAG_WIGGLE[1], 5);
+    return { transform: [{ scaleY: grow }, { translateX: nudge }] };
   });
 
-  // バッジ: [0.56, 0.68] で opacity + translateY 出現、リセットで消す
-  const badgeStyle = useAnimatedStyle(() => {
-    const p = phase.value;
-    let t = 0;
-    if (p < 0.56)      t = 0;
-    else if (p < 0.68) t = norm(p, 0.56, 0.68);
-    else if (p < 0.94) t = 1;
-    else               t = 1 - norm(p, 0.94, 0.99);
-    return { opacity: t, transform: [{ translateY: (1 - t) * -6 }] };
-  });
-
-  // 「この行数で分割」ボタン押下: [0.92, 0.97] で軽く縮む
+  // 「この行数で分割」ボタン押下で軽く縮む
   const ctaStyle = useAnimatedStyle(() => {
     const p = phase.value;
+    const mid = (BUTTON_PRESS[0] + BUTTON_PRESS[1]) / 2;
     let scale = 1;
-    if (p >= 0.92 && p < 0.945)      scale = 1 - norm(p, 0.92, 0.945) * 0.05;
-    else if (p >= 0.945 && p < 0.97) scale = 0.95 + norm(p, 0.945, 0.97) * 0.05;
+    if (p >= BUTTON_PRESS[0] && p < mid)      scale = 1 - norm(p, BUTTON_PRESS[0], mid) * 0.05;
+    else if (p >= mid && p < BUTTON_PRESS[1]) scale = 0.95 + norm(p, mid, BUTTON_PRESS[1]) * 0.05;
     return { transform: [{ scale }] };
   });
 
-  // ── 字幕(キャラ＋吹き出し): 操作側に出す ──
-  // A(タブ=上操作)→上。C(ボタン=下操作)→下へ移動。喋り始めに「ピョン」。
+  // ── 字幕(キャラ＋吹き出し) ──
+  // A・Bは同じ上スロットで話者を差し替え(タブtap/分割線の説明)。
+  // Cだけ下スロットへ移り、実際の操作(スライダー・ボタン)を担当する。喋り始めに「ピョン」。
   const mascotAStyle = useAnimatedStyle(() => ({
-    opacity: fadeHold(phase.value, 0.03, 0.50, 0.03),
-    transform: [{ translateY: jumpY(phase.value, 0.05) }],
+    opacity: fadeHold(phase.value, 0.02, 0.30, 0.03),
+    transform: [{ translateY: jumpY(phase.value, 0.04) }],
   }));
-  const bubbleAStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.05, 0.31, SPEAK_FADE) }));
+  const bubbleAStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.04, 0.20, SPEAK_FADE) }));
+  const mascotBStyle = useAnimatedStyle(() => ({
+    opacity: fadeHold(phase.value, 0.30, 0.60, 0.03),
+    transform: [{ translateY: jumpY(phase.value, 0.32) }],
+  }));
+  const bubbleBStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.32, 0.48, SPEAK_FADE) }));
   const mascotCStyle = useAnimatedStyle(() => ({
-    opacity: fadeHold(phase.value, 0.60, 0.99, 0.03),
-    transform: [{ translateY: jumpY(phase.value, 0.70) }],
+    opacity: fadeHold(phase.value, 0.62, 0.99, 0.03),
+    transform: [{ translateY: jumpY(phase.value, 0.64) }],
   }));
-  const bubbleCStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.70, 0.92, SPEAK_FADE) }));
+  const bubbleCStyle = useAnimatedStyle(() => ({ opacity: fadeHold(phase.value, 0.64, 0.80, SPEAK_FADE) }));
 
-  // フレームのスライド(上下対称): A(上操作)=下へ(+) / C(下操作)=上へ(-)。
+  // フレームのスライド(上下対称): A・B(上操作/説明)=下へ(+) / C(下操作)=上へ(-)。
   // キャラの出る側と反対へ寄せて、その側に1帯ぶんの空きを作る。translateY のみ。
   const frameStyle = useAnimatedStyle(() => {
     const p = phase.value;
     let y = 0;
-    if (p < 0.03)      y = 0;
-    else if (p < 0.11) y = easeIO(norm(p, 0.03, 0.11));          // → +1(下げて上を空ける=A)
-    else if (p < 0.46) y = 1;
-    else if (p < 0.56) y = 1 - easeIO(norm(p, 0.46, 0.56));      // → 0
-    else if (p < 0.62) y = 0;                                    // 中立(分割線フェーズ)
-    else if (p < 0.70) y = -easeIO(norm(p, 0.62, 0.70));         // → -1(上げて下を空ける=C)
-    else if (p < 0.94) y = -1;
-    else               y = -1 + easeIO(norm(p, 0.94, 0.99));     // → 0
+    if (p < 0.02)      y = 0;
+    else if (p < 0.08) y = easeIO(norm(p, 0.02, 0.08));          // → +1(下げて上を空ける=A/B)
+    else if (p < 0.60) y = 1;
+    else if (p < 0.64) y = 1 - easeIO(norm(p, 0.60, 0.64));      // → 0
+    else if (p < 0.68) y = -easeIO(norm(p, 0.64, 0.68));         // → -1(上げて下を空ける=C)
+    else if (p < 0.97) y = -1;
+    else               y = -1 + easeIO(norm(p, 0.97, 1));        // → 0
     return { transform: [{ translateY: FRAME_SLIDE * y }] };
   });
 
   return (
     <View style={shared.root}>
-      {/* ── 上キャプション(フェーズA: タブ=上操作 → キャラ＋吹き出しは上・overlay) ── */}
+      {/* ── 上キャプション(フェーズA/B: 同じスロットで話者を差し替え・overlay) ── */}
       <View style={shared.captionTop}>
         <SpeechBubble
           stepNumber={1}
@@ -155,6 +166,15 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
           direction="left"
           mascotStyle={mascotAStyle}
           bubbleStyle={bubbleAStyle}
+        />
+      </View>
+      <View style={shared.captionTop}>
+        <SpeechBubble
+          stepNumber={2}
+          text={t('onboarding.step2.dragHint')}
+          direction="left"
+          mascotStyle={mascotBStyle}
+          bubbleStyle={bubbleBStyle}
         />
       </View>
 
@@ -175,7 +195,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
               <Animated.View style={[s.tabHighlight, tabHiStyle]} pointerEvents="none" />
               <Text style={[s.tabTxt, s.tabTxtOn]}>{t('setup.modeAuto')}</Text>
               {/* タップ表現: 間のあと「自動分割」を押す */}
-              <TouchIndicator progress={phase} window={[0.36, 0.48]} />
+              <TouchIndicator progress={phase} window={TAB_TAP} />
             </View>
             <View style={s.tab}>
               <Text style={s.tabTxt}>{t('setup.modeManual')}</Text>
@@ -189,14 +209,10 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
               <BirdMascot variant="night" size={84} />
             </View>
 
-            {/* 分割線(列境界): 上から下へ伸びる(scaleY・原点 top) */}
+            {/* 分割線(列境界): 上から下へ伸びる(scaleY・原点 top)。
+                フェーズBの説明後、左右にゆれて「ドラッグできる」を実演する。 */}
             <Animated.View style={[s.vLineBg, lineStyle]} pointerEvents="none" />
             <Animated.View style={[s.vLine, lineStyle]} pointerEvents="none" />
-
-            {/* 「2個に分かれます」バッジ(右上・薄青ピル) */}
-            <Animated.View style={[s.badge, badgeStyle]} pointerEvents="none">
-              <Text style={s.badgeTxt}>{t('setup.splitsInto', { count: 2 })}</Text>
-            </Animated.View>
           </View>
 
           {/* 行数(段数)ステッパー + 分割しないチェック(静的・OFF表示) */}
@@ -227,7 +243,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
               ))}
               <View style={[s.thumb, { left: `${STRENGTHS[STRENGTH_ON].pct}%` }]}>
                 {/* タップ表現: フェーズCでつまみを操作 */}
-                <TouchIndicator progress={phase} window={[0.80, 0.90]} />
+                <TouchIndicator progress={phase} window={SLIDER_TAP} />
               </View>
             </View>
             {/* 粗い/中/細かいラベル(スナップ点の真下) */}
@@ -247,7 +263,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
           <Animated.View style={[s.cta, ctaStyle]}>
             <Text style={s.ctaTxt}>{t('setup.splitWithRows')}</Text>
             {/* タップ表現: フェーズC末でボタンを押す */}
-            <TouchIndicator progress={phase} window={[0.92, 0.99]} />
+            <TouchIndicator progress={phase} window={BUTTON_PRESS} />
           </Animated.View>
         </View>
       </Animated.View>
@@ -255,7 +271,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
       {/* ── 下キャプション(フェーズC: ボタン=下操作 → キャラ＋吹き出しは下へ移動・overlay) ── */}
       <View style={shared.captionBottom}>
         <SpeechBubble
-          stepNumber={2}
+          stepNumber={3}
           text={t('onboarding.step2.bubble')}
           direction="left"
           mascotStyle={mascotCStyle}
@@ -354,19 +370,6 @@ const s = StyleSheet.create({
     backgroundColor: '#007AFF',
     transformOrigin: 'top',
   },
-  badge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#EAF2FF',
-    borderColor: '#007AFF',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeTxt: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
-
   // カード(行数 / 細かさ): 縦積みコンテナ
   card: {
     width: '100%',

@@ -31,7 +31,7 @@ interface StatsContextValue {
   recordImageEdited: () => void;
   /** 自動透過・再透過を実行した時に呼ぶ */
   recordTransparencyOp: () => void;
-  /** 分割・編集でスタンプが生成された時に呼ぶ（n 枚まとめて加算） */
+  /** 書き出しが成功した時に、実際に書き出せた枚数をまとめて加算する */
   recordStampsCreated: (count: number) => void;
   /** 書き出しが成功した時に呼ぶ */
   recordExportCompleted: () => void;

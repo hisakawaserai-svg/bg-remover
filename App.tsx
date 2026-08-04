@@ -706,8 +706,6 @@ function AppScreens() {
       return newCells;
     });
     setAppState('preview');
-    // スタンプ生成完了 → 統計「作成したスタンプ」を加算
-    recordStampsCreated(newCells.length);
 
     // 分割完了後にセッションへカット一覧を保存（復元用）
     if (currentSessionId) {
@@ -734,7 +732,7 @@ function AppScreens() {
       });
       void reloadSessions();
     }
-  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t, recordStampsCreated]);
+  }, [bgResult, currentSessionId, currentImageUri, appSettings.tolerance, t]);
 
   // ── 共有シートから渡された画像の引き取り ─────────────────────────────────
   // Share Extension が App Group に置いた画像があれば、画像選択と同じ流れへ流す。
@@ -1010,8 +1008,6 @@ function AppScreens() {
     // ポリゴンがなければ元のセルを維持してプレビューに戻る
     const replacement = newCells.length > 0 ? newCells : [editedCell];
     if (newCells.length > 0) {
-      // スタンプ生成完了 → 統計「作成したスタンプ」を加算（編集元1枚→newCells.length枚に置き換わる）
-      recordStampsCreated(newCells.length);
       // 編集元セルのサムネは新セルに置き換わるため削除（孤児化防止）
       const filePath = editedCell.thumbUri.startsWith('file://') ? editedCell.thumbUri.slice(7) : editedCell.thumbUri;
       try {
@@ -1058,7 +1054,7 @@ function AppScreens() {
       });
       void reloadSessions();
     }
-  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, flushBgRgba, recordStampsCreated]);
+  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, flushBgRgba]);
 
   // ── 自動分割の書き出し ─────────────────────────────────────────────────────
 
@@ -1105,8 +1101,12 @@ function AppScreens() {
 
       const { count, paths } = await saveSkImages(skImages, await ensureAlbumName());
       skImages.forEach(img => img.dispose());
-      // 書き出し成功 → 統計「書き出し完了」を加算（枚数ではなく成功回数）
+      // 書き出し成功 → 統計を加算。
+      // 「作成したスタンプ」は生成した個数ではなく書き出しが成功した個数で数える
+      // （途中で分割し直したり合体したりで生成数と完成数はズレるため、
+      // ユーザーが見て嬉しいのは「実際に完成した枚数」の方）。
       recordExportCompleted();
+      recordStampsCreated(count);
 
       // 書き出し完了 → step を 'done' に更新
       const sessionToFinish = currentSessionId
@@ -1145,7 +1145,7 @@ function AppScreens() {
       Alert.alert(t('errors.exportTitle'), describeSaveError(e));
       setAppState('preview');
     }
-  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, ensureAlbumName, t, recordExportCompleted]);
+  }, [bgResult, cells, currentSessionId, currentImageUri, rows, reloadSessions, requestSave, appSettings.tolerance, appSettings.autoDeleteOnExport, ensureAlbumName, t, recordExportCompleted, recordStampsCreated]);
 
   // ── リセット ──────────────────────────────────────────────────────────────
 
@@ -1730,9 +1730,6 @@ function AppScreens() {
           }}
           onPreview={polys => {
             setPolygons(polys);
-            // スタンプ生成完了 → 統計「作成したスタンプ」を加算（自動モードの doSplit に相当する、
-            // 手動モードでの「区切りが確定した」タイミング）。3頂点未満は書き出し対象外なので数えない。
-            recordStampsCreated(polys.filter(p => p.points.length >= 3).length);
             // プレビュー遷移のタイミングでポリゴンを session に保存する。
             // 書き出し前に中断しても「どこまで確定したか」を復元できる。
             if (currentSessionId) {
@@ -1788,8 +1785,10 @@ function AppScreens() {
           onBack={() => goToEditor('editing')}
           onRequestSave={requestSave}
           onSave={async (count: number, paths: string[]) => {
-            // 書き出し成功 → 統計「書き出し完了」を加算（枚数ではなく成功回数）
+            // 書き出し成功 → 統計を加算。「作成したスタンプ」は書き出しが成功した個数で数える
+            // （doAutoExport 側と同じ方針。詳細はそちらのコメント参照）。
             recordExportCompleted();
+            recordStampsCreated(count);
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」
             // できるよう頂点を残す。done セッションを再開しても復元できる。

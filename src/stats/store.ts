@@ -13,7 +13,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEY = 'app_stats';
 
 export interface AppStats {
-  /** 分割・編集後に生成されたスタンプ数 */
+  /**
+   * 書き出しに成功したスタンプの枚数（生成した個数ではない）。
+   * 分割し直し・合体・再編集で「生成した個数」は完成数と簡単にズレるため、
+   * ユーザーが実際に見て嬉しい「完成品の枚数」に寄せてある。
+   */
   stampsCreated: number;
   /** 書き出し処理が成功した回数（枚数ではなく回数） */
   exportsCompleted: number;

@@ -1721,9 +1721,22 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const dragPolygonsRafRef = useRef<number | null>(null);
   const dragPolygonsPendingRef = useRef<Polygon[] | null>(null);
   /**
-   * rAF 待ち・保留中の polygons があれば即座に setPolygons へ反映する。
-   * ドラッグの release/terminate で必ず呼ぶことで、指を離した瞬間に
-   * まだ次のフレームを待っている座標が残らないようにする
+   * drag_vertex 専用の rAF・保留値。showLoupe（scheduleLoupe の rAF）と
+   * scheduleDragPolygons（dragPolygonsRafRef の rAF）を別々に呼ぶと、同じ
+   * フレームでも発火タイミングがずれて再レンダーが2回に分かれることがあった。
+   * updateDragReticleLive と同じ設計にする —— ref/共有値は毎イベント同期更新、
+   * setPolygons と setLoupe は同じ rAF コールバック内でまとめて1回だけ呼ぶ
+   * （詳しくは updateDragVertexLive 参照。対象は drag_vertex のみ）。
+   */
+  const dragVertexRafRef = useRef<number | null>(null);
+  const dragVertexPendingRef = useRef<{
+    polygons: Polygon[];
+    loupe: { img: { x: number; y: number }; touch: { x: number; y: number } };
+  } | null>(null);
+  /**
+   * rAF 待ち・保留中の polygons（および drag_vertex の場合は loupe も）が
+   * あれば即座に反映する。ドラッグの release/terminate で必ず呼ぶことで、
+   * 指を離した瞬間にまだ次のフレームを待っている座標が残らないようにする
    * （「最終座標が確実に polygons state へ反映される」ための同期ポイント）。
    */
   const flushDragPolygons = useCallback(() => {
@@ -1734,6 +1747,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     if (dragPolygonsPendingRef.current) {
       setPolygons(dragPolygonsPendingRef.current);
       dragPolygonsPendingRef.current = null;
+    }
+    if (dragVertexRafRef.current != null) {
+      cancelAnimationFrame(dragVertexRafRef.current);
+      dragVertexRafRef.current = null;
+    }
+    if (dragVertexPendingRef.current) {
+      setPolygons(dragVertexPendingRef.current.polygons);
+      setLoupe(dragVertexPendingRef.current.loupe);
+      dragVertexPendingRef.current = null;
     }
   }, []);
   /**
@@ -1754,9 +1776,38 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       }
     });
   }, []);
+  /**
+   * drag_vertex 専用。updateDragReticleLive と同じ設計 —— ref/共有値
+   * (moveLoupeImgSV) は毎イベント同期更新し、setPolygons と setLoupe は
+   * 同じ rAF コールバック内でまとめて1回だけ呼ぶ（rAFを1本にする）。
+   * imgX/imgY は「今つまんでいる頂点の新しい画像座標」で、ドラッグ中は
+   * 指の真下＝ルーペが映す位置と同じなので、ここでそのままルーペにも使う。
+   */
+  const updateDragVertexLive = useCallback((
+    nextPolygons: Polygon[],
+    imgX: number, imgY: number,
+    touchLx: number, touchLy: number,
+  ) => {
+    dragLastPolygonsRef.current = nextPolygons; // release 時のセッション保存用
+    moveLoupeImgSV.value = { x: imgX, y: imgY };
+    dragVertexPendingRef.current = {
+      polygons: nextPolygons,
+      loupe: { img: { x: imgX, y: imgY }, touch: { x: touchLx, y: touchLy } },
+    };
+    if (dragVertexRafRef.current != null) return;
+    dragVertexRafRef.current = requestAnimationFrame(() => {
+      dragVertexRafRef.current = null;
+      const v = dragVertexPendingRef.current;
+      if (!v) return;
+      dragVertexPendingRef.current = null;
+      setPolygons(v.polygons);
+      setLoupe(v.loupe);
+    });
+  }, [moveLoupeImgSV]);
   // アンマウント時に予約済みの rAF を確実に止める（zoomRafRef 等と同じ理由）。
   useEffect(() => () => {
     if (dragPolygonsRafRef.current != null) cancelAnimationFrame(dragPolygonsRafRef.current);
+    if (dragVertexRafRef.current != null) cancelAnimationFrame(dragVertexRafRef.current);
   }, []);
 
   // ── ボタンズーム ────────────────────────────────────────────────────────────
@@ -3040,12 +3091,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       if (gPhase.current === 'drag_vertex') {
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
-        // 辺・ポリゴン移動と同じくルーペで位置を追従させる。'微調整'/'ドラッグ
-        // 調整' 設定では、頂点を選択済み(selectedVertexIdx)にならないと
-        // moveNudgePoint が使えず、ドラッグ中はレティクルが動いた頂点を
-        // 映さない（キャンバス中央にフォールバックしたままになる）問題が
-        // あったため、設定に関わらず常時 showLoupe で追従させる。
-        showLoupe(lx, ly);
         const z  = zoomRef.current;
         const imgX = (lx - z.tx) / z.scale / dsRef.current;
         const imgY = (ly - z.ty) / z.scale / dsRef.current;
@@ -3068,7 +3113,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             pts[vIdx] = [imgX, imgY];
             return { ...p, points: pts };
           });
-          scheduleDragPolygons(next);
+          // 辺・ポリゴン移動と同じくルーペで位置を追従させる。'微調整'/'ドラッグ
+          // 調整' 設定では、頂点を選択済み(selectedVertexIdx)にならないと
+          // moveNudgePoint が使えず、ドラッグ中はレティクルが動いた頂点を
+          // 映さない（キャンバス中央にフォールバックしたままになる）問題が
+          // あったため、設定に関わらず常時ルーペを追従させる。
+          // showLoupe(lx, ly) を別途呼ぶと scheduleLoupe の rAF と
+          // scheduleDragPolygons の rAF が2本走り、同じフレームでも発火が
+          // ずれて再レンダーが2回に分かれることがあったため、
+          // updateDragVertexLive で1本の rAF にまとめる（imgX/imgY は
+          // showLoupe が内部で計算する localToImage と同じ値なのでそのまま使う）。
+          updateDragVertexLive(next, imgX, imgY, lx, ly);
         }
         return;
       }

@@ -359,20 +359,33 @@ export async function savePolygons(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * SkImage の配列をリサイズしてアルバムに一括保存する。
- * auto/poly 両セルの統一書き出しパス。呼び出し側が dispose 責任を持つ。
+ * セルごとの SkImage を1件ずつ生成させながらリサイズ・アルバム保存する。
+ * auto/poly 両セルの統一書き出しパス。
+ *
+ * 【設計】builders は「SkImage を作る関数」の配列（まだ作っていない）。
+ * 全件を先に Promise.all で作ってから保存すると、カット数が多いシートで
+ * フル解像度 SkImage が同時に何十枚も Native メモリへ載ってしまい、
+ * 実機で OOM 強制終了する原因になっていた（savePolygons は元々1件ずつ
+ * 生成→保存→dispose だったのに、こちらだけ一括生成になっていた）。
+ * ここで1件ずつ「生成→リサイズ→書き込み→dispose」を回すことで、
+ * 常に高々1枚ぶん（フル解像度＋リサイズ後）のメモリしか使わないようにする。
  */
-export async function saveSkImages(images: SkImage[], album: string): Promise<SaveResult> {
+export async function saveSkImages(
+  builders: Array<() => Promise<SkImage> | SkImage>,
+  album: string,
+): Promise<SaveResult> {
   const stamp = Date.now();
   const paths: string[] = [];
   let count = 0;
 
   await prepareExportDir();
 
-  for (let i = 0; i < images.length; i++) {
-    const resized = resizeImage(images[i], TARGET_SIZE);
+  for (let i = 0; i < builders.length; i++) {
+    const img = await builders[i]();
+    const resized = resizeImage(img, TARGET_SIZE);
     const bytes = resized.encodeToBytes();
-    if (resized !== images[i]) resized.dispose();
+    if (resized !== img) resized.dispose();
+    img.dispose();
 
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
     const outPath = `${EXPORT_DIR}/${name}`;

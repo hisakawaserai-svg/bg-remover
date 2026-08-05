@@ -18,9 +18,12 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  LayoutAnimation,
+  Platform,
   StyleSheet,
   Switch,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
@@ -32,13 +35,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Card from './ui/Card';
 import OnboardingScreen from './OnboardingScreen';
 import { useSettings } from '../settings/SettingsContext';
-import type { SplitLineColor } from '../settings/store';
-import { DEFAULTS, isSplashEnabled } from '../settings/store';
+import { BRUSH_MAX_PX, BRUSH_MIN_PX, DEFAULTS, isSplashEnabled, LOUPE_MODE_ICONS } from '../settings/store';
 import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
 import LoupeMagnifySlider from './ui/LoupeMagnifySlider';
 import LoupeSizeSlider from './ui/LoupeSizeSlider';
+import RangeValueSlider from './ui/RangeValueSlider';
 import type { AppIconSetting, LoupeMode, LoupeZoomMode, SplashAnimationSetting } from '../settings/store';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
@@ -49,6 +52,51 @@ import { useStats } from '../stats/StatsContext';
 // その場合は直値にフォールバックしてコメントで TODO を残す。
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const APP_VERSION: string = (require('../../package.json') as { version: string }).version;
+
+// Android(旧アーキテクチャ)では明示的に有効化しないと LayoutAnimation が効かない。
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/** アコーディオン対象のセクションキー。開閉状態を1つの state オブジェクトで管理する。 */
+type AccordionKey =
+  | 'transparency'
+  | 'editOperation'
+  | 'export'
+  | 'appearance'
+  | 'loupe'
+  | 'stats';
+
+/**
+ * アコーディオン1セクション分。ヘッダーとカード本体を1枚の Card にまとめ、
+ * ヘッダー自体をカードの一部として見せる（カード上部にグレー帯のタップ領域、
+ * 開いた中身は白、という階層をつける）。開閉状態自体は呼び出し側の state が持つ。
+ */
+function AccordionSection({
+  title,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card style={styles.card} padding={0}>
+      <AnimatedPressable
+        style={[styles.accordionHeader, expanded && styles.accordionHeaderOpen]}
+        onPress={onToggle}
+        pressedScale={0.99}
+      >
+        <Text style={styles.accordionTitle}>{title}</Text>
+        <Icon name={expanded ? 'expand-more' : 'chevron-right'} size={24} color={IOS.secondary} />
+      </AnimatedPressable>
+      {expanded && <View style={styles.accordionBody}>{children}</View>}
+    </Card>
+  );
+}
 
 /**
  * 作業時間（累計ミリ秒）を「N時間M分」等の表示文字列にする。
@@ -96,6 +144,14 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   const [previewing, setPreviewing] = useState(false);
   const splashOn = isSplashEnabled(settings);
 
+  // アコーディオンの開閉状態。画面を閉じたら失われてよい一時的な表示状態なので
+  // 永続化はせず、この画面内の state だけで持つ。既定はすべて閉じる(空オブジェクト)。
+  const [openSections, setOpenSections] = useState<Partial<Record<AccordionKey, boolean>>>({});
+  const toggleSection = (key: AccordionKey) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const header = (
     <AppHeader
       title={t('settings.title')}
@@ -119,8 +175,11 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         {/* ════════════════════════════════════════
             セクション 1: 透過設定
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.sectionTransparency')}</Text>
-        <Card style={styles.card} padding={0}>
+        <AccordionSection
+          title={t('settings.sectionTransparency')}
+          expanded={!!openSections.transparency}
+          onToggle={() => toggleSection('transparency')}
+        >
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>
@@ -199,13 +258,61 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               thumbColor="#FFF"
             />
           </View>
-        </Card>
+        </AccordionSection>
+
+        {/* ════════════════════════════════════════
+            セクション 1.5: 編集操作
+        ════════════════════════════════════════ */}
+        <AccordionSection
+          title={t('settings.sectionEditOperation')}
+          expanded={!!openSections.editOperation}
+          onToggle={() => toggleSection('editOperation')}
+        >
+          <SelectRow<LoupeMode>
+            label={t('settings.loupeMode')}
+            sub={t('settings.loupeModeHint')}
+            value={settings.loupeMode}
+            options={[
+              { value: 'fixed',  label: t('settings.loupeModeFixed'),  icon: LOUPE_MODE_ICONS.fixed },
+              { value: 'adjust', label: t('settings.loupeModeAdjust'), icon: LOUPE_MODE_ICONS.adjust },
+              { value: 'drag',   label: t('settings.loupeModeDrag'),   icon: LOUPE_MODE_ICONS.drag },
+            ]}
+            onChange={v => void updateSettings({ loupeMode: v })}
+          />
+          <Divider />
+          <RangeValueSlider
+            label={t('settings.brushDefaultPx')}
+            sub={t('settings.brushDefaultPxHint')}
+            value={settings.brushDefaultPx}
+            min={BRUSH_MIN_PX}
+            max={BRUSH_MAX_PX}
+            defaultValue={DEFAULTS.brushDefaultPx}
+            formatValue={v => `${Math.round(v)}px`}
+            onChange={v => void updateSettings({ brushDefaultPx: Math.round(v) })}
+          />
+          <Divider />
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.ghostDefaultOn')}</Text>
+              <Text style={styles.rowSub}>{t('settings.ghostDefaultOnHint')}</Text>
+            </View>
+            <Switch
+              value={settings.ghostDefaultOn}
+              onValueChange={v => void updateSettings({ ghostDefaultOn: v })}
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
+        </AccordionSection>
 
         {/* ════════════════════════════════════════
             セクション 2: 書き出し
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.sectionExport')}</Text>
-        <Card style={styles.card} padding={0}>
+        <AccordionSection
+          title={t('settings.sectionExport')}
+          expanded={!!openSections.export}
+          onToggle={() => toggleSection('export')}
+        >
           {/* 保存先の案内なので翻訳した表示名を出す。
               写真アプリ上の実体名は下の「アルバム名（内部）」で確認できる。 */}
           <View style={styles.row}>
@@ -256,13 +363,98 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               </AnimatedPressable>
             </>
           )}
-        </Card>
+        </AccordionSection>
 
         {/* ════════════════════════════════════════
-            セクション 2.5: 保存先の表示設定
+            セクション 2.7: 表示・見た目(アイコン / 起動演出 / 保存先の表示)
+
+            旧「見た目」と旧「保存先の表示」を統合したセクション。どちらも
+            利用者から見れば「アプリの見た目・表示のカスタマイズ」という
+            同じ括りで、別セクションに分ける意味が薄かったため。
+            選択肢が多いので、行を押すと下から選択肢が出る形にする。
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.showDestination')}</Text>
-        <Card style={styles.card} padding={0}>
+        <AccordionSection
+          title={t('settings.sectionAppearance')}
+          expanded={!!openSections.appearance}
+          onToggle={() => toggleSection('appearance')}
+        >
+          {/* Android は activity-alias 未実装でアイコンを切り替えられないため、
+              選べても何も起きないボタンを出さないよう iOS 限定にする(src/appIcon/index.ts 参照)。 */}
+          {Platform.OS === 'ios' && (
+            <>
+              <SelectRow<AppIconSetting>
+                label={t('settings.appIcon')}
+                sub={t('settings.appIconHint')}
+                value={settings.appIcon}
+                options={[
+                  { value: 'day',   label: t('settings.iconDay') },
+                  { value: 'night', label: t('settings.iconNight') },
+                  { value: 'sleep', label: t('settings.iconSleep') },
+                ]}
+                // 実際の切り替えは App.tsx の useEffect が appIcon の変化を見て
+                // applyAppIcon() を呼ぶ('auto' の時間帯判定もそちらに集約)。
+                onChange={v => {
+                  void updateSettings({ appIcon: v });
+                }}
+              />
+              <Divider />
+            </>
+          )}
+          {/* ON/OFF。パターン選択とは分けてあるので、OFF にしても選んだ
+              パターンは残る(store の splashEnabled 参照)。 */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.splashAnimation')}</Text>
+              <Text style={styles.rowSub}>{t('settings.splashAnimationHint')}</Text>
+            </View>
+            <Switch
+              value={splashOn}
+              onValueChange={v =>
+                void updateSettings({
+                  splashEnabled: v,
+                  // 旧バージョンで 'off' を保存している場合はここで解消する。
+                  ...(v && settings.splashAnimation === 'off'
+                    ? { splashAnimation: 'auto' as SplashAnimationSetting }
+                    : null),
+                })
+              }
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
+
+          {/* ON の時だけパターン選択と試聴を出す(項目を増やしすぎない)。 */}
+          {splashOn && (
+            <>
+              <Divider />
+              <SelectRow<SplashAnimationSetting>
+                label={t('settings.splashPattern')}
+                sub={t('settings.splashAutoHint')}
+                value={
+                  settings.splashAnimation === 'off'
+                    ? 'auto'
+                    : settings.splashAnimation
+                }
+                options={[
+                  { value: 'auto',  label: t('settings.splashPatternAuto') },
+                  { value: 'fly',   label: t('settings.splashFly') },
+                  { value: 'peel',  label: t('settings.splashPeel') },
+                  { value: 'cross', label: t('settings.splashCross') },
+                  { value: 'sleep', label: t('settings.splashSleep') },
+                  { value: 'shake', label: t('settings.splashShake') },
+                  { value: 'drop',  label: t('settings.splashDrop') },
+                ]}
+                // 保存したうえで、変更後の演出をその場で1回再生して見せる。
+                // 「時間帯に合わせる」を選んだ時は、今の時刻で出る演出が流れる。
+                // ON/OFF の切り替えでは再生しない(意図が「消したい」なので)。
+                onChange={v => {
+                  void updateSettings({ splashAnimation: v });
+                  setPreviewing(true);
+                }}
+              />
+            </>
+          )}
+          <Divider />
           {/* グリッドの列数 */}
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('settings.columns')}</Text>
@@ -330,116 +522,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               ))}
             </View>
           </View>
-        </Card>
-
-        {/* ════════════════════════════════════════
-            セクション 2.7: 見た目(アイコン / 起動演出)
-            選択肢が多いので、行を押すと下から選択肢が出る形にする。
-        ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.sectionAppearance')}</Text>
-        <Card style={styles.card} padding={0}>
-          <SelectRow<AppIconSetting>
-            label={t('settings.appIcon')}
-            sub={t('settings.appIconHint')}
-            value={settings.appIcon}
-            options={[
-              { value: 'day',   label: t('settings.iconDay') },
-              { value: 'night', label: t('settings.iconNight') },
-              { value: 'sleep', label: t('settings.iconSleep') },
-            ]}
-            // 実際の切り替えは App.tsx の useEffect が appIcon の変化を見て
-            // applyAppIcon() を呼ぶ('auto' の時間帯判定もそちらに集約)。
-            onChange={v => {
-              void updateSettings({ appIcon: v });
-            }}
-          />
-          <Divider />
-          {/* ON/OFF。パターン選択とは分けてあるので、OFF にしても選んだ
-              パターンは残る(store の splashEnabled 参照)。 */}
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.splashAnimation')}</Text>
-              <Text style={styles.rowSub}>{t('settings.splashAnimationHint')}</Text>
-            </View>
-            <Switch
-              value={splashOn}
-              onValueChange={v =>
-                void updateSettings({
-                  splashEnabled: v,
-                  // 旧バージョンで 'off' を保存している場合はここで解消する。
-                  ...(v && settings.splashAnimation === 'off'
-                    ? { splashAnimation: 'auto' as SplashAnimationSetting }
-                    : null),
-                })
-              }
-              trackColor={{ false: IOS.fill, true: IOS.blue }}
-              thumbColor="#FFF"
-            />
-          </View>
-
-          {/* ON の時だけパターン選択と試聴を出す(項目を増やしすぎない)。 */}
-          {splashOn && (
-            <>
-              <Divider />
-              <SelectRow<SplashAnimationSetting>
-                label={t('settings.splashPattern')}
-                sub={t('settings.splashAutoHint')}
-                value={
-                  settings.splashAnimation === 'off'
-                    ? 'auto'
-                    : settings.splashAnimation
-                }
-                options={[
-                  { value: 'auto',  label: t('settings.splashPatternAuto') },
-                  { value: 'fly',   label: t('settings.splashFly') },
-                  { value: 'peel',  label: t('settings.splashPeel') },
-                  { value: 'cross', label: t('settings.splashCross') },
-                  { value: 'sleep', label: t('settings.splashSleep') },
-                  { value: 'shake', label: t('settings.splashShake') },
-                  { value: 'drop',  label: t('settings.splashDrop') },
-                ]}
-                // 保存したうえで、変更後の演出をその場で1回再生して見せる。
-                // 「時間帯に合わせる」を選んだ時は、今の時刻で出る演出が流れる。
-                // ON/OFF の切り替えでは再生しない(意図が「消したい」なので)。
-                onChange={v => {
-                  void updateSettings({ splashAnimation: v });
-                  setPreviewing(true);
-                }}
-              />
-            </>
-          )}
-        </Card>
-
-        {/* ════════════════════════════════════════
-            セクション 2.8: 分割線の色
-        ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.splitLineColor')}</Text>
-        <Card style={styles.card} padding={0}>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.boundaryColor')}</Text>
-            <View style={styles.presets}>
-              {([
-                { val: '#007AFF' as SplitLineColor, label: t('colors.blue') },
-                { val: '#FF9500' as SplitLineColor, label: t('colors.orange') },
-                { val: '#FF3B30' as SplitLineColor, label: t('colors.red') },
-              ]).map(({ val, label }) => {
-                const isOn = (settings.splitLineColor ?? '#007AFF') === val;
-                return (
-                  <AnimatedPressable
-                    key={val}
-                    style={[styles.colorBtn, isOn && styles.colorBtnOn]}
-                    onPress={() => void updateSettings({ splitLineColor: val })}
-                  >
-                    <View style={[styles.swatch, { backgroundColor: val }]} />
-                    <Text style={[styles.presetTxt, isOn && styles.presetTxtOn]}>
-                      {label}
-                    </Text>
-                  </AnimatedPressable>
-                );
-              })}
-            </View>
-          </View>
-        </Card>
+        </AccordionSection>
 
         {/* ════════════════════════════════════════
             セクション 2.9: ルーペ
@@ -447,20 +530,11 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             編集中のドロップダウンではなくここに置いている。一度決めたら
             まず変えない設定なので、編集画面の常設 UI を増やしたくない。
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.sectionLoupe')}</Text>
-        <Card style={styles.card} padding={0}>
-          <SelectRow<LoupeMode>
-            label={t('settings.loupeMode')}
-            sub={t('settings.loupeModeHint')}
-            value={settings.loupeMode}
-            options={[
-              { value: 'fixed',  label: t('settings.loupeModeFixed') },
-              { value: 'adjust', label: t('settings.loupeModeAdjust') },
-              { value: 'drag',   label: t('settings.loupeModeDrag') },
-            ]}
-            onChange={v => void updateSettings({ loupeMode: v })}
-          />
-          <Divider />
+        <AccordionSection
+          title={t('settings.sectionLoupe')}
+          expanded={!!openSections.loupe}
+          onToggle={() => toggleSection('loupe')}
+        >
           <SelectRow<LoupeZoomMode>
             label={t('settings.loupeZoomMode')}
             sub={t('settings.loupeZoomModeHint')}
@@ -503,13 +577,16 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               thumbColor="#FFF"
             />
           </View>
-        </Card>
+        </AccordionSection>
 
         {/* ════════════════════════════════════════
             セクション 2.95: 統計（端末内のみ保存・外部送信なし）
         ════════════════════════════════════════ */}
-        <Text style={styles.sectionTitle}>{t('settings.sectionStats')}</Text>
-        <Card style={styles.card} padding={0}>
+        <AccordionSection
+          title={t('settings.sectionStats')}
+          expanded={!!openSections.stats}
+          onToggle={() => toggleSection('stats')}
+        >
           <Text style={styles.statsGroupLabel}>{t('settings.statsAchievementTitle')}</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('settings.statsStampsCreated')}</Text>
@@ -539,7 +616,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             </View>
             <Text style={styles.rowValueMuted}>{formatWorkTime(stats.workTimeMs, t)}</Text>
           </View>
-        </Card>
+        </AccordionSection>
 
         {/* ════════════════════════════════════════
             セクション 3: このアプリ
@@ -617,6 +694,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 8,
     paddingLeft: 4,
+  },
+
+  // ── アコーディオン見出し（カード上部のタップ領域。高さ54で押せる場所と
+  //    分かるようにする。背景はカード本体と同じ白 — グレーにすると画面の
+  //    背景色(IOS.bg)と同化してカードの輪郭が消えてしまうため揃えた。
+  //    中身との階層は開いた時だけ出る区切り線(accordionHeaderOpen)で付ける。
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    minHeight: 54,
+    backgroundColor: IOS.card,
+  },
+  // 開いている間だけ、中身との境目に薄い区切り線を足す。
+  accordionHeaderOpen: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: IOS.separator,
+  },
+  accordionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: IOS.label,
+  },
+  // 開いた中身。カード本体と同じ白背景にして、グレーのヘッダーと区別する。
+  accordionBody: {
+    backgroundColor: IOS.card,
   },
 
   // ── カード ────────────────────────────────────────────────────────────────
@@ -697,26 +801,5 @@ const styles = StyleSheet.create({
   },
   presetTxtOn: {
     color: '#FFF',
-  },
-
-  // ── 分割線の色ボタン ─────────────────────────────────────────────────────────
-  colorBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: IOS.fill,
-  },
-  colorBtnOn: {
-    backgroundColor: IOS.blue,
-  },
-  swatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 0.5,
-    borderColor: 'rgba(0,0,0,0.15)',
   },
 });

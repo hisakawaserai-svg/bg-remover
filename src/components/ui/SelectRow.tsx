@@ -36,6 +36,8 @@ const IOS = {
 export interface SelectOption<T extends string> {
   value: T;
   label: string;
+  /** MaterialIcons のアイコン名（任意）。選択肢が多くて見分けにくい時に使う。 */
+  icon?: string;
 }
 
 interface Props<T extends string> {
@@ -89,6 +91,9 @@ export default function SelectRow<T extends string>({
           {!!sub && <Text style={styles.rowSub}>{sub}</Text>}
         </View>
         <View style={styles.rowRight}>
+          {!!current?.icon && (
+            <Icon name={current.icon} size={16} color={IOS.secondary} style={styles.rowValueIcon} />
+          )}
           <Text style={styles.rowValue} numberOfLines={1}>
             {current?.label ?? ''}
           </Text>
@@ -115,9 +120,19 @@ export default function SelectRow<T extends string>({
                     setSheetOpen(false);
                     onChange(o.value);
                   }}>
-                  <Text style={[styles.sheetItemTxt, on && styles.sheetItemTxtOn]}>
-                    {o.label}
-                  </Text>
+                  <View style={styles.sheetItemLeft}>
+                    {!!o.icon && (
+                      <Icon
+                        name={o.icon}
+                        size={20}
+                        color={on ? IOS.blue : IOS.secondary}
+                        style={styles.sheetItemIcon}
+                      />
+                    )}
+                    <Text style={[styles.sheetItemTxt, on && styles.sheetItemTxtOn]}>
+                      {o.label}
+                    </Text>
+                  </View>
                   {on && <Icon name="check" size={20} color={IOS.blue} />}
                 </Pressable>
               );
@@ -147,6 +162,7 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: 16, color: IOS.label },
   rowSub: { fontSize: 12, color: IOS.secondary, marginTop: 2 },
   rowRight: { flexDirection: 'row', alignItems: 'center', maxWidth: '52%' },
+  rowValueIcon: { marginRight: 4 },
   rowValue: { fontSize: 15, color: IOS.secondary, marginRight: 2 },
 
   backdrop: {
@@ -177,6 +193,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: IOS.separator,
   },
+  sheetItemLeft: { flexDirection: 'row', alignItems: 'center' },
+  sheetItemIcon: { marginRight: 10 },
   sheetItemTxt: { fontSize: 17, color: IOS.label },
   sheetItemTxtOn: { color: IOS.blue, fontWeight: '600' },
   sheetCancel: { paddingVertical: 15, alignItems: 'center' },

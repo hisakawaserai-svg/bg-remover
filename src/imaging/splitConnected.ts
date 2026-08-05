@@ -41,23 +41,26 @@ export function splitConnected(
   const fragmentCount = filtered.filter(b => b.area < smallTh).length;
   const bodyCount = filtered.length - fragmentCount;
 
-  // 診断ログ（要求フォーマット）。
-  console.log(
-    `[connected] raw=${raw.length}, afterMinArea=${filtered.length}, ` +
-    `afterMerge=${merged.length} (MERGE_GAP=${mergeGap}, image=${width}x${height})`,
-  );
-  console.log(
-    `[connected] body=${bodyCount} fragment=${fragmentCount} (SMALL_RATIO=${SMALL_RATIO})`,
-  );
-  // 各塊の bbox と面積の概要（上位を抜粋）。
-  console.log(
-    '[connected] components: ' +
-    filtered
-      .slice(0, 20)
-      .map(b => `(${b.minX},${b.minY})-(${b.maxX},${b.maxY}) a=${b.area}`)
-      .join(' ') +
-    (filtered.length > 20 ? ` …(+${filtered.length - 20})` : ''),
-  );
+  // 診断ログ（要求フォーマット）。行数・セル数に比例して呼ばれるため、
+  // 本番ビルドでは実行されないよう __DEV__ でガードする（内容・書式は維持）。
+  if (__DEV__) {
+    console.log(
+      `[connected] raw=${raw.length}, afterMinArea=${filtered.length}, ` +
+      `afterMerge=${merged.length} (MERGE_GAP=${mergeGap}, image=${width}x${height})`,
+    );
+    console.log(
+      `[connected] body=${bodyCount} fragment=${fragmentCount} (SMALL_RATIO=${SMALL_RATIO})`,
+    );
+    // 各塊の bbox と面積の概要（上位を抜粋）。
+    console.log(
+      '[connected] components: ' +
+      filtered
+        .slice(0, 20)
+        .map(b => `(${b.minX},${b.minY})-(${b.maxX},${b.maxY}) a=${b.area}`)
+        .join(' ') +
+      (filtered.length > 20 ? ` …(+${filtered.length - 20})` : ''),
+    );
+  }
 
   // 4) 結合bboxを最終的に前景でトリムし直して返す。
   const result: BBox[] = [];
@@ -67,7 +70,9 @@ export function splitConnected(
       result.push(bb);
     }
   }
-  console.log(`[connected] total cells: ${result.length}`);
+  if (__DEV__) {
+    console.log(`[connected] total cells: ${result.length}`);
+  }
   return result;
 }
 

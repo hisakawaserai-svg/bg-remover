@@ -150,6 +150,8 @@ const ja = {
     editorTitle: '範囲の調整を準備しています',
     editorSub: '少々お待ちください',
     previewGenerating: 'プレビューを生成中...',
+    cellExitTitle: '編集内容を反映しています',
+    cellExitSub: '少々お待ちください',
   },
 
   // ── 分割設定画面（SetupScreen）────────────────────────────────────────────
@@ -203,6 +205,10 @@ const ja = {
     modeMoveHint: '四角をドラッグ／角をつまんで形を合わせる',
     modeAdd: '四角を追加',
     modeAddHint: '囲みたいキャラの上をタップ',
+    drawMethodTapTitle: 'タップで囲む',
+    drawMethodTapDesc: '頂点を配置して範囲を調整',
+    drawMethodTraceTitle: 'なぞって選択',
+    drawMethodTraceDesc: '指で囲んだ形から範囲を作成',
     modeEyedropper: 'スポイト',
     modeEyedropperHint: '消したい色をタップして透過',
     modeRestore: '復元ブラシ',
@@ -219,7 +225,7 @@ const ja = {
     resetTitle: '編集をリセット',
     resetMessage: '囲みを消し、スポイトで消した色も元に戻して、自動の背景除去だけ済んだ状態にします。\nこの操作は取り消せません。',
     retransTitle: '透過強度',
-    retransApply: 'このカットに再適用',
+    retransApply: '適用',
     retransScopeLabel: '対象範囲',
     retransScopeAll: '画像全体',
     // 「選択範囲のみ」だと既に選んである前提のように読めるが、実際は押した後に
@@ -229,25 +235,29 @@ const ja = {
     retransPickStart: '範囲を選ぶ',
     // 選択が済んだ後: そのまま実行する。
     retransApplyRegion: 'この範囲を再透過',
-    // 選択済みの形をやり直したい時（方式は変えず、今の選択だけ捨てて
-    // もう一度なぞり直す/選び直す）。「戻る」（方式選択に戻る）とは別物。
-    retransRedo: '選択範囲をやり直す',
     // 範囲を再透過した直後、結果を見せながら聞く見出し。
     retransResultTitle: 'これでどうですか？',
     // 結果確認段階で「これでいい」を押した時。
     retransConfirm: '確定',
     // 結果確認段階のツール説明。
-    retransResultDesc: '良ければ確定、やり直すなら選び直すか強さを調整してください',
+    retransResultDesc: '確定するか、選び直して調整',
     // 選択段階の案内。
-    retransPickHint: '範囲を指定してください',
+    retransPickHint: '範囲を指定',
     // 選択方式（範囲の指定のしかた）。
     retransMethodPolygon: 'タップで囲む',
-    retransMethodBrush: 'ブラシで選択',
+    // 「ブラシで選択」は絵筆で塗る操作を連想させるが、実際は draw モードの
+    // 「なぞって選択」と全く同じ、指でなぞって輪郭を作る操作なので、
+    // 文言もそちらに揃える。
+    retransMethodBrush: 'なぞって選択',
     // 下部のツール説明(ToolHint)を、再透過カードが開いている間だけ差し替える
     // 内容。素の appMode の説明のままだと「今は再透過中」と伝わらないため。
-    retransHintDesc: '対象範囲と強さを選んで実行してください',
-    retransPickDesc: 'タップ、または十字パネルの決定ボタンで選択します',
-    retransBrushDesc: '指でなぞって囲んでください。指を離すと確定します',
+    // 視覚的な圧縮のため簡潔にする（多くはピル/アイコン等で既に見えている）。
+    retransHintDesc: '範囲と強さを選択',
+    retransPickDesc: 'タップまたは決定ボタンで選択',
+    retransBrushDesc: 'なぞって囲む。指を離すと確定',
+    // ペンモードの編集方法トグルと同じ常時表示にしたため、方式未選択の間の
+    // 見出し説明用に追加。
+    retransChooseMethodDesc: '下のどちらかを選んでください',
     eyedropDone: '💧 色を削除しました',
     eyedropNothing: '💧 削除できる色がありません',
     moveNothingHere: 'ここには頂点も囲みもありません',
@@ -302,11 +312,23 @@ const ja = {
     featherHint: '境目の1pxを半透明にして白フチを防ぎます',
     fillTextHoles: '文字の穴を透過する',
     fillTextHolesHint: '「あ」「ロ」の内側など、囲まれた細い背景も抜きます。背景と同じ色の細い絵柄が消えることがあります',
+
+    // ── 編集操作 ──
+    sectionEditOperation: '編集操作',
+    brushDefaultPx: 'ブラシ標準サイズ',
+    brushDefaultPxHint: '復元ブラシなどの初期の太さを設定します',
+    ghostDefaultOn: 'ゴースト表示を初期状態でON',
+    ghostDefaultOnHint: '編集を始めた時、元画像を薄く透かして表示しておきます',
+    loupeMode: '編集操作モード',
+    loupeModeHint: 'ポリゴンをどのように狙って編集するかを設定します',
+    loupeModeFixed: '固定レティクル（推奨）',
+    loupeModeAdjust: '微調整レティクル',
+    loupeModeDrag: 'ドラッグ調整',
+
     sectionExport: '書き出し',
     album: '保存先アルバム',
     autoDelete: '保存後に作業データを自動削除',
     autoDeleteHint: 'エクスポート完了後、カット画像と作業データを削除します',
-    showDestination: '保存先の表示',
     columns: '列数',
     /** セグメントの「2列 / 3列 / 4列」。 */
     columnsValue: '{count}列',
@@ -318,16 +340,11 @@ const ja = {
 
     // ── ルーペ ──
     sectionLoupe: 'ルーペ',
-    loupeMode: 'ルーペ操作',
-    loupeModeHint: '指で隠れる位置を拡大表示する時の、照準の合わせ方',
-    loupeModeFixed: '固定レティクル（推奨）',
-    loupeModeAdjust: '微調整レティクル',
-    loupeModeDrag: 'ドラッグ調整',
     loupeBaseMagnify: 'ルーペ倍率の基準',
     loupeBaseMagnifyHint: '上のルーペ倍率設定すべての基準になる拡大率（既定 ×24）',
     loupeBaseSize: 'ルーペ基準サイズ',
     loupeBaseSizeHint: 'ルーペ「大」の一辺(px)。「中」「収納」もこの比率で決まります（既定 160）',
-    loupeZoomMode: 'ルーペ倍率',
+    loupeZoomMode: 'ルーペ倍率モード',
     loupeZoomModeHint: 'ズーム中の表示範囲を変更します',
     loupeZoomModeFixed: '一定',
     loupeZoomModeMatch: '拡大して見る',
@@ -335,8 +352,8 @@ const ja = {
     loupeDotGrid: 'ドットグリッド',
     loupeDotGridHint: '十分拡大した時、マス目と今のドットを薄く表示します',
 
-    // ── 見た目(アプリアイコン / 起動アニメーション) ──
-    sectionAppearance: '見た目',
+    // ── 表示・見た目(アプリアイコン / 起動アニメーション / 保存先の表示) ──
+    sectionAppearance: '表示・見た目',
     appIcon: 'アプリアイコン',
     appIconHint: '時間帯に合わせてホーム画面のアイコンが変わります',
     splashAnimation: '起動アニメーション',

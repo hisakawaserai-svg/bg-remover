@@ -554,8 +554,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         {/* スポイト: モード切替ではなく独立トグルなので、セグメンテッドコントロールの
             外に単独の行として置く（中に入れると3等分されて文字が折り返す）。
             枠付きシートなど自動透過が内側まで届かない画像で、背景を抜いて
-            行数・列数の検出に乗せるための下ごしらえ用。*/}
-        {mode === 'auto' && !noSplit && (
+            行数・列数の検出に乗せるための下ごしらえにも使えるが、編集自体は
+            bgResult に対して行われるため noSplit（1カット書き出し）でも
+            残った背景を消す用途で普通に使える。よって noSplit でも表示する。*/}
+        {mode === 'auto' && (
           <View style={styles.eyeRow}>
             <AnimatedPressable
               style={[styles.eyeBtn, eyedropperMode && styles.eyeBtnOn]}

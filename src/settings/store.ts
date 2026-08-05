@@ -18,6 +18,13 @@ import type { LanguageSetting } from '../i18n';
 
 const STORAGE_KEY = 'app_settings';
 
+/**
+ * 復元ブラシ等の太さ(px)の範囲。設定の brushDefaultPx（初期値）と
+ * PolygonEditor 側のスライダー（セッション中の一時調整）で共有する。
+ */
+export const BRUSH_MIN_PX = 1;
+export const BRUSH_MAX_PX = 80;
+
 export type ThumbBg = 'white' | 'gray' | 'checker' | 'black';
 
 export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
@@ -40,6 +47,17 @@ export type AppIconSetting = 'day' | 'night' | 'sleep';
  *   'drag'   … 未実装（'fixed' と同じ挙動）。
  */
 export type LoupeMode = 'fixed' | 'adjust' | 'drag';
+
+/**
+ * LoupeMode の各値に対応するアイコン名（MaterialIcons）。
+ * 設定画面と編集画面のドロップダウンで同じアイコンを使い、
+ * 「どのアイコンがどのモードか」を利用者が対応付けられるようにする。
+ */
+export const LOUPE_MODE_ICONS: Record<LoupeMode, string> = {
+  fixed: 'gps-fixed',
+  adjust: 'control-camera',
+  drag: 'pan-tool',
+};
 
 /**
  * ルーペの倍率が、キャンバスのズーム（ピンチ／スライダー）にどう追従するか。
@@ -195,6 +213,16 @@ export interface AppSettings {
    * 小さめ、iPad は大きめ等)場合も、この1値を差し替えるだけでよい）。
    */
   loupeBaseSize: number;
+  /**
+   * 復元ブラシ等の初期の太さ（画像px・直径）。範囲 1〜80。
+   * PolygonEditor の BRUSH_MIN_PX/BRUSH_MAX_PX と同じ範囲を使う。
+   */
+  brushDefaultPx: number;
+  /**
+   * 編集開始時に元画像の透かし（ゴースト表示）をONにしておくか。既定 true。
+   * セッション中はツールバーからいつでも切り替えられる。この設定はその初期値のみを決める。
+   */
+  ghostDefaultOn: boolean;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -225,6 +253,8 @@ export const DEFAULTS: AppSettings = {
   loupeDotGrid: true,
   loupeBaseMagnify: 24,
   loupeBaseSize: 160,
+  brushDefaultPx: 30,
+  ghostDefaultOn: true,
 };
 
 /**

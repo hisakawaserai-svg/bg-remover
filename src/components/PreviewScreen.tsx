@@ -140,11 +140,24 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
   // タップしたサムネイルの拡大表示用。null なら非表示。
   const [zoomUri, setZoomUri] = useState<string | null>(null);
 
-  // マウント時にサムネイルを一括生成
+  // マウント時にサムネイルを一括生成。
+  // buildThumbnail はポリゴンごとに画素単位でループする重い同期処理で、
+  // 件数や画像が大きいと数百ms〜数秒 JS スレッドを止める。1フレーム目で
+  // 直に回すと、上の ActivityIndicator が実際に画面へコミットされる前に
+  // 処理が始まってしまい、スピナーが出ないまま固まって見える。
+  // PolygonEditor 遷移時と同じく2フレーム待ってから始める。
   useEffect(() => {
-    const { rgba, width, height } = bgResult;
-    const results = polygons.map(p => buildThumbnail(rgba, width, height, p.points));
-    setThumbs(results);
+    let cancelled = false;
+    const outer = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const { rgba, width, height } = bgResult;
+        const results = polygons.map(p => buildThumbnail(rgba, width, height, p.points));
+        setThumbs(results);
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(outer); };
   // polygons・bgResult はマウント時に確定するので deps は空でよい
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

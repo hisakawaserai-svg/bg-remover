@@ -267,7 +267,9 @@ function aggregateColEdges(edgesPerBand: number[][], width: number): number[] {
     }
   }
 
-  console.log(`[split] per-band lineCounts: [${lineCounts.join(', ')}] → common cols=${targetLines + 1}`);
+  if (__DEV__) {
+    console.log(`[split] per-band lineCounts: [${lineCounts.join(', ')}] → common cols=${targetLines + 1}`);
+  }
 
   // 内部縦線0本（全段が「1列」を支持）→ 縦線なし＝端のみ。
   if (targetLines === 0) return [0, width];
@@ -286,7 +288,9 @@ function aggregateColEdges(edgesPerBand: number[][], width: number): number[] {
     common.push(median(xs));
   }
 
-  console.log(`[split] aggregated common col x: [${common.join(', ')}]`);
+  if (__DEV__) {
+    console.log(`[split] aggregated common col x: [${common.join(', ')}]`);
+  }
   return [0, ...common, width];
 }
 
@@ -377,8 +381,10 @@ export function splitRowsThenColsWithLines(
   // perRow が空（rows<1 は来ない想定だが防御）の場合は縦線なし。
   const colBoundaries = perRow.length > 0 ? perRow[0].edges.slice(1, -1) : [];
 
-  console.log(`[split] total cells: ${bboxes.length}`);
-  console.log(`[split] common row y: [${rowBoundaries.join(', ')}], common col x: [${colBoundaries.join(', ')}]`);
+  if (__DEV__) {
+    console.log(`[split] total cells: ${bboxes.length}`);
+    console.log(`[split] common row y: [${rowBoundaries.join(', ')}], common col x: [${colBoundaries.join(', ')}]`);
+  }
   return { bboxes, lines: { rowBoundaries, colBoundaries } };
 }
 
@@ -449,7 +455,7 @@ function findColEdges(
   }
 
   const gapWidths = gaps.map(g => g.width);
-  if (gapWidths.length > 0) {
+  if (__DEV__ && gapWidths.length > 0) {
     console.log(`[split] row${rowIdx} col gaps: [${gapWidths.join(', ')}]`);
   }
 
@@ -492,7 +498,9 @@ function findColEdges(
     }
   }
 
-  console.log(`[split] row${rowIdx} auto threshold=${threshold}px (minRealGap=${minRealGap}, relGapTh=${relativeGapThreshold})`);
+  if (__DEV__) {
+    console.log(`[split] row${rowIdx} auto threshold=${threshold}px (minRealGap=${minRealGap}, relGapTh=${relativeGapThreshold})`);
+  }
 
   const cutGaps = innerGaps.filter(g => g.width >= threshold);
 
@@ -502,7 +510,9 @@ function findColEdges(
   }
   edges.push(width);
 
-  console.log(`[split] row${rowIdx}: ${edges.length - 1} cols`);
+  if (__DEV__) {
+    console.log(`[split] row${rowIdx}: ${edges.length - 1} cols`);
+  }
   return edges;
 }
 

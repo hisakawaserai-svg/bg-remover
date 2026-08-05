@@ -19,6 +19,8 @@ type AnimatedPressableProps = {
   style?: StyleProp<ViewStyle>;
   /** 押下時の縮小率。アイコン系は 0.8(デフォルト)、横長ボタンは 0.96 程度を推奨 */
   pressedScale?: number;
+  /** アイコンのみで文字ラベルを省いたボタン向け。スクリーンリーダー用の読み上げ文言 */
+  accessibilityLabel?: string;
 };
 
 export const AnimatedPressable = ({
@@ -27,6 +29,7 @@ export const AnimatedPressable = ({
   disabled = false,
   style,
   pressedScale = 0.8,
+  accessibilityLabel,
 }: AnimatedPressableProps) => {
   const scale   = useSharedValue(1);
   const opacity = useSharedValue(1);
@@ -38,6 +41,7 @@ export const AnimatedPressable = ({
 
   return (
     <AnimPressable
+      accessibilityLabel={accessibilityLabel}
       onPress={disabled ? undefined : onPress}
       onPressIn={() => {
         if (disabled) return;

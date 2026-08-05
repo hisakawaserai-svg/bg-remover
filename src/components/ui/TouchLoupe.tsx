@@ -147,6 +147,11 @@ interface Props {
   checkerImage?: SkImage | null;
   checkerTile?: number;
   /**
+   * checkerImage 未指定時の下地色。親キャンバスの bgMode（白/黒）と
+   * 揃えるためのもの。省略時は従来通りの薄暗いグレー。
+   */
+  bgColor?: string;
+  /**
    * レティクル中心に重ねる円の半径（画像px）。復元ブラシの太さを示す。
    * 省略すると十字だけになる。
    */
@@ -265,6 +270,7 @@ export default function TouchLoupe({
   canvasH,
   checkerImage,
   checkerTile = 8,
+  bgColor = '#3A3A3C',
   brushRadius,
   strokePoints,
   magnify = LOUPE_MAGNIFY,
@@ -557,7 +563,7 @@ export default function TouchLoupe({
                 />
               </Rect>
             ) : (
-              <Rect x={0} y={0} width={boxW} height={boxH} color="#3A3A3C" />
+              <Rect x={0} y={0} width={boxW} height={boxH} color={bgColor} />
             )}
 
             <Group transform={groupTransform}>
@@ -589,10 +595,22 @@ export default function TouchLoupe({
               )}
             </Group>
 
-            {/* レティクル。ここが実際の編集位置。ブラシ円も一緒に動く。 */}
+            {/* レティクル。ここが実際の編集位置。ブラシ円も一緒に動く。
+                以前は塗りつぶし円（薄緑）で、ブラシを太くするほど中央の
+                十字を覆い隠して見えづらくなっていた。輪郭線だけにして
+                内側を開け、十字は常に最前面・黒縁付きの白で描き、
+                どんな背景色の上でも視認できるようにする。 */}
             {reticle != null && (
-              <Circle cx={cx} cy={cy} r={reticle} color="rgba(52,199,89,0.30)" />
+              <Circle cx={cx} cy={cy} r={reticle} color="rgba(52,199,89,0.9)"
+                style="stroke" strokeWidth={1.5} />
             )}
+            {/* 十字は黒の縁取り(太め)を先に描き、その上に白(細め)を重ねる。
+                緑のブラシ円や明るい/暗い画像、どんな背景でも十字自体が
+                埋もれないようにするため。 */}
+            <Line p1={vec(cx - 10, cy)} p2={vec(cx - 3, cy)} color="rgba(0,0,0,0.6)" strokeWidth={3} />
+            <Line p1={vec(cx + 3, cy)} p2={vec(cx + 10, cy)} color="rgba(0,0,0,0.6)" strokeWidth={3} />
+            <Line p1={vec(cx, cy - 10)} p2={vec(cx, cy - 3)} color="rgba(0,0,0,0.6)" strokeWidth={3} />
+            <Line p1={vec(cx, cy + 3)} p2={vec(cx, cy + 10)} color="rgba(0,0,0,0.6)" strokeWidth={3} />
             <Line p1={vec(cx - 10, cy)} p2={vec(cx - 3, cy)} color="#FFF" strokeWidth={1} />
             <Line p1={vec(cx + 3, cy)} p2={vec(cx + 10, cy)} color="#FFF" strokeWidth={1} />
             <Line p1={vec(cx, cy - 10)} p2={vec(cx, cy - 3)} color="#FFF" strokeWidth={1} />

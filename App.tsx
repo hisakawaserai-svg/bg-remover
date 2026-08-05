@@ -114,6 +114,7 @@ async function saveThumbToFile(img: SkImage, sessionId?: string, cellIdx?: numbe
 import {
   listSessions,
   upsertSession,
+  patchSession,
   deleteSession,
   deleteSessionFiles,
   getSession,
@@ -389,15 +390,13 @@ function AppScreens() {
 
     // スポイトだけ操作して離脱する経路があるため、ここで保存する。ポリゴン操作など
     // 他の保存契機を待つと、画像編集のみの変更が保存されないまま終わってしまう。
-    // 既存レコードを読んで edits だけ差し替える（upsertSession はレコードを丸ごと
-    // 置き換えるので、そのまま組み立て直すとポリゴンを消しかねない）。
+    // patchSession は既存レコードへのマージをキュー内でアトミックに行うので、
+    // ポリゴン保存など他の書き込みと競合して片方が消えることがない
+    // （以前は getSession→upsertSession を自前で2回に分けており、間に他の
+    // 書き込みが挟まるとロスト・アップデートでポリゴンが消える不具合になっていた）。
     const id = currentSessionIdRef.current;
     if (!id) return;
-    void (async () => {
-      const existing = await getSession(id);
-      if (!existing) return;
-      await upsertSession({ ...existing, edits: next, updatedAt: Date.now() });
-    })();
+    void patchSession(id, { edits: next, updatedAt: Date.now() });
   }, []);
 
   /** 操作を1つ追加する（スポイトなど）。追加したらやり直し履歴は捨てる。 */
@@ -705,6 +704,8 @@ function AppScreens() {
       }
       return newCells;
     });
+    // セル配列そのものが総入れ替えになるので、index に紐づく下書きは意味を失う。
+    cellDraftsRef.current.clear();
     setAppState('preview');
 
     // 分割完了後にセッションへカット一覧を保存（復元用）
@@ -935,7 +936,20 @@ function AppScreens() {
     return cropFromOriginal(base, bg.width, bb).rgba;
   }, [appState, editingCellIdx, cells, bgResult]);
 
-  const handleCellEditConfirm = useCallback(async (polygons: Polygon[]) => {
+  /**
+   * セル編集中に描いた形の「下書き」。
+   *
+   * 決定ボタンを押すまでは cells 配列にもセッションにも触れない
+   * （囲んだ時点で「手動分割済み」セクションへ移ってしまうと、まだ調整中なのに
+   * 結果が確定したかのように見えて紛らわしい、という声を受けての設計）。
+   * その代わり、決定を押し忘れて「戻る」で抜けてしまっても直前の形を復元できる
+   * よう、この Map（cellIndex → 直近の polygons）にだけ逃がしておく。
+   * アプリを完全に終了すると失われる（あくまで「うっかり離脱」対策）。
+   */
+  const cellDraftsRef = useRef<Map<number, Polygon[]>>(new Map());
+
+  /** 決定/プレビュー。編集結果を実際に cells とセッションへ確定し、画面を抜ける。 */
+  const commitCellEdit = useCallback(async (polygons: Polygon[]) => {
     if (editingCellIdx === null || !bgResult) return;
     const editedCell = cells[editingCellIdx];
     if (!editedCell) return;
@@ -1029,6 +1043,7 @@ function AppScreens() {
       ...cells.slice(editingCellIdx + 1),
     ];
     setCells(nextCells);
+    cellDraftsRef.current.delete(editingCellIdx); // 確定したので下書きは不要
     setEditingCellIdx(null);
     // 透過強度はセル単位の調整。確定したらここで捨てる（次のセルへ持ち越さない）。
     setCellTolerance(null);
@@ -1036,7 +1051,9 @@ function AppScreens() {
     // セルを抜けるので、サボっていた bg.rgba の作り直しをここで片付ける。
     flushBgRgba();
 
-    // 編集確定後のセル一覧をセッションに保存
+    // 編集確定後のセル一覧をセッションに保存。
+    // patchSession でマージするのは、スポイト・復元ブラシの edits 保存
+    // （applyEdits 内、同じく patchSession 経由）と競合しても片方が消えないようにするため。
     if (currentSessionId) {
       const savedCells: SavedCell[] = nextCells.map(cell => ({
         kind: cell.kind,
@@ -1047,8 +1064,7 @@ function AppScreens() {
         srcBBox: cell.kind === 'poly' ? cell.srcBBox : undefined,
         polygon: cell.kind === 'poly' ? cell.polygon : undefined,
       }));
-      await upsertSession({
-        id: currentSessionId,
+      await patchSession(currentSessionId, {
         imageUri: currentImageUri,
         step: 'keyed',
         mode: 'auto',
@@ -1061,6 +1077,21 @@ function AppScreens() {
     }
   }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, flushBgRgba]);
 
+  /** 「決定/プレビュー」ボタン。確定して一覧へ戻る。 */
+  const handleCellEditConfirm = useCallback((polys: Polygon[]) => { void commitCellEdit(polys); }, [commitCellEdit]);
+
+  /**
+   * セル編集中、確定操作（囲む・頂点調整など）のたびに下書きだけ更新する
+   * （onPolygonsChange から呼ぶ）。cells/セッションには触れないので軽い
+   * （画像処理を伴わない）。決定ボタンを押し忘れて「戻る」で抜けても、
+   * 次に同じセルを開いた時にこの下書きから復元できる（commitCellEdit 冒頭の
+   * cellDraftsRef のコメント参照）。
+   */
+  const handleCellPolygonsChange = useCallback((polys: Polygon[]) => {
+    if (editingCellIdx === null) return;
+    cellDraftsRef.current.set(editingCellIdx, polys);
+  }, [editingCellIdx]);
+
   // ── 自動分割の書き出し ─────────────────────────────────────────────────────
 
   const doAutoExport = useCallback(async () => {
@@ -1071,10 +1102,15 @@ function AppScreens() {
     }
     setAppState('processing');
     try {
-      // auto/poly 両種別を SkImage に変換してから一括保存。
+      // auto/poly 両種別を SkImage に変換して保存する。
       // bgResult が null（復元セッション）の場合: auto セルは thumbUri から、
       // poly セルも thumbUri から読み込む（thumb は最終品質の PNG）。
-      const skImages: SkImage[] = await Promise.all(cells.map(async cell => {
+      //
+      // 【重要】ここでは「作る関数」だけを並べて渡し、実際の生成は saveSkImages が
+      // 1件ずつ行う。全件を先に生成すると、カット数が多いシートでフル解像度の
+      // SkImage が同時に何十枚も Native メモリへ載り、実機で OOM 強制終了する
+      // 原因になっていたため。
+      const builders: Array<() => Promise<SkImage> | SkImage> = cells.map(cell => () => {
         if (cell.kind === 'auto') {
           if (bgResult) {
             // fresh path: マージン付与（サムネと同じ処理）
@@ -1084,8 +1120,7 @@ function AppScreens() {
             return img;
           }
           // 復元セッション: thumbUri はサムネ生成時にマージン付与済みのためそのまま使う
-          const data = await Skia.Data.fromURI(cell.thumbUri);
-          return Skia.Image.MakeImageFromEncoded(data)!;
+          return Skia.Data.fromURI(cell.thumbUri).then(data => Skia.Image.MakeImageFromEncoded(data)!);
         }
         // poly セル
         if (cell.rgba && cell.rgba.length > 0 && cell.w && cell.h) {
@@ -1100,12 +1135,10 @@ function AppScreens() {
           return img;
         }
         // 復元セッション or rgba なし: thumbUri はマージン付与済みのためそのまま使う
-        const data = await Skia.Data.fromURI(cell.thumbUri);
-        return Skia.Image.MakeImageFromEncoded(data)!;
-      }));
+        return Skia.Data.fromURI(cell.thumbUri).then(data => Skia.Image.MakeImageFromEncoded(data)!);
+      });
 
-      const { count, paths } = await saveSkImages(skImages, await ensureAlbumName());
-      skImages.forEach(img => img.dispose());
+      const { count, paths } = await saveSkImages(builders, await ensureAlbumName());
       // 書き出し成功 → 統計を加算。
       // 「作成したスタンプ」は生成した個数ではなく書き出しが成功した個数で数える
       // （途中で分割し直したり合体したりで生成数と完成数はズレるため、
@@ -1394,6 +1427,23 @@ function AppScreens() {
   const [pendingEditor, setPendingEditor] =
     useState<{ target: 'editing' | 'cell_editing'; cellIdx?: number } | null>(null);
 
+  // ── セル個別編集からの離脱: 先にローディングを出してから重い処理をする ──────
+  //
+  // cell_editing の onBack は flushBgRgba でシート全体サイズの bg.rgba を
+  // 操作列の先頭（背景除去そのもの）から掛け直す。画像が大きいと同様に
+  // JS スレッドが数百ms〜数秒止まり、何も出さないと固まったように見える。
+  // pendingEditor と同じ「ローディングを描く→1〜2フレーム待つ→重い処理」の
+  // 順にする。
+  const [pendingCellExit, setPendingCellExit] = useState(false);
+
+  // ── 切り取りプレビューへの遷移: 同じくローディングを挟む ────────────────────
+  //
+  // PolygonEditor の「プレビュー」を押した直後、PreviewScreen 側でもポリゴン
+  // ごとに画素単位でサムネイルを作る重い処理が走る（PreviewScreen 内の
+  // ActivityIndicator だけでは、画面が実際にコミットされる前に処理が始まって
+  // 固まって見えることがある）。ここでも一段ローディングを挟んでおく。
+  const [pendingPreview, setPendingPreview] = useState(false);
+
   /** ポリゴン編集へ移る唯一の入口。直接 setAppState('editing') は使わない。 */
   const goToEditor = useCallback((target: 'editing' | 'cell_editing', cellIdx?: number) => {
     setPendingEditor({ target, cellIdx });
@@ -1427,6 +1477,40 @@ function AppScreens() {
     return () => { cancelled = true; cancelAnimationFrame(outer); };
   }, [pendingEditor]);
 
+  useEffect(() => {
+    if (!pendingCellExit) return;
+    let cancelled = false;
+    const outer = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        setEditingCellIdx(null);
+        // 透過強度はセルごとの調整なので、抜ける時に必ず捨てる。
+        // 残すと次に開いた別のセルへ意図せず引き継がれる。
+        setCellTolerance(null);
+        setAppState('preview');
+        // セルを抜けるので、サボっていた bg.rgba の作り直しをここで片付ける。
+        flushBgRgba();
+        setPendingCellExit(false);
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(outer); };
+  }, [pendingCellExit, flushBgRgba]);
+
+  useEffect(() => {
+    if (!pendingPreview) return;
+    let cancelled = false;
+    const outer = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        setAppState('polygon_preview');
+        setPendingPreview(false);
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(outer); };
+  }, [pendingPreview]);
+
   // 現在の state を退避してから設定画面へ遷移するヘルパー。
   // 設定を閉じた時に prevStateRef.current へ戻すことで、どの画面からでも元に戻れる。
   const goToSettings = useCallback(() => {
@@ -1448,6 +1532,26 @@ function AppScreens() {
       <>
         <StatusBar hidden />
         <LoadingView message={t('loading.editorTitle')} sub={t('loading.editorSub')} />
+      </>
+    );
+  }
+
+  // ── セル個別編集からの離脱準備中 ────────────────────────────────────────
+  if (pendingCellExit) {
+    return (
+      <>
+        <StatusBar hidden />
+        <LoadingView message={t('loading.cellExitTitle')} sub={t('loading.cellExitSub')} />
+      </>
+    );
+  }
+
+  // ── 切り取りプレビューへの遷移準備中 ────────────────────────────────────
+  if (pendingPreview) {
+    return (
+      <>
+        <StatusBar hidden />
+        <LoadingView message={t('loading.previewGenerating')} sub={t('loading.editorSub')} />
       </>
     );
   }
@@ -1611,9 +1715,12 @@ function AppScreens() {
       const subBgResult = cellSubResult;
       if (!subBgResult) return null;
       // 前回のポリゴンがあれば復元して開く（形の作り直しではなく調整で済む）。
-      const initialPolys = editedCell.kind === 'poly' && editedCell.polygon
+      // 決定済みの .polygon より、決定前の下書き（cellDraftsRef）を優先する:
+      // 決定を押し忘れて「戻る」で抜けた直後の再編集では、こちらの方が新しい。
+      const draft = cellDraftsRef.current.get(editingCellIdx);
+      const initialPolys = draft ?? (editedCell.kind === 'poly' && editedCell.polygon
         ? [{ id: 0, points: editedCell.polygon }]
-        : undefined;
+        : undefined);
       return (
         <>
           <StatusBar hidden />
@@ -1622,16 +1729,13 @@ function AppScreens() {
             displayW={winW}
             displayH={winH}
             onPreview={handleCellEditConfirm}
+            // 確定操作（囲む・頂点調整など）のたびに下書きだけ更新する（cells/セッションは
+            // 「決定」を押すまで変えない — 手動分割済みセクションへ早期に移ってしまうのを防ぐ）。決定ボタンを
+            // 押し忘れて戻っても、直前まで描いていた形が失われないようにするため
+            // （commitCellEdit のコメント参照）。
+            onPolygonsChange={handleCellPolygonsChange}
             initialPolygons={initialPolys}
-            onBack={() => {
-              setEditingCellIdx(null);
-              // 透過強度はセルごとの調整なので、抜ける時に必ず捨てる。
-              // 残すと次に開いた別のセルへ意図せず引き継がれる。
-              setCellTolerance(null);
-              setAppState('preview');
-              // セルを抜けるので、サボっていた bg.rgba の作り直しをここで片付ける。
-              flushBgRgba();
-            }}
+            onBack={() => setPendingCellExit(true)}
             onSettings={() => goToSettings()}
             // スポイトはセルの切り出し座標で来るので、元画像の座標へ戻して積む。
             // 操作列は常に元画像1枚に対するものなので、bbox の分だけずらさないと
@@ -1743,9 +1847,9 @@ function AppScreens() {
           // step は 'keyed' 固定: 編集中は常に再開可能状態として保存する。
           onPolygonsChange={polys => {
             if (!currentSessionId) return;
-            void upsertSession({
-              id:        currentSessionId,
-              imageUri:  currentImageUri,
+            // patchSession は既存レコードへマージするので、スポイトの edits 保存
+            // （applyEdits 側）と競合しても片方が消えることはない。
+            void patchSession(currentSessionId, {
               step:      'keyed',
               mode:      'custom',
               keyConfig: { tolerance: appSettings.tolerance },
@@ -1759,9 +1863,7 @@ function AppScreens() {
             // プレビュー遷移のタイミングでポリゴンを session に保存する。
             // 書き出し前に中断しても「どこまで確定したか」を復元できる。
             if (currentSessionId) {
-              void upsertSession({
-                id:         currentSessionId,
-                imageUri:   currentImageUri,
+              void patchSession(currentSessionId, {
                 step:       'keyed',
                 mode:       'custom',
                 keyConfig:  { tolerance: appSettings.tolerance },
@@ -1770,18 +1872,16 @@ function AppScreens() {
                 edits:      editsRef.current,
               });
             }
-            setAppState('polygon_preview');
+            setPendingPreview(true);
           }}
           onBack={currentPolys => {
             // 離脱時に最終状態を確定保存する。
             // onPolygonsChange の自動保存は操作ごとに void で投げっぱなしのため、
             // 最後の操作後すぐ戻ると未保存のまま抜ける可能性がある。
-            // ここで現在の polygons を upsertSession することでその隙間を塞ぐ。
-            // 既存の自動保存と重複しても upsert は冪等なので安全。
+            // ここで現在の polygons を patchSession することでその隙間を塞ぐ。
+            // 既存の自動保存と重複しても merge は冪等なので安全。
             if (currentSessionId) {
-              void upsertSession({
-                id:        currentSessionId,
-                imageUri:  currentImageUri,
+              void patchSession(currentSessionId, {
                 step:      'keyed',
                 mode:      'custom',
                 keyConfig: { tolerance: appSettings.tolerance },

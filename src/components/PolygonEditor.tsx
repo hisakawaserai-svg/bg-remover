@@ -1734,10 +1734,23 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     loupe: { img: { x: number; y: number }; touch: { x: number; y: number } };
   } | null>(null);
   /**
-   * rAF 待ち・保留中の polygons（および drag_vertex の場合は loupe も）が
-   * あれば即座に反映する。ドラッグの release/terminate で必ず呼ぶことで、
-   * 指を離した瞬間にまだ次のフレームを待っている座標が残らないようにする
-   * （「最終座標が確実に polygons state へ反映される」ための同期ポイント）。
+   * drag_poly 専用の rAF・保留値。drag_vertex と全く同じ理由・同じ設計
+   * （updateDragVertexLive参照）。showLoupe と scheduleDragPolygons を
+   * 別々に呼ぶと rAF が2本走り、同じフレームでも発火タイミングがずれて
+   * 再レンダーが2回に分かれることがあったため、drag_poly 専用に1本へ
+   * まとめる（詳しくは updateDragPolyLive 参照。対象は drag_poly のみ）。
+   */
+  const dragPolyRafRef = useRef<number | null>(null);
+  const dragPolyPendingRef = useRef<{
+    polygons: Polygon[];
+    loupe: { img: { x: number; y: number }; touch: { x: number; y: number } };
+  } | null>(null);
+  /**
+   * rAF 待ち・保留中の polygons（および drag_vertex/drag_poly の場合は
+   * loupe も）があれば即座に反映する。ドラッグの release/terminate で
+   * 必ず呼ぶことで、指を離した瞬間にまだ次のフレームを待っている座標が
+   * 残らないようにする（「最終座標が確実に polygons state へ反映される」
+   * ための同期ポイント）。
    */
   const flushDragPolygons = useCallback(() => {
     if (dragPolygonsRafRef.current != null) {
@@ -1756,6 +1769,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       setPolygons(dragVertexPendingRef.current.polygons);
       setLoupe(dragVertexPendingRef.current.loupe);
       dragVertexPendingRef.current = null;
+    }
+    if (dragPolyRafRef.current != null) {
+      cancelAnimationFrame(dragPolyRafRef.current);
+      dragPolyRafRef.current = null;
+    }
+    if (dragPolyPendingRef.current) {
+      setPolygons(dragPolyPendingRef.current.polygons);
+      setLoupe(dragPolyPendingRef.current.loupe);
+      dragPolyPendingRef.current = null;
     }
   }, []);
   /**
@@ -1804,10 +1826,42 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       setLoupe(v.loupe);
     });
   }, [moveLoupeImgSV]);
+  /**
+   * drag_poly 専用。updateDragVertexLive と同じ設計 —— ref/共有値
+   * (moveLoupeImgSV) は毎イベント同期更新し、setPolygons と setLoupe は
+   * 同じ rAF コールバック内でまとめて1回だけ呼ぶ（rAFを1本にする）。
+   * drag_vertex と違い drag_poly は「前フレームからの差分」を積む方式
+   * （gPrevLX/gPrevLY 基準）なので、dragLastPolygonsRef への同期反映が
+   * 1回でも漏れると次のイベントが古い形状を基準に差分を積んでしまい
+   * 座標がずれる。ここでも rAF コールバックの外side（呼び出し時点）で
+   * 同期更新することを徹底する。
+   */
+  const updateDragPolyLive = useCallback((
+    nextPolygons: Polygon[],
+    imgX: number, imgY: number,
+    touchLx: number, touchLy: number,
+  ) => {
+    dragLastPolygonsRef.current = nextPolygons; // release 時のセッション保存用・次イベントの差分基準
+    moveLoupeImgSV.value = { x: imgX, y: imgY };
+    dragPolyPendingRef.current = {
+      polygons: nextPolygons,
+      loupe: { img: { x: imgX, y: imgY }, touch: { x: touchLx, y: touchLy } },
+    };
+    if (dragPolyRafRef.current != null) return;
+    dragPolyRafRef.current = requestAnimationFrame(() => {
+      dragPolyRafRef.current = null;
+      const v = dragPolyPendingRef.current;
+      if (!v) return;
+      dragPolyPendingRef.current = null;
+      setPolygons(v.polygons);
+      setLoupe(v.loupe);
+    });
+  }, [moveLoupeImgSV]);
   // アンマウント時に予約済みの rAF を確実に止める（zoomRafRef 等と同じ理由）。
   useEffect(() => () => {
     if (dragPolygonsRafRef.current != null) cancelAnimationFrame(dragPolygonsRafRef.current);
     if (dragVertexRafRef.current != null) cancelAnimationFrame(dragVertexRafRef.current);
+    if (dragPolyRafRef.current != null) cancelAnimationFrame(dragPolyRafRef.current);
   }, []);
 
   // ── ボタンズーム ────────────────────────────────────────────────────────────
@@ -3244,8 +3298,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
         const z  = zoomRef.current;
-        // 指の真下が隠れるのは他のドラッグと同じなので、ルーペで位置を見せる。
-        showLoupe(lx, ly);
         // 表示px の差分 → 画像px の差分に変換（ズーム倍率で除算）
         const dxImg = (lx - gPrevLX.current) / z.scale / dsRef.current;
         const dyImg = (ly - gPrevLY.current) / z.scale / dsRef.current;
@@ -3259,7 +3311,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             const pts = p.points.map(([x, y]) => [x + dxImg, y + dyImg]) as [number, number][];
             return { ...p, points: pts };
           });
-          scheduleDragPolygons(next);
+          // 指の真下が隠れるのは他のドラッグと同じなので、ルーペで位置を見せる。
+          // showLoupe(lx, ly) を別途呼ぶと rAF が2本走り、同じフレームでも
+          // 発火がずれて再レンダーが2回に分かれることがあるため、drag_vertex
+          // と同じく updateDragPolyLive で1本の rAF にまとめる（imgX/imgY は
+          // showLoupe が内部で計算する localToImage と同じ式で求める）。
+          const { x: imgX, y: imgY } = localToImage(lx, ly, z);
+          updateDragPolyLive(next, imgX, imgY, lx, ly);
         }
         return;
       }

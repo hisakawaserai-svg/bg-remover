@@ -1,97 +1,118 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# スタンプ抜き
 
-# Getting Started
+AIイラストシートからキャラクターを1体ずつ切り出し、背景を除去して透過PNGを書き出すiOS / Androidアプリです。LINEスタンプの申請用画像を作ることを想定しています。
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+React Native (TypeScript) 製。画像の処理はすべて端末内で完結し、**選択した画像や生成した画像を外部サーバーへ送信しません**。
 
-## Step 1: Start Metro
+> **このリポジトリについて**
+> 動作の透明性を示すためにソースコードを公開しています。再配布・商用利用は許可していません。
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+---
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## 何をするアプリか
 
-```sh
-# Using npm
-npm start
+複数キャラクターが並んだ1枚のイラストシートを読み込むと、以下を自動で行います。
 
-# OR using Yarn
-yarn start
-```
+1. **背景除去** — 指定色に近いピクセルを透過させる
+2. **領域分割** — キャラクターごとの範囲を推定し、1体ずつ切り出す
+3. **透過PNG書き出し** — 端末の写真ライブラリへ保存
 
-## Step 2: Build and run your app
+自動処理だけで100%揃うことは少ないため、**手動で直すための編集機能**に最も力を入れています。
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+| 機能 | 用途 |
+|---|---|
+| ポリゴン編集 | 切り抜き範囲を多角形で調整。頂点の追加・削除・ドラッグ |
+| スポイト | 消したい色をタップして追加で透過 |
+| 復元ブラシ | 消えすぎた部分をなぞって戻す |
+| 再透過 | 範囲を指定して透過強度をやり直す |
+| ルーペ | 指で隠れる位置を拡大表示 |
+| セルの合体 | 分割しすぎた領域を結合 |
 
-### Android
+---
 
-```sh
-# Using npm
-npm run android
+## 開発体制
 
-# OR using Yarn
-yarn android
-```
+**実装はClaude Code（AIコーディングエージェント）に指示して行いました。** 私自身の役割は、仕様の決定、実機での検証、不具合の切り分け、実装方針の判断です。
 
-### iOS
+システム開発は今回が初めてで、設計判断のたびに調べながら進めました。AIが出力したコードをそのまま採用するのではなく、実機で動作を確認し、既存機能を壊していないかを検証したうえで取り込む、という進め方をしています。
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+判断を誤った例も含めて、後述の「開発を通して学んだこと」に記録しています。
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+---
 
-```sh
-bundle install
-```
+## 技術構成
 
-Then, and every time you update your native dependencies, run:
+| 領域 | 使用技術 |
+|---|---|
+| フレームワーク | React Native 0.86 / React 19 / TypeScript 5.9 |
+| 描画 | @shopify/react-native-skia |
+| アニメーション | react-native-reanimated 4.x + react-native-worklets |
+| 画像処理 | プロジェクト内に実装（機械学習ライブラリ・外部APIは不使用） |
+| ストレージ | react-native-fs / AsyncStorage |
+| 広告 | react-native-google-mobile-ads（AdMob + UMP） |
+| テスト | Jest（画像処理の純粋関数に対するユニットテスト） |
 
-```sh
-bundle exec pod install
-```
+規模は約 28,000 行（`src/` 配下、TypeScript）。
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+---
 
-```sh
-# Using npm
-npm run ios
+## 取り組んだ課題
 
-# OR using Yarn
-yarn ios
-```
+### 編集画面のフレーム落ち
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+ポリゴンの頂点をドラッグしながら操作する画面で、動きがカクついていました。
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+原因の候補が複数あったため（JSスレッドの負荷、Reactの再レンダー、Skiaの描画更新など）、**推測で修正せず、まず計測**することにしました。1回のドラッグで何回再描画が走り、1回あたり何ミリ秒かかっているかを実機のログに出す仕組みを一時的に組み込み、数値を取っています。
 
-## Step 3: Modify your app
+結果、Androidでは1回あたり22〜30msかかっていることが分かりました。60fpsを維持するには16.6ms以内に収める必要があるため、**回数ではなく1回あたりの処理が重い**と特定できました。
 
-Now that you have successfully run the app, let's make changes!
+対応として、タッチイベントごとに走っていた状態更新を1フレーム1回にまとめ、さらに別々に動いていた2つの更新処理を1本に統合しました。iOS実機では体感で改善を確認できています。
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+### 分割精度の改善
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+キャラクターの区切りを検出する処理で、画像によって精度が大きく変わる問題がありました。空白幅を固定値で判定していたことが原因で、**画像サイズに対する相対比率で判断する方式**に変更しています。
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+このとき、設定値と内部パラメータの対応が逆になっていることにも気づきました。「粗く分割する設定にすると、内部的には閾値が下がる」という関係で、実装が直感と逆になっていたためです。
 
-## Congratulations! :tada:
+### 実装が既存機能を壊すケースの発見
 
-You've successfully run and modified your React Native App. :partying_face:
+ヒット判定の順序を変更した結果、頂点をドラッグしているつもりが辺の操作として扱われる不具合が発生しました。実機で操作していて気づいたもので、コード上は正しく動いているように見えるタイプの不具合です。
 
-### Now what?
+原因は、頂点の近くでは「頂点までの距離」と「その頂点に接する辺までの距離」がほぼ同じ値になるため、判定順序を入れ替えると辺が常に優先されてしまうことでした。順序を戻すと別の不具合が再発するため、辺の判定に「頂点の近くでは成立させない」条件を加える方針を選んでいます。
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+---
 
-# Troubleshooting
+## プライバシー設計
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+外部通信は広告（AdMob）とその同意管理（UMP）のみです。選択した画像・生成した透過PNG・利用統計は、いずれも端末内にのみ保存されます。
 
-# Learn More
+- ATT（App Tracking Transparency）とGDPR同意フローを実装
+- 同意取得が完了するまで広告をリクエストしない制御
+- OSSライセンス表記画面（依存491件、ライセンス全文を同梱）
+- [プライバシーポリシー](https://hisakawaserai-svg.github.io/bg-remover/privacy.html)
 
-To learn more about React Native, take a look at the following resources:
+---
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+## 開発を通して学んだこと
+
+**実機でしか再現しない問題がある。** Androidでは特定のスタイル変更で画面が一瞬白く光る現象があり、アニメーションの書き方を変える必要がありました。パフォーマンスの計測値も、エミュレータと実機では一致しません。
+
+**「修正した」と「直った」は別。** キャッシュが残って変更が反映されていないケースが何度もあり、確認の手順を固定するようにしました。
+
+**一度に複数を変えない。** まとめて修正すると、問題が起きたときに原因を切り分けられません。1つ変えて実機で確認してから次へ、という進め方に落ち着きました。この原則を守らずに複数の変更が混ざったときは、実際に原因の特定に時間がかかりました。
+
+**動かないより、動くものを残す。** 大きな改修を試みてアプリが起動しなくなった際、深追いせず直前の状態に戻す判断をしました。改善の余地は残りますが、安定して動く状態を保つことを優先しています。
+
+---
+
+## 既知の課題
+
+- `PolygonEditor.tsx` が約5,900行と肥大化している。ドラッグ中に画面全体が再構築されるため、低スペック端末では改善の余地がある
+- ドラッグ処理をUIスレッドへ移す改修は未着手。効果は見込めるが、判定ロジックの書き換えが必要なため見送っている
+- Androidは実機での検証が未了
+
+---
+
+## ライセンス
+
+使用しているオープンソースライブラリのライセンスは、アプリ内の「設定 → このアプリ → オープンソースライセンス」から確認できます。

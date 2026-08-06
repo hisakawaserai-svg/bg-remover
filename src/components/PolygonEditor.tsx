@@ -555,6 +555,22 @@ PolyBadge.displayName = 'PolyBadge';
 export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
+  // ── ★計測用（一時追加・後で revert する）────────────────────────────────
+  // ドラッグ1回（grant〜release/terminate）の間に何回レンダーが走り、
+  // 1回のレンダー（render開始〜コミット後effect）に何msかかったかを記録する。
+  // performance は Hermes に実在するが tsconfig の lib に無いため globalThis 経由で読む。
+  const perfNow = (): number => (globalThis as any).performance.now();
+  const renderCountRef = useRef(0);
+  const renderStartRef = useRef(0);
+  const renderDurationsRef = useRef<number[]>([]);
+  const dragStartTimeRef = useRef(0);
+  renderCountRef.current += 1;
+  renderStartRef.current = perfNow();
+  useEffect(() => {
+    renderDurationsRef.current.push(perfNow() - renderStartRef.current);
+  });
+  // ── ★計測用ここまで ─────────────────────────────────────────────────────
+
   const { settings, updateSettings } = useSettings();
   // addRect など、PanResponder のクロージャから直接名前で呼ばれる useCallback の
   // 中で settings の最新値を読むための ref（settings 自体を deps に入れると
@@ -1746,6 +1762,19 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     loupe: { img: { x: number; y: number }; touch: { x: number; y: number } };
   } | null>(null);
   /**
+   * drag_edge 専用の rAF・保留値。drag_vertex/drag_poly と全く同じ理由・
+   * 同じ設計（詳しくは updateDragEdgeLive 参照。対象は drag_edge のみ）。
+   * drag_vertex_free / drag_poly_free には作らない — どちらもルーペを
+   * 意図的に更新しないブランチ（指の位置と対象の位置が一致しないモード）
+   * なので統合すべき setLoupe が存在せず、setPolygons のみの rAF 間引きは
+   * 既存の scheduleDragPolygons がそのまま同じ設計を満たしている。
+   */
+  const dragEdgeRafRef = useRef<number | null>(null);
+  const dragEdgePendingRef = useRef<{
+    polygons: Polygon[];
+    loupe: { img: { x: number; y: number }; touch: { x: number; y: number } };
+  } | null>(null);
+  /**
    * rAF 待ち・保留中の polygons（および drag_vertex/drag_poly の場合は
    * loupe も）があれば即座に反映する。ドラッグの release/terminate で
    * 必ず呼ぶことで、指を離した瞬間にまだ次のフレームを待っている座標が
@@ -1778,6 +1807,15 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       setPolygons(dragPolyPendingRef.current.polygons);
       setLoupe(dragPolyPendingRef.current.loupe);
       dragPolyPendingRef.current = null;
+    }
+    if (dragEdgeRafRef.current != null) {
+      cancelAnimationFrame(dragEdgeRafRef.current);
+      dragEdgeRafRef.current = null;
+    }
+    if (dragEdgePendingRef.current) {
+      setPolygons(dragEdgePendingRef.current.polygons);
+      setLoupe(dragEdgePendingRef.current.loupe);
+      dragEdgePendingRef.current = null;
     }
   }, []);
   /**
@@ -1857,11 +1895,40 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       setLoupe(v.loupe);
     });
   }, [moveLoupeImgSV]);
+  /**
+   * drag_edge 専用。updateDragVertexLive/updateDragPolyLive と同じ設計 ——
+   * ref/共有値 (moveLoupeImgSV) は毎イベント同期更新し、setPolygons と
+   * setLoupe は同じ rAF コールバック内でまとめて1回だけ呼ぶ（rAFを1本にする）。
+   * drag_edge も前フレーム差分方式（gPrevLX/gPrevLY 基準）なので、
+   * dragLastPolygonsRef は必ず rAF の外側（呼び出し時点）で同期更新する。
+   */
+  const updateDragEdgeLive = useCallback((
+    nextPolygons: Polygon[],
+    imgX: number, imgY: number,
+    touchLx: number, touchLy: number,
+  ) => {
+    dragLastPolygonsRef.current = nextPolygons; // release 時のセッション保存用・次イベントの差分基準
+    moveLoupeImgSV.value = { x: imgX, y: imgY };
+    dragEdgePendingRef.current = {
+      polygons: nextPolygons,
+      loupe: { img: { x: imgX, y: imgY }, touch: { x: touchLx, y: touchLy } },
+    };
+    if (dragEdgeRafRef.current != null) return;
+    dragEdgeRafRef.current = requestAnimationFrame(() => {
+      dragEdgeRafRef.current = null;
+      const v = dragEdgePendingRef.current;
+      if (!v) return;
+      dragEdgePendingRef.current = null;
+      setPolygons(v.polygons);
+      setLoupe(v.loupe);
+    });
+  }, [moveLoupeImgSV]);
   // アンマウント時に予約済みの rAF を確実に止める（zoomRafRef 等と同じ理由）。
   useEffect(() => () => {
     if (dragPolygonsRafRef.current != null) cancelAnimationFrame(dragPolygonsRafRef.current);
     if (dragVertexRafRef.current != null) cancelAnimationFrame(dragVertexRafRef.current);
     if (dragPolyRafRef.current != null) cancelAnimationFrame(dragPolyRafRef.current);
+    if (dragEdgeRafRef.current != null) cancelAnimationFrame(dragEdgeRafRef.current);
   }, []);
 
   // ── ボタンズーム ────────────────────────────────────────────────────────────
@@ -2918,6 +2985,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       (Math.abs(gs.dx) > PAN_THRESHOLD || Math.abs(gs.dy) > PAN_THRESHOLD),
 
     onPanResponderGrant: (evt) => {
+      // ★計測用（一時追加・後で revert する）: ドラッグ単位で計測をリセット
+      renderCountRef.current = 0;
+      renderDurationsRef.current = [];
+      dragStartTimeRef.current = perfNow();
+
       const lx = evt.nativeEvent.locationX;
       const ly = evt.nativeEvent.locationY;
       gStartLX.current   = lx;
@@ -2985,11 +3057,56 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
+      // move モード: 選択中ポリゴンの頂点ヒット判定
+      // 見えていないポリゴン（isPolyVisible が false）に触れて頂点/辺/全体
+      // ドラッグへ入ってしまわないよう、選択中でも見えていなければ selId を
+      // null 扱いにし、ここから先の3つの判定ブロックをまとめてスキップして
+      // 下の通常のパン処理へフォールスルーさせる。
+      const rawSelId = selectedIdRef.current;
+      const selId = (rawSelId != null && isPolyVisible(rawSelId)) ? rawSelId : null;
+
+      // ── 辺ドラッグの判定 ─────────────────────────────────────────────────
+      // 選択中ポリゴンの辺(EDGE_HIT_PX 以内)をタッチした場合に辺ドラッグモードへ。
+      // ドラッグ → 両端頂点を同じ dx/dy で移動。
+      // タップ（移動量が閾値未満）→ release で insertVertex を呼ぶ（既存挙動）。
+      // NOTE: history は release 側ではなく最初の move で積む（タップ時の二重 push 防止）。
+      // 'drag' 設定でもここだけは dragMoveVertexActive/dragMoveUnified より
+      // 先に判定する — 辺の直接ヒットテストは残す方針（頂点・ブロック移動を
+      // 優先して完成させ、辺追加は別の編集機能として温存する）ため、頂点が
+      // 選択済みでも実際に辺に触れた時はそちらを優先する。ここで通さないと、
+      // 頂点選択中は一本指ドラッグがすべて dragMoveVertexActive に専有されて
+      // 辺に触れなくなってしまう（実際に「辺移動ができない」報告になった）。
+      if (selId !== null) {
+        const edgePoly = polygonsRef.current.find(p => p.id === selId);
+        if (edgePoly) {
+          const z   = zoomRef.current;
+          const pts = edgePoly.points;
+          for (let i = 0; i < pts.length; i++) {
+            const nextI = (i + 1) % pts.length;
+            const a = imageToLocal(pts[i][0],    pts[i][1],    z);
+            const b = imageToLocal(pts[nextI][0], pts[nextI][1], z);
+            if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < hitRadius(EDGE_HIT_PX, z.scale)) {
+              dragPolyIdRef.current    = selId;
+              dragEdgeIndicesRef.current = [i, nextI];
+              dragEdgeMovedRef.current   = false; // 最初の move まで移動なし
+              gPrevLX.current = lx;
+              gPrevLY.current = ly;
+              gPhase.current  = 'drag_edge';
+              // '固定' 設定の時だけ、掴んだ瞬間にルーペを出す。
+              if (!reticleFixedRef.current && !dragReticleModeRef.current) {
+                showLoupe(lx, ly);
+              }
+              return;
+            }
+          }
+        }
+      }
+
       // 'drag' 設定・move モード: すでに頂点を選択している間は、キャンバスの
       // どこを触っても「選択中の頂点をドラッグ量ぶん動かす」操作にする
-      // （丸を直接つまむ必要をなくす）。頂点/辺/全体ドラッグや別ポリゴンの
-      // タップ選択より前に判定し、選択中は一本指ドラッグをこれ専有にする。
-      // 選び直し・解除は決定ボタン（decideMoveSelect、moveSelectEnabled）で行う。
+      // （丸を直接つまむ必要をなくす）。上の辺ヒットテストに触れなかった
+      // 場合だけここに来る。選び直し・解除は決定ボタン（decideMoveSelect、
+      // moveSelectEnabled）で行う。
       if (dragMoveVertexActiveRef.current) {
         gPhase.current = 'drag_vertex_free';
         gPrevLX.current = lx;
@@ -2998,13 +3115,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         return;
       }
 
-      // move モード: 選択中ポリゴンの頂点ヒット判定
-      // 見えていないポリゴン（isPolyVisible が false）に触れて頂点/辺/全体
-      // ドラッグへ入ってしまわないよう、選択中でも見えていなければ selId を
-      // null 扱いにし、ここから先の3つの判定ブロックをまとめてスキップして
-      // 下の通常のパン処理へフォールスルーさせる。
-      const rawSelId = selectedIdRef.current;
-      const selId = (rawSelId != null && isPolyVisible(rawSelId)) ? rawSelId : null;
       // 'drag' 設定は頂点の直接ヒットテストを封印し、レティクル操作
       // （dragMoveVertexActive／決定ボタン）だけに統一する（dragMoveUnified 参照）。
       if (selId !== null && !dragMoveUnifiedRef.current) {
@@ -3037,37 +3147,6 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   gPhase.current = 'idle';
                 }
               }, LONG_PRESS_MS);
-              return;
-            }
-          }
-        }
-      }
-
-      // ── 辺ドラッグの判定 ─────────────────────────────────────────────────
-      // 選択中ポリゴンの辺(EDGE_HIT_PX 以内)をタッチした場合に辺ドラッグモードへ。
-      // ドラッグ → 両端頂点を同じ dx/dy で移動。
-      // タップ（移動量が閾値未満）→ release で insertVertex を呼ぶ（既存挙動）。
-      // NOTE: history は release 側ではなく最初の move で積む（タップ時の二重 push 防止）。
-      if (selId !== null) {
-        const edgePoly = polygonsRef.current.find(p => p.id === selId);
-        if (edgePoly) {
-          const z   = zoomRef.current;
-          const pts = edgePoly.points;
-          for (let i = 0; i < pts.length; i++) {
-            const nextI = (i + 1) % pts.length;
-            const a = imageToLocal(pts[i][0],    pts[i][1],    z);
-            const b = imageToLocal(pts[nextI][0], pts[nextI][1], z);
-            if (distPointToSegment(lx, ly, a.sx, a.sy, b.sx, b.sy) < hitRadius(EDGE_HIT_PX, z.scale)) {
-              dragPolyIdRef.current    = selId;
-              dragEdgeIndicesRef.current = [i, nextI];
-              dragEdgeMovedRef.current   = false; // 最初の move まで移動なし
-              gPrevLX.current = lx;
-              gPrevLY.current = ly;
-              gPhase.current  = 'drag_edge';
-              // '固定' 設定の時だけ、掴んだ瞬間にルーペを出す。
-              if (!reticleFixedRef.current && !dragReticleModeRef.current) {
-                showLoupe(lx, ly);
-              }
               return;
             }
           }
@@ -3223,6 +3302,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       // ── 'drag' 設定: 選択済みのブロックをどこでもドラッグで動かす ─────────
       // drag_poly と違い、指がポリゴン内部にある前提を置かない。drag_vertex_free
       // と同じ変換式で、選択中ポリゴンの全頂点を同じ量だけ平行移動する。
+      // ルーペは drag_vertex_free と同じ理由で意図的に更新しない — 指の位置と
+      // ポリゴンの位置が一致しないモードなので、showLoupe(指の位置) を呼ぶと
+      // 対象と無関係な場所を映してしまう。
       if (gPhase.current === 'drag_poly_free') {
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
@@ -3257,15 +3339,19 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
         const z  = zoomRef.current;
-        // 辺も指の真下に来るので、頂点ドラッグと同じくルーペで位置を見せる。
-        showLoupe(lx, ly);
 
         // 最初の有意な移動でスナップショットを積む（タップ = 無移動の場合は push しない）
         if (!dragEdgeMovedRef.current) {
           const movedEnough =
             Math.abs(lx - gStartLX.current) > PAN_THRESHOLD ||
             Math.abs(ly - gStartLY.current) > PAN_THRESHOLD;
-          if (!movedEnough) return;
+          if (!movedEnough) {
+            // まだ「移動」扱いにならない微小移動の間も、辺も指の真下に来る
+            // ので従来どおりルーペで位置を見せる（このフレームは polygons を
+            // 更新しないので rAF は showLoupe の1本だけ＝2本問題は起きない）。
+            showLoupe(lx, ly);
+            return;
+          }
           pushHistory();
           dragEdgeMovedRef.current = true;
         }
@@ -3288,7 +3374,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             pts[ib] = [pts[ib][0] + dxImg, pts[ib][1] + dyImg];
             return { ...p, points: pts };
           });
-          scheduleDragPolygons(next);
+          // 辺も指の真下に来るので、頂点ドラッグと同じくルーペで位置を見せる。
+          // showLoupe(lx, ly) を別途呼ぶと rAF が2本走り、同じフレームでも
+          // 発火がずれて再レンダーが2回に分かれることがあるため、
+          // drag_vertex/drag_poly と同じく updateDragEdgeLive で1本にまとめる。
+          const { x: imgX, y: imgY } = localToImage(lx, ly, z);
+          updateDragEdgeLive(next, imgX, imgY, lx, ly);
         }
         return;
       }
@@ -3488,6 +3579,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     },
 
     onPanResponderRelease: (_, gs) => {
+      // ★計測用（一時追加・後で revert する）
+      if (__DEV__) {
+        const ds_ = renderDurationsRef.current;
+        const avg = ds_.length ? ds_.reduce((a, b) => a + b, 0) / ds_.length : 0;
+        const max = ds_.length ? Math.max(...ds_) : 0;
+        console.log(
+          `[perf][${gPhase.current}] renders=${renderCountRef.current} ` +
+          `avg=${avg.toFixed(2)}ms max=${max.toFixed(2)}ms ` +
+          `drag=${(perfNow() - dragStartTimeRef.current).toFixed(0)}ms`,
+        );
+      }
+
       // 長押しタイマークリア
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
@@ -3665,6 +3768,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     },
 
     onPanResponderTerminate: () => {
+      // ★計測用（一時追加・後で revert する）
+      if (__DEV__) {
+        const ds_ = renderDurationsRef.current;
+        const avg = ds_.length ? ds_.reduce((a, b) => a + b, 0) / ds_.length : 0;
+        const max = ds_.length ? Math.max(...ds_) : 0;
+        console.log(
+          `[perf][terminate:${gPhase.current}] renders=${renderCountRef.current} ` +
+          `avg=${avg.toFixed(2)}ms max=${max.toFixed(2)}ms ` +
+          `drag=${(perfNow() - dragStartTimeRef.current).toFixed(0)}ms`,
+        );
+      }
+
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
         longPressTimer.current     = null;

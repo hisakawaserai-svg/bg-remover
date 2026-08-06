@@ -272,10 +272,13 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             label={t('settings.loupeMode')}
             sub={t('settings.loupeModeHint')}
             value={settings.loupeMode}
+            // 'drag'（ドラッグ調整）は選択肢から外す。実装自体は残っている
+            // （PolygonEditor.tsx の drag_reticle/drag_vertex_free/drag_poly_free
+            // 等）が、選べなくする。型からは外さない・保存済みが 'drag' の
+            // 場合は 'adjust' にフォールバックする（settings/store.ts 参照）。
             options={[
               { value: 'fixed',  label: t('settings.loupeModeFixed'),  icon: LOUPE_MODE_ICONS.fixed },
               { value: 'adjust', label: t('settings.loupeModeAdjust'), icon: LOUPE_MODE_ICONS.adjust },
-              { value: 'drag',   label: t('settings.loupeModeDrag'),   icon: LOUPE_MODE_ICONS.drag },
             ]}
             onChange={v => void updateSettings({ loupeMode: v })}
           />

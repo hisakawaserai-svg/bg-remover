@@ -4925,6 +4925,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                         setRetransMaskPoints(null);
                         setRetransMethod(null);
                         setRetransPicking(true);
+                        // 畳まれたままだと方式トグル（タップで囲む/なぞって選択）が
+                        // 見えず、次に何をすればいいか分からないので必ず展開する
+                        // （戻るで選び直す時 retransBackAction と同じ扱い）。
+                        setRetransPanelCompact(false);
                         return;
                       }
                       if (retransScope === 'selection' && targetPoints) {
@@ -5277,7 +5281,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 </AnimatedPressable>
                 {loupeModePickerOpen && (
                   <View style={styles.bgColumn}>
-                    {(['fixed', 'adjust', 'drag'] as const).map(mode => (
+                    {/* 'drag'（ドラッグ調整）は選択肢から外す。設定画面の
+                        SelectRow と同じ理由（settings/store.ts 参照）。 */}
+                    {(['fixed', 'adjust'] as const).map(mode => (
                       <AnimatedPressable
                         key={mode}
                         style={[styles.bgDot, settings.loupeMode === mode && styles.bgDotOn]}

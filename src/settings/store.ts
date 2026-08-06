@@ -44,7 +44,10 @@ export type AppIconSetting = 'day' | 'night' | 'sleep';
  *              どれでも動かせる。指を離しても確定せず、決定ボタンで確定する。
  *              十字ボタン1回＝元画像1ドットなので、拡大しても縮小しても
  *              「押した回数＝動いたドット数」が変わらない。
- *   'drag'   … 未実装（'fixed' と同じ挙動）。
+ *   'drag'   … 設定画面からは選択不可（v1で非表示化）。実装自体は残っている
+ *              （PolygonEditor.tsx の drag_reticle/drag_vertex_free/
+ *              drag_poly_free 等）。保存済み設定が 'drag' の場合は
+ *              loadSettings() で 'adjust' へフォールバックする。
  */
 export type LoupeMode = 'fixed' | 'adjust' | 'drag';
 
@@ -52,9 +55,12 @@ export type LoupeMode = 'fixed' | 'adjust' | 'drag';
  * LoupeMode の各値に対応するアイコン名（MaterialIcons）。
  * 設定画面と編集画面のドロップダウンで同じアイコンを使い、
  * 「どのアイコンがどのモードか」を利用者が対応付けられるようにする。
+ * fixed は実態が「指の位置をそのままドラッグして狙う」操作なので、
+ * 「固定」を連想させる 'gps-fixed' ではなく 'pan-tool'（旧 drag のアイコン）
+ * を使う。
  */
 export const LOUPE_MODE_ICONS: Record<LoupeMode, string> = {
-  fixed: 'gps-fixed',
+  fixed: 'pan-tool',
   adjust: 'control-camera',
   drag: 'pan-tool',
 };
@@ -281,6 +287,14 @@ export async function loadSettings(): Promise<AppSettings> {
     // （旧バージョンの値や手編集された値が範囲外でも安全に収める）。
     merged.loupeBaseSize = Math.min(220, Math.max(80,
       Number(merged.loupeBaseSize) || DEFAULTS.loupeBaseSize));
+    // 'drag'（ドラッグ調整）は選択肢UIから外したが、型からは外していない
+    // （既存ユーザーの保存済み設定が 'drag' の場合があるため）。実装
+    // （PolygonEditor.tsx の drag_reticle 等）はそのまま残っているので、
+    // 型を緩めずとも動作はするが、選び直す手段が無くなった利用者のために
+    // 読み込み時点で 'adjust' へフォールバックしておく。
+    if (merged.loupeMode === 'drag') {
+      merged.loupeMode = 'adjust';
+    }
     return merged;
   } catch (e) {
     console.warn('[settings/store] loadSettings failed:', e);

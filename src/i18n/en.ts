@@ -277,7 +277,7 @@ const en: typeof ja = {
     ghostDefaultOnHint: 'Show a faint outline of the original image when you start editing.',
     loupeMode: 'Edit Operation Mode',
     loupeModeHint: 'Choose how to aim when editing polygons.',
-    loupeModeFixed: 'Fixed crosshair (recommended)',
+    loupeModeFixed: 'Drag (recommended)',
     loupeModeAdjust: 'Nudgeable crosshair',
     loupeModeDrag: 'Drag to adjust',
 
@@ -365,21 +365,21 @@ const en: typeof ja = {
       'Supported formats: PNG, JPEG (JPG), HEIC\nNote: other image formats may not load correctly.',
     step2Title: 'STEP 2  Choose a split mode',
     step2Body:
-      'Choose a mode on the setup screen.\n\n[Auto split] Check and adjust the number of rows, then tap "Split with these rows". Split lines appear in the preview.\n\n[Adjust area] Enclose each character directly by tapping. Use this when the automatic mode does not work well.',
+      'Choose a mode on the setup screen.\n\n[Auto split] Check and adjust the number of rows, then tap "Split with these rows". If a split line in the preview is off, drag it with your finger to move it.\n\n[Adjust area] Enclose each character directly by tapping. Use this when the automatic mode does not work well.',
     step2Note: 'Try the automatic mode first. It gets most sheets right.',
     step3Title: 'STEP 3  Review and adjust the result',
     step3Body:
-      'Review the split result and fix any misalignment or merged pieces.\n\n• Pieces are merged → tap "Back", raise the split detail and split again\n• Want to combine with the next cutout → long-press the cutout to select it, then tap "Merge"\n• Want to fix just one → tap the cutout to adjust its area\n• Want to start the edits over → tap "Reset" to return to the first split result\n• Want to redo everything → tap "Manual split" to adjust areas',
+      'Review the split result and fix any misalignment or merged pieces.\n\n• Pieces are merged → tap "Back", raise the split detail and split again\n• Want to combine with the next cutout → long-press the cutout to select it, then tap "Merge N pieces"\n• Want to fix just one → tap the cutout to adjust its area\n• Want to share only some cutouts → long-press to select them, then tap "Share N pieces"\n• Want to start the edits over → tap "Reset" to return to the first split result',
     step3Note:
-      'It does not have to be perfect — "Save" writes transparent PNGs to the "{album}" album.\nIf rows contain different numbers of characters (for example only the last row has more columns), auto split uses the same lines for every row, so some rows may come out misaligned. Fix just those cells with "Merge" or by adjusting the area.',
+      'It does not have to be perfect — "Save" writes transparent PNGs to the "{album}" album. Cutouts marked with an orange ⚠ may contain more than one character, and saving shows a confirmation.\nIf rows contain different numbers of characters (for example only the last row has more columns), auto split uses the same lines for every row, so some rows may come out misaligned. Fix just those cells by merging or by adjusting the area.',
     complexTitle: 'How to split a complex image',
     complexDescription: 'Steps for separating merged characters',
     polygonTitle: 'How to adjust areas',
-    polygonDescription: 'An animated walkthrough of enclosing with rectangles',
+    polygonDescription: 'An animated walkthrough of placing a rectangle around a character',
     tipsTitle: 'Tips for Clean Cutouts',
     tip1: 'Illustrations on a plain white or light gray background come out cleanest',
     tip2: 'Start split detail at "Medium"; move to "Fine" if pieces merge together',
-    tip3: 'If the automatic mode never lines up, use "Manual split" and adjust the area',
+    tip3: 'If the automatic mode never lines up, enclose characters directly with "Adjust area" (finer cleanup tools live there too)',
     noticeTitle: 'Please Note',
     notice1:
       'Saving requires "Full Access" to Photos. With "Selected Photos" the app cannot save to an album (Settings → Privacy & Security → Photos)',

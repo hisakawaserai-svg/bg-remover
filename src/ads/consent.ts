@@ -30,7 +30,11 @@
  * （React の外＝App.tsx のイベントからも直接呼べる利点もある）。
  */
 import { useSyncExternalStore } from 'react';
-import { AdsConsent, AdsConsentStatus } from 'react-native-google-mobile-ads';
+import {
+  AdsConsent,
+  AdsConsentPrivacyOptionsRequirementStatus,
+  AdsConsentStatus,
+} from 'react-native-google-mobile-ads';
 import { initAds } from './init';
 
 export interface AdsConsentState {
@@ -46,9 +50,16 @@ export interface AdsConsentState {
    * 結果を SDK が OS から直接読むので、アプリ側で切り替える必要はない）。
    */
   npa: boolean;
+  /**
+   * UMP の「プライバシー設定フォーム」（同意の撤回・変更）を提供する必要があるか。
+   * GDPR 対象地域なら true。設定画面はこれが true の時だけ
+   * 「広告のプライバシー設定」の行を出す（日本などでは押しても何も出ず
+   * 混乱を招くだけなので行ごと隠す）。
+   */
+  privacyOptionsRequired: boolean;
 }
 
-let state: AdsConsentState = { ready: false, npa: false };
+let state: AdsConsentState = { ready: false, npa: false, privacyOptionsRequired: false };
 const listeners = new Set<() => void>();
 
 function publish(next: AdsConsentState) {
@@ -87,8 +98,14 @@ export function gatherAdsConsentAndInit(): void {
   started = true;
   const run = async () => {
     let npa = false;
+    // gatherConsent 失敗時は false のまま = 行を出さない安全側に倒す
+    // （フォームを出せるか不明な状態で導線だけ出しても行き止まりになるため）。
+    let privacyOptionsRequired = false;
     try {
       const info = await AdsConsent.gatherConsent();
+      privacyOptionsRequired =
+        info.privacyOptionsRequirementStatus ===
+        AdsConsentPrivacyOptionsRequirementStatus.REQUIRED;
       if (__DEV__) {
         // status: UNKNOWN/REQUIRED/NOT_REQUIRED/OBTAINED（GDPR同意の状態）。
         // 日本の実機なら NOT_REQUIRED になるのが正常。
@@ -126,7 +143,7 @@ export function gatherAdsConsentAndInit(): void {
       console.log(`[ads][debug] consent flow done: ready=true npa=${npa} -> initializing SDK`);
     }
     initAds();
-    publish({ ready: true, npa });
+    publish({ ready: true, npa, privacyOptionsRequired });
   };
   // 例外は run 内で全て処理済みなので、ここで待たずに投げっぱなしにする。
   run();

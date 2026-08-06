@@ -331,6 +331,9 @@ const en: typeof ja = {
     version: 'Version',
     howTo: 'How to use',
     replayTutorial: 'Watch the tutorial again',
+    privacyPolicy: 'Privacy policy',
+    adsPrivacyOptions: 'Ads privacy settings',
+    adsPrivacyOptionsHint: 'Change your consent choices for ads',
     deleteAllData: 'Delete all work data',
     deleteAllDataHint: 'Deletes all "Recent work" and source images (saved images are kept)',
     deleteAllDataMessage:

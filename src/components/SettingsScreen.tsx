@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import {
   Alert,
   LayoutAnimation,
+  Linking,
   Platform,
   StyleSheet,
   Switch,
@@ -26,6 +27,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { AdsConsent } from 'react-native-google-mobile-ads';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import ToleranceSlider, { REMOVAL_SNAPS, SPOT_SNAPS } from './ui/ToleranceSlider';
@@ -46,12 +48,16 @@ import type { AppIconSetting, LoupeMode, LoupeZoomMode, SplashAnimationSetting }
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
 import { useStats } from '../stats/StatsContext';
+import { useAdsConsent } from '../ads/consent';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
 // require は TS の moduleResolution によっては型エラーになる場合がある。
 // その場合は直値にフォールバックしてコメントで TODO を残す。
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const APP_VERSION: string = (require('../../package.json') as { version: string }).version;
+
+/** プライバシーポリシー（GitHub Pages）。外部ブラウザで開く。 */
+const PRIVACY_POLICY_URL = 'https://hisakawaserai-svg.github.io/bg-remover/privacy.html';
 
 // Android(旧アーキテクチャ)では明示的に有効化しないと LayoutAnimation が効かない。
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -129,6 +135,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   const { t } = useT();
   const { albumName } = useAlbumName();
   const { stats } = useStats();
+  // GDPR対象地域でのみ「広告のプライバシー設定」行を出すための判定。
+  const { privacyOptionsRequired } = useAdsConsent();
 
   // スライダーの操作中の値を local state で持ち、
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
@@ -646,6 +654,43 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             <Text style={styles.rowLabel}>{t('settings.replayTutorial')}</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
+          <Divider />
+          {/* プライバシーポリシー: 外部ブラウザで開く。アプリ内WebViewは持たない。 */}
+          <AnimatedPressable
+            style={styles.row}
+            onPress={() => {
+              Linking.openURL(PRIVACY_POLICY_URL).catch(e => {
+                console.warn('openURL(privacy policy) failed:', e);
+              });
+            }}
+            pressedScale={0.98}
+          >
+            <Text style={styles.rowLabel}>{t('settings.privacyPolicy')}</Text>
+            <Icon name="open-in-new" size={18} color={IOS.secondary} />
+          </AnimatedPressable>
+          {/* 広告のプライバシー設定（UMP同意の撤回・変更）。
+              GDPR対象地域（privacyOptionsRequired）でのみ表示する。
+              対象外地域ではフォームが存在せず、押しても何も起きないため。 */}
+          {privacyOptionsRequired && (
+            <>
+              <Divider />
+              <AnimatedPressable
+                style={styles.row}
+                onPress={() => {
+                  AdsConsent.showPrivacyOptionsForm().catch(e => {
+                    console.warn('showPrivacyOptionsForm failed:', e);
+                  });
+                }}
+                pressedScale={0.98}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowLabel}>{t('settings.adsPrivacyOptions')}</Text>
+                  <Text style={styles.rowSub}>{t('settings.adsPrivacyOptionsHint')}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={IOS.secondary} />
+              </AnimatedPressable>
+            </>
+          )}
         </Card>
 
     </Screen>

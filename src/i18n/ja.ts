@@ -376,6 +376,9 @@ const ja = {
     version: 'バージョン',
     howTo: '使い方',
     replayTutorial: 'チュートリアルをもう一度見る',
+    privacyPolicy: 'プライバシーポリシー',
+    adsPrivacyOptions: '広告のプライバシー設定',
+    adsPrivacyOptionsHint: '広告に関する同意の内容を変更できます',
     deleteAllData: '作業データをすべて削除',
     deleteAllDataHint: '「最近の作業」と元画像を全部消します（保存済みの画像は残ります）',
     deleteAllDataMessage:

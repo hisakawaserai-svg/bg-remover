@@ -331,6 +331,7 @@ const en: typeof ja = {
     version: 'Version',
     howTo: 'How to use',
     replayTutorial: 'Watch the tutorial again',
+    licenses: 'Open source licenses',
     privacyPolicy: 'Privacy policy',
     adsPrivacyOptions: 'Ads privacy settings',
     adsPrivacyOptionsHint: 'Change your consent choices for ads',

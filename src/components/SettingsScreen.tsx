@@ -35,6 +35,7 @@ import AppHeader from './ui/AppHeader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Card from './ui/Card';
+import LicensesScreen from './LicensesScreen';
 import OnboardingScreen from './OnboardingScreen';
 import { useSettings } from '../settings/SettingsContext';
 import { BRUSH_MAX_PX, BRUSH_MIN_PX, DEFAULTS, isSplashEnabled, LOUPE_MODE_ICONS } from '../settings/store';
@@ -148,6 +149,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  // OSSライセンス画面。App.tsx の appState を増やさず、この画面の上に出し分ける
+  // （showOnboarding と同じ方式。戻り先は必ず設定画面なので状態を持つ意味がない）。
+  const [showLicenses, setShowLicenses] = useState(false);
+
   // 起動アニメーションの試聴中フラグ。設定画面の上に重ねて1回だけ再生する。
   const [previewing, setPreviewing] = useState(false);
   const splashOn = isSplashEnabled(settings);
@@ -174,6 +179,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // [仮] オンボーディングを全画面オーバーレイで表示。完了/「はじめる」で閉じる。
   if (showOnboarding) {
     return <OnboardingScreen onComplete={() => setShowOnboarding(false)} />;
+  }
+
+  if (showLicenses) {
+    return <LicensesScreen onClose={() => setShowLicenses(false)} />;
   }
 
   return (
@@ -652,6 +661,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
             <Text style={styles.rowLabel}>{t('settings.replayTutorial')}</Text>
+            <Icon name="chevron-right" size={20} color={IOS.secondary} />
+          </AnimatedPressable>
+          <Divider />
+          {/* OSSライセンス表記（ストア申請要件）。バンドル済みJSONを表示する。 */}
+          <AnimatedPressable style={styles.row} onPress={() => setShowLicenses(true)} pressedScale={0.98}>
+            <Text style={styles.rowLabel}>{t('settings.licenses')}</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
           <Divider />

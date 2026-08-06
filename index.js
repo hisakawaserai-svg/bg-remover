@@ -15,10 +15,9 @@ import { SettingsProvider } from './src/settings/SettingsContext';
 // StatsProvider: 利用統計（端末内のみ・外部送信なし）を共有するコンテキスト。
 // 設定とはキー・型を分離してあるので別 Provider にしている。
 import { StatsProvider } from './src/stats/StatsContext';
-// 広告SDKの初期化。描画開始より前に一度だけ走らせる（await 不要）。
-import { initAds } from './src/ads/init';
-
-initAds();
+// 広告SDKの初期化はここでは行わない。UMP(GDPR)/ATT の同意を取ってから
+// 初期化する必要があるため、App.tsx がオンボーディング完了後（既存ユーザーは
+// 設定ロード後）に gatherAdsConsentAndInit() を呼ぶ（src/ads/consent.ts 参照）。
 
 function Root() {
   return (

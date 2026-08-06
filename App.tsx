@@ -137,6 +137,8 @@ import OnboardingScreen from './src/components/OnboardingScreen';
 import SplashAnimationView from './src/components/SplashAnimationView';
 import type { SplashAnimationType } from './src/components/splash/types';
 import { applyAppIcon, resolveAppIcon } from './src/appIcon';
+// 広告の同意フロー(UMP+ATT)。オンボーディング完了後に一度だけ呼ぶ（下の effect 参照）。
+import { gatherAdsConsentAndInit } from './src/ads/consent';
 import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
@@ -325,6 +327,19 @@ function AppScreens() {
     if (!settingsLoaded) return;
     void applyAppIcon(resolveAppIcon(appSettings.appIcon));
   }, [settingsLoaded, appSettings.appIcon]);
+
+  // ── 広告の同意フロー（UMP + ATT）──────────────────────────────────────────
+  // 「設定ロード済み かつ オンボーディング完了済み」になった最初のタイミングで
+  // 一度だけ呼ぶ。初回起動ではオンボーディングの「はじめる」で
+  // hasSeenOnboarding が立った直後、2回目以降は起動して設定がロードされた
+  // 直後に発火する。起動直後(index.js)ではなくここまで遅らせるのは、
+  // アプリの目的を理解する前に ATT ダイアログを出すと拒否率が上がるため。
+  // 多重発火は gatherAdsConsentAndInit 側の冪等ガードが吸収する。
+  useEffect(() => {
+    if (settingsLoaded && appSettings.hasSeenOnboarding) {
+      gatherAdsConsentAndInit();
+    }
+  }, [settingsLoaded, appSettings.hasSeenOnboarding]);
 
   // ── セッション管理 ─────────────────────────────────────────────────────────
   // sessions: ホーム一覧に表示するセッション配列（updatedAt 降順）
@@ -2214,19 +2229,29 @@ function AppScreens() {
  * 早期 return だらけの AppScreens を書き換えずに重ねられるよう、包む形にした。
  */
 export default function App() {
-  const { settings } = useSettings();
+  const { settings, loaded } = useSettings();
   const [splashDone, setSplashDone] = useState(false);
   const handleSplashFinish = useCallback(() => setSplashDone(true), []);
 
   // OFF なら最初から出さない。ロード前は DEFAULTS(ON)なので初回フレームから
   // 演出が始まる。判定は store の isSplashEnabled に集約(旧 'off' 値も吸収)。
-  const showSplash = !splashDone && isSplashEnabled(settings);
+  //
+  // 初回起動(オンボーディング前)はスプラッシュを出さない。ロード完了後に
+  // 未オンボと判明したら splashDone を立てて、この起動中は二度と出さない
+  // (オンボーディング完了で hasSeenOnboarding が立っても再生しない)。
+  // 2回目以降の起動では loaded 前でも従来どおり初回フレームから演出が始まる。
+  const firstRun = loaded && !settings.hasSeenOnboarding;
+  useEffect(() => {
+    if (firstRun) setSplashDone(true);
+  }, [firstRun]);
+  const showSplash = !splashDone && !firstRun && isSplashEnabled(settings);
 
   return (
     <View style={styles.appRoot}>
       <AppScreens />
+      {/* pointerEvents="none" で演出中も下のホーム画面を操作可能にする。 */}
       {showSplash && (
-        <View style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <StatusBar hidden />
           <SplashAnimationView
             animationType={SPLASH_ANIMATION}

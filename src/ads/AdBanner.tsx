@@ -33,6 +33,7 @@ import {
   BANNER_UNIT_ID,
   KEEP_EMPTY_SLOT_VISIBLE,
 } from './config';
+import { useAdsConsent } from './consent';
 import { colors } from '../components/ui/theme';
 import { useT } from '../i18n';
 
@@ -42,6 +43,11 @@ const BANNER_H = 50;
 
 export default function AdBanner() {
   const { t } = useT();
+  // UMP/ATT の同意フローが完了したか＋非パーソナライズ(NPA)にすべきか。
+  // ready になるまでは BannerAd を一切マウントしない＝広告リクエストを出さない
+  // （GDPR 地域では同意前のリクエスト自体がポリシー違反になるため）。
+  // 枠(wrap)の高さは固定なので、待っている間もレイアウトは動かない。
+  const { ready: consentReady, npa } = useAdsConsent();
   // 実際に広告が描画されたか。これが true になるまで枠に下地を敷く。
   const [loaded, setLoaded] = useState(false);
   // 読み込み失敗（ネットワーク不通・在庫なし）。以降 BannerAd は載せない。
@@ -51,7 +57,7 @@ export default function AdBanner() {
   if (failed && !KEEP_EMPTY_SLOT_VISIBLE) return null;
 
   // placeholder モードでは広告をリクエストしない（枠だけ）。
-  const showBanner = AD_MODE === 'live' && !failed;
+  const showBanner = AD_MODE === 'live' && !failed && consentReady;
 
   return (
     <View style={styles.wrap}>
@@ -65,6 +71,9 @@ export default function AdBanner() {
             unitId={BANNER_UNIT_ID}
             // 固定サイズ(320×50)。端末によらず実寸が変わらないのでレイアウトがズレない。
             size={BannerAdSize.BANNER}
+            // GDPR 地域でパーソナライズ広告への同意が無い場合だけ true になる
+            // （日本など対象外地域では常に false。consent.ts 参照）。
+            requestOptions={{ requestNonPersonalizedAdsOnly: npa }}
             onAdLoaded={() => setLoaded(true)}
             onAdFailedToLoad={error => {
               // 失敗は想定内なので warn 止まりにする（Alert は出さない）。

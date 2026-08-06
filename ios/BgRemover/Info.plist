@@ -48,8 +48,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>作成したスタンプを写真アルバムに保存するために使用します。</string>
 	<key>NSPhotoLibraryUsageDescription</key>

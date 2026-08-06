@@ -1,7 +1,9 @@
 /**
  * init.ts — Google Mobile Ads SDK の初期化
  *
- * index.js から一度だけ呼ぶ。initialize() は SDK 内部で冪等だが、
+ * consent.ts の gatherAdsConsentAndInit() から、同意フロー完了後に一度だけ
+ * 呼ばれる（以前は index.js から起動直後に呼んでいたが、UMP/ATT の同意を
+ * 取ってから初期化する順序に変えた）。initialize() は SDK 内部で冪等だが、
  * 呼び出し箇所を1つに保つためここに閉じ込める。
  *
  * 初期化を待たずに BannerAd を描画してもよい（SDK 側でキューされる）ため、

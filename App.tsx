@@ -1861,6 +1861,11 @@ function AppScreens() {
           // 毎フレームではなく「操作確定時のみ」発火するため頻度は低い（PolygonEditor 側で制御）。
           // step は 'keyed' 固定: 編集中は常に再開可能状態として保存する。
           onPolygonsChange={polys => {
+            // state も同期する。設定画面などへの往復（backToPrev → goToEditor）は
+            // エディタを再マウントして state からシードするため、ここで追従させて
+            // おかないと往復のたびに編集内容が古いスナップショットへ巻き戻る。
+            // 発火は操作の確定時のみ（ドラッグ中の毎フレームでは呼ばれない）。
+            setPolygons(polys);
             if (!currentSessionId) return;
             // patchSession は既存レコードへマージするので、スポイトの edits 保存
             // （applyEdits 側）と競合しても片方が消えることはない。
@@ -1895,6 +1900,10 @@ function AppScreens() {
             // 最後の操作後すぐ戻ると未保存のまま抜ける可能性がある。
             // ここで現在の polygons を patchSession することでその隙間を塞ぐ。
             // 既存の自動保存と重複しても merge は冪等なので安全。
+            // セッションだけでなく state も同期する。アプリ内での再入場は
+            // initialPolygons を state からシードするため、ここで更新しないと
+            // 古いスナップショットが復活し、正しいセッション内容を上書きしてしまう。
+            setPolygons(currentPolys);
             if (currentSessionId) {
               void patchSession(currentSessionId, {
                 step:      'keyed',

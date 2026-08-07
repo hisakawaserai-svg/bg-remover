@@ -243,7 +243,7 @@ export const DEFAULTS: AppSettings = {
   // 既定 OFF。誤除去を増やさないことを優先する（上級者が明示的に ON にする想定）。
   fillTextHoles:  false,
   gridColumns:    3,
-  thumbBg:        'white',
+  thumbBg:        'checker',
   splitLineColor: '#007AFF',
   autoDeleteOnExport: true,
   skipPolygonTutorial: false,

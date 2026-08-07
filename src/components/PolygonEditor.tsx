@@ -5126,8 +5126,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // ために key でマウントし直す（style だけの更新だと
               // ネイティブ側の再計測が追いつかないことがある）。
               key={loupeDockLevel}
-              entering={FadeIn.duration(160)}
-              exiting={FadeOut.duration(120)}
+              // entering/exiting のフェードは付けない。初回起動時に entering の
+              // FadeIn が完走せず、バーが薄い（中間の不透明度の）まま固定される
+              // 不具合が実機で出たため（key 再マウントとの競合が濃厚）。
               style={[styles.zoomTopRow, zoomTopRowStyle]}
             >
               <Text style={styles.zoomBadgeTxt}>×{formatZoom(sliderToZoom(sliderV))}</Text>

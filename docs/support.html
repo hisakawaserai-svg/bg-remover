@@ -89,6 +89,17 @@
   }
   .qa p:last-child{margin-bottom:0}
 
+  /* 前提を穏やかに伝えるカード */
+  .note{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:0 8px 8px 0;
+    padding:20px 22px;
+    margin:0 0 16px;
+  }
+  .note p:last-child{margin-bottom:0}
+
   .contact{
     background:var(--accent-soft);
     border-left:3px solid var(--accent);
@@ -143,6 +154,12 @@
   <h2>使いかたの流れ</h2>
   <p>複数のキャラクターが並んだイラストシートを1枚選ぶと、背景を消して1体ずつに切り分け、透過PNGとして保存できます。</p>
   <p>自動処理でうまくいかない部分は、あとから手で直せます。アプリ内の「設定 → 使い方」に、画面ごとの詳しい説明とアニメーション付きのチュートリアルがあります。</p>
+
+  <h2>どんな画像に向いているか</h2>
+  <div class="note">
+    <p>背景が単色に近いイラストシートを想定して作っています。白や薄いグレーの背景でいちばんきれいに抜けます。</p>
+    <p>写真や、背景にグラデーション・風景・模様が入った画像は、うまく抜けません。人物写真の切り抜きをお探しの場合は、その用途に合ったアプリのほうがきれいに仕上がります。</p>
+  </div>
 
   <h2>困ったときは</h2>
 
@@ -208,6 +225,12 @@
   <h2>How it works</h2>
   <p>Pick one illustration sheet containing several characters, and the app removes the background, splits it into individual characters, and saves each one as a transparent PNG.</p>
   <p>Anything the automatic pass gets wrong, you can fix by hand afterwards. Detailed walkthroughs, including animated tutorials, are available inside the app under Settings → How to use.</p>
+
+  <h2>What kind of images this works with</h2>
+  <div class="note">
+    <p>The app is built around illustration sheets with a flat, near-solid background. White or light grey backgrounds give the cleanest results.</p>
+    <p>Photographs, and images with gradients, scenery, or patterned backgrounds, won't come out well. If you're looking to cut people out of photos, an app built for that will give you better results.</p>
+  </div>
 
   <h2>Troubleshooting</h2>
 
@@ -315,4 +338,3 @@
 
 </body>
 </html>
- 

@@ -172,6 +172,7 @@ const ja = {
     addRectHint: '囲みたいキャラの上をタップ',
     tapToRemoveBg: 'タップで背景を消す',
     eyedropperHint: 'スポイトで背景を消す',
+    eyedropperDragBlocked: 'スポイト中は分割線を動かせません',
     manualDesc: '背景除去済みの画像を、四角で囲んで1枚ずつ切り出します。',
     noSplitButton: '分割せずにくり抜く',
     toPolygonEditor: '範囲を調整へ',

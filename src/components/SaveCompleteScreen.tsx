@@ -194,6 +194,14 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
           </AnimatedPressable>
         )}
 
+        {/* ヘッダー右上のホームアイコンだけだと「終わったらどうすればいいか」に
+            気づきにくい（実機ユーザーから、次に何をすればいいか分からなかった
+            との報告あり）。ここに文字付きのボタンとして「終わる」導線を明示する。 */}
+        <AnimatedPressable style={styles.homeBtn} onPress={onHome} pressedScale={0.97}>
+          <Icon name="home" size={16} color={IOS.secondary} />
+          <Text style={styles.homeBtnTxt}>{t('saveComplete.backToHome')}</Text>
+        </AnimatedPressable>
+
       </View>
 
       {/* 拡大プレビュー */}
@@ -322,4 +330,14 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   shareBtnTxt: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+
+  // 「終わる」導線。他のアクションより目立たせない（主役はもう一枚処理する方）。
+  homeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+  },
+  homeBtnTxt: { fontSize: 15, fontWeight: '600', color: IOS.secondary },
 });

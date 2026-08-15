@@ -561,9 +561,12 @@ function AppScreens() {
       baseRgbaRef.current = result.rgba.slice();
 
       let steps: EditStep[];
-      if (resumeEdits?.length) {
+      if (resumeEdits != null) {
         // セッション再開: 保存済みの操作列をそのまま使う。透過チェックは
         // 新規に画像を選んだ時だけの話なので、再開時はスキップする。
+        // 空配列（[]）は「透過せずに編集」を選んだ結果の正当な保存値なので、
+        // ?.length で判定すると falsy になり誤って自動除去にフォールバック
+        // してしまう（実際に発生した不具合）。null/undefined 判定にする。
         steps = resumeEdits;
       } else {
         const defaultStep: EditStep = {
@@ -621,7 +624,7 @@ function AppScreens() {
       applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
       // 透過処理完了 → 統計「透過処理」を加算。セッション再開時の再生（resumeEdits）は
       // 既に実行済みの操作をなぞるだけなので数えない。新規に autoBg を実行した時だけ数える。
-      if (!resumeEdits?.length && steps.some(s => s.kind === 'autoBg')) {
+      if (resumeEdits == null && steps.some(s => s.kind === 'autoBg')) {
         recordTransparencyOp();
       }
       editsRef.current = steps;
@@ -1325,7 +1328,9 @@ function AppScreens() {
         // 元画像を読み込んで base として保持し、操作列を掛け直す形にする。
         const result = await loadImagePixels(latest.imageUri);
         baseRgbaRef.current = result.rgba.slice();
-        const resumeSteps: EditStep[] = latest.edits?.length
+        // 空配列（[]）は「透過せずに編集」を選んだ結果の正当な保存値なので、
+        // ?.length ではなく null/undefined 判定にする（processImage 側と同じ理由）。
+        const resumeSteps: EditStep[] = latest.edits != null
           ? latest.edits
           : [{
               kind: 'autoBg',
@@ -1380,7 +1385,12 @@ function AppScreens() {
       try {
         const result = await loadImagePixels(latest.imageUri);
         baseRgbaRef.current = result.rgba.slice();
-        const steps: EditStep[] = latest.edits?.length
+        // 空配列（[]）は「透過せずに編集」を選んだ結果の正当な保存値なので、
+        // ?.length ではなく null/undefined 判定にする。旧実装は falsy 判定
+        // だったため、その空配列を「保存データなし」と誤認してデフォルトの
+        // 自動背景除去にフォールバックしていた（実機で報告された、続きから
+        // 開くと勝手に透過される不具合の原因）。
+        const steps: EditStep[] = latest.edits != null
           ? latest.edits
           : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
         applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);

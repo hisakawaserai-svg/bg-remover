@@ -2032,6 +2032,29 @@ PODS:
   - ReactNativeDependencies (0.86.0)
   - RNFS (2.20.0):
     - React-Core
+  - RNGestureHandler (3.2.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - RNWorklets (>= 0.8.0)
+    - Yoga
   - RNGoogleMobileAds (16.4.0):
     - Google-Mobile-Ads-SDK (= 13.5.0)
     - GoogleUserMessagingPlatform (= 3.1.0)
@@ -2333,6 +2356,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - RNFS (from `../node_modules/react-native-fs`)
+  - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNGoogleMobileAds (from `../node_modules/react-native-google-mobile-ads`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNShare (from `../node_modules/react-native-share`)
@@ -2508,6 +2532,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNFS:
     :path: "../node_modules/react-native-fs"
+  RNGestureHandler:
+    :path: "../node_modules/react-native-gesture-handler"
   RNGoogleMobileAds:
     :path: "../node_modules/react-native-google-mobile-ads"
   RNReanimated:
@@ -2603,6 +2629,7 @@ SPEC CHECKSUMS:
   ReactCommon: d5c1bb4427bf51c443de5926aac332c89ddd9363
   ReactNativeDependencies: fa0a54b3f5319ae0e3b9aff32bfee7a424b88e66
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
+  RNGestureHandler: af5f7e95d350ef38c0997b5627970769c2a7f354
   RNGoogleMobileAds: 10d1a7a38343f18a98f08624c15ced3b0796e603
   RNReanimated: a9bf68fb5f19ce1c363b7d1413dcf8ee323185b8
   RNShare: 7344a3a7d4e5df58c356ad0f79e4a3ef1325c635
@@ -2611,4 +2638,4 @@ SPEC CHECKSUMS:
 
 PODFILE CHECKSUM: c609eebd80a7f4a24a12ccc16d508c76774f375a
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

@@ -590,6 +590,11 @@
   "license": "MIT"
  },
  {
+  "name": "@types/react-test-renderer",
+  "version": "19.1.0",
+  "license": "MIT"
+ },
+ {
   "name": "@types/yargs",
   "version": "17.0.35",
   "license": "MIT"
@@ -1912,6 +1917,11 @@
  {
   "name": "react-native-fs",
   "version": "2.20.0",
+  "license": "MIT"
+ },
+ {
+  "name": "react-native-gesture-handler",
+  "version": "3.2.1",
   "license": "MIT"
  },
  {

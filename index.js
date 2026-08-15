@@ -3,6 +3,10 @@
  */
 
 import { AppRegistry } from 'react-native';
+// GestureHandlerRootView: react-native-gesture-handler のジェスチャーが
+// アプリ全体で有効になるために必要なルートラッパー。SafeAreaProvider と
+// 同じくルートに一度だけ置く（公式ドキュメントの必須手順）。
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 // SafeAreaProvider: react-native-safe-area-context の useSafeAreaInsets / SafeAreaView が
 // 正しいインセット値を取得するために必要なコンテキスト。
 // アプリのルートに一度だけ置く（複数ネストは不要）。
@@ -21,15 +25,17 @@ import { StatsProvider } from './src/stats/StatsContext';
 
 function Root() {
   return (
-    <SafeAreaProvider>
-      {/* SettingsProvider を SafeAreaProvider の内側に置くことで、
-          設定コンテキストが SafeArea の値を参照できる（将来の拡張余地）。 */}
-      <SettingsProvider>
-        <StatsProvider>
-          <App />
-        </StatsProvider>
-      </SettingsProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* SettingsProvider を SafeAreaProvider の内側に置くことで、
+            設定コンテキストが SafeArea の値を参照できる（将来の拡張余地）。 */}
+        <SettingsProvider>
+          <StatsProvider>
+            <App />
+          </StatsProvider>
+        </SettingsProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

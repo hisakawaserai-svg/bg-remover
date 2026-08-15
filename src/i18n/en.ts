@@ -248,6 +248,7 @@ const en: typeof ja = {
     another: 'Process another image',
     checkDestination: 'Check where it was saved',
     openLineMaker: 'Open LINE Sticker Maker',
+    backToHome: 'Back to Home',
   },
 
   saved: {

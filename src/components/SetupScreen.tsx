@@ -383,7 +383,18 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => !eyedropperModeRef.current && g.current.mode === 'drag',
+      onMoveShouldSetPanResponder: () => {
+        if (eyedropperModeRef.current) {
+          // スポイト中は線をドラッグできない。理由が画面から分からず「操作不能に
+          // 見える」との実機報告があったため、他の無効化ケース（行数/列数
+          // ステッパー、709・737行目）と同じ作法でトーストを出す。
+          // showToast 自体が表示中は再発火しない（toastBusy）ので、指を
+          // 動かし続けて何度呼ばれても連打表示にはならない。
+          showToast(t('setup.eyedropperDragBlocked'));
+          return false;
+        }
+        return g.current.mode === 'drag';
+      },
 
       onPanResponderGrant: (evt) => {
         const fp = fitRef.current;
@@ -406,6 +417,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
             // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
             eyeBusyRef.current = true;
+            // 1回吸ったら自動的にスポイトを解除する。ON のまま気付かず線を
+            // ドラッグしようとして無反応に見える不具合の対策（実機報告）。
+            // 連続して使いたい場合はボタンを押し直す運用にする。
+            setEyedropperMode(false);
             rippleThenRef.current(lx, ly, () => {
               try {
                 onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);

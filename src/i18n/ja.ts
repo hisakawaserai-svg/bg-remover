@@ -288,6 +288,7 @@ const ja = {
     another: '別の画像を処理する',
     checkDestination: '保存先を確認する',
     openLineMaker: 'LINE スタンプ Maker を開く',
+    backToHome: 'ホームに戻る',
   },
 
   // ── 保存先画面（SavedScreen）──────────────────────────────────────────────

@@ -2100,6 +2100,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 画像短辺 × RECT_RATIO の正方形を置くフォールバックにする。
    */
   const addRect = useCallback((imgX: number, imgY: number) => {
+    if (__DEV__) console.log(`[addRect] t=${Date.now()} ref=${polygonsRef.current.length}`);
     const iw = imageWRef.current, ih = imageHRef.current;
 
     // タップ点を含むスタンプ bbox を探す。複数が重なって該当する場合は
@@ -2130,6 +2131,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     pushHistory();
     // event handler 内なので polygonsRef は最新確定状態 = prev と等価
     const next = [...polygonsRef.current, { id, points }];
+    if (__DEV__) console.log(`[addRect] t=${Date.now()} next=${next.length}`);
     setPolygons(next);
     setSelectedId(id);
     // 'drag' 設定は、置いた直後から「頂点をどこでもドラッグで動かす」を

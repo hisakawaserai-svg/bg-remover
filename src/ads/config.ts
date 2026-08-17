@@ -16,7 +16,7 @@ import { TestIds } from 'react-native-google-mobile-ads';
 // TODO: AdMob 管理画面で発行したバナーのユニットIDを入れる。空のままならテストIDが使われる。
 const PROD_BANNER_UNIT_ID = Platform.select({
   android: '',
-  ios: '',
+  ios: 'ca-app-pub-3194046005390900/4765091103',
   default: '',
 }) as string;
 
@@ -81,7 +81,7 @@ export const AD_MODE: 'live' | 'placeholder' = 'live';
  * テストが終わったら false に戻すこと。true のまま公開すると、広告が配信されない
  * 端末やオフライン時に「広告」とだけ書かれた空の帯が常に居座り、壊れて見える。
  */
-export const KEEP_EMPTY_SLOT_VISIBLE = true;
+export const KEEP_EMPTY_SLOT_VISIBLE = false;
 
 /**
  * バナー枠の高さ（固定）。

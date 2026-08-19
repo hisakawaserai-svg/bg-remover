@@ -15,7 +15,7 @@ import { TestIds } from 'react-native-google-mobile-ads';
 
 // TODO: AdMob 管理画面で発行したバナーのユニットIDを入れる。空のままならテストIDが使われる。
 const PROD_BANNER_UNIT_ID = Platform.select({
-  android: '',
+  android: 'ca-app-pub-3194046005390900/3395867799',
   ios: 'ca-app-pub-3194046005390900/4765091103',
   default: '',
 }) as string;

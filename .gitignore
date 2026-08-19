@@ -76,3 +76,6 @@ yarn-error.log
 
 # AI context and instructions
 .ai_context/
+
+# 署名パスワードを含むため追跡しない
+android/gradle.properties

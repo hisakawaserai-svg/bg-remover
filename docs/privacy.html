@@ -5,304 +5,190 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>プライバシーポリシー | スタンプ抜き</title>
 <meta name="description" content="スタンプ抜きのプライバシーポリシー / Privacy Policy for Stamp Nuki">
-<style>
-  :root{
-    --ink:#1b2028;
-    --ink-soft:#5a6472;
-    --line:#dfe3e8;
-    --paper:#fbfbf9;
-    --panel:#ffffff;
-    --accent:#2f7d76;
-    --accent-soft:#e8f2f0;
-    --check-a:#eceff1;
-    --check-b:#f7f8f9;
-  }
-  *{box-sizing:border-box}
-  html{-webkit-text-size-adjust:100%}
-  body{
-    margin:0;
-    background:var(--paper);
-    color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
-    font-size:16px;
-    line-height:1.9;
-    letter-spacing:.01em;
-  }
+<style>:root{--accent:oklch(0.5 0.09 195)}
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --page-bg:oklch(0.97 0.003 240);
+  --panel:oklch(0.995 0.002 240);
+  --ink:oklch(0.22 0.006 240);
+  --ink-soft:oklch(0.48 0.006 240);
+  --line:oklch(0.78 0.006 240);
+  --font-b:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  --font-h:Georgia,"Times New Roman",serif;
+  --font-m:ui-monospace,"SF Mono",Menlo,monospace;
+}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--page-bg);color:var(--ink);font-family:var(--font-b);min-height:100vh}
+.sheet{max-width:640px;margin:0 auto;background:var(--panel);
+  border-left:1px solid var(--line);border-right:1px solid var(--line);min-height:100vh}
 
-  /* 透過PNGの市松模様 — このアプリが作るものそのものを見出しに使う */
-  .band{
-    height:10px;
-    background-image:
-      linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%),
-      linear-gradient(45deg,var(--check-a) 25%,var(--check-b) 25%,var(--check-b) 75%,var(--check-a) 75%);
-    background-size:20px 20px;
-    background-position:0 0,10px 10px;
-  }
+/* ── 上部の帯（アプリごとの意匠） ── */
+.band{height:56px;border-bottom:2px solid var(--ink);display:flex;align-items:flex-end;background:var(--page-bg)}
+.band .step{background-color:var(--accent);
+  background-image:linear-gradient(var(--page-bg) 0 1px,transparent 1px 8px);
+  background-size:16px 8px;background-position:left bottom;width:16px}
+.band .step.grow{flex:1}
+.band.check{display:block;background-color:var(--accent);
+  background-image:
+    linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.28) 75%),
+    linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.28) 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px}
 
-  .wrap{max-width:720px;margin:0 auto;padding:0 24px 96px}
+/* ── ヘッダー ── */
+header{padding:32px 24px 24px;border-bottom:1px solid var(--line)}
+.eyebrow{font:600 11px var(--font-m);letter-spacing:.06em;color:var(--accent)}
+h1{font:700 30px/1.3 var(--font-h);margin:8px 0 4px;color:var(--ink)}
+.appline{font:400 13px var(--font-m);color:var(--ink-soft);margin-bottom:4px}
+.updated{font:400 12px var(--font-m);color:var(--ink-soft);margin-bottom:18px}
+.updated:empty{display:none;margin:0}
+.appline{margin-bottom:18px}
+.appline+.updated:not(:empty){margin-top:-14px}
+.langbar{display:inline-flex;border:1px solid var(--ink)}
+.langbar button{border:none;padding:8px 18px;font:600 13px var(--font-m);cursor:pointer;
+  background:transparent;color:var(--ink-soft);min-height:44px}
+.langbar button+button{border-left:1px solid var(--ink)}
+.langbar button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.langbar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
-  header{padding:56px 0 32px;border-bottom:1px solid var(--line);margin-bottom:8px}
-  .eyebrow{
-    font-size:12px;letter-spacing:.18em;text-transform:uppercase;
-    color:var(--accent);font-weight:600;margin:0 0 14px
-  }
-  h1{font-size:30px;line-height:1.35;margin:0 0 12px;font-weight:700;letter-spacing:.01em}
-  .meta{margin:0;color:var(--ink-soft);font-size:14px}
+/* ── 目次 ── */
+.toc{padding:24px 24px 8px}
+.toc h2{font:700 16px var(--font-h);margin:0 0 12px;display:flex;gap:8px;align-items:baseline}
+.toc h2 span{font:600 11px var(--font-m);color:var(--accent)}
+.toc ol{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.toc a{display:flex;gap:6px;padding:7px 0;font:400 13px var(--font-b);color:var(--ink-soft);
+  text-decoration:none;border-bottom:1px dotted var(--line)}
+.toc a span{font:600 12px var(--font-m);color:var(--accent)}
+.toc a:hover{color:var(--accent)}
+.toc a:focus-visible{outline:2px solid var(--accent)}
 
-  /* 言語切替 */
-  .langbar{display:flex;gap:8px;margin:26px 0 0}
-  .langbar button{
-    font:inherit;font-size:13px;font-weight:600;
-    padding:7px 16px;border-radius:999px;cursor:pointer;
-    border:1px solid var(--line);background:transparent;color:var(--ink-soft);
-    transition:background .15s,color .15s,border-color .15s;
-  }
-  .langbar button[aria-pressed="true"]{
-    background:var(--accent);border-color:var(--accent);color:#fff;
-  }
-  .langbar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ── 章 ── */
+section{padding:22px 24px 4px;scroll-margin-top:16px}
+section h2{font:700 18px var(--font-h);margin:0 0 10px;display:flex;gap:10px;align-items:baseline;
+  border-top:1px solid var(--line);padding-top:20px}
+section h2 .n{font:600 13px var(--font-m);color:var(--accent)}
+section h3{font:600 15px var(--font-b);margin:20px 0 6px;color:var(--ink)}
+section p{font:400 15px/1.85 var(--font-b);color:var(--ink-soft);margin:0 0 14px}
+section ul{margin:0 0 14px;padding-left:1.3em}
+section li{font:400 15px/1.85 var(--font-b);color:var(--ink-soft);margin-bottom:4px}
+a{color:var(--accent);text-underline-offset:3px}
 
-  h2{
-    font-size:19px;font-weight:700;margin:44px 0 14px;
-    padding-top:26px;border-top:1px solid var(--line);letter-spacing:.01em;
-  }
-  h2:first-of-type{border-top:none;padding-top:0}
-  h3{font-size:15px;font-weight:700;margin:26px 0 8px;color:var(--ink)}
-  p{margin:0 0 16px}
-  ul{margin:0 0 16px;padding-left:1.25em}
-  li{margin-bottom:7px}
-  a{color:var(--accent);text-underline-offset:3px}
+/* ── POINT ── */
+.point{margin:20px 24px 28px;border:1px solid var(--ink);padding:18px 20px;position:relative}
+.point .tag{position:absolute;top:-10px;left:16px;background:var(--panel);padding:0 6px;
+  font:600 11px var(--font-m);color:var(--accent);letter-spacing:.06em}
+.point p{margin:0;font:600 15px/1.85 var(--font-b);color:var(--ink)}
 
-  /* 一番伝えたいこと：画像は端末から出ない */
-  .keypoint{
-    background:var(--accent-soft);
-    border-left:3px solid var(--accent);
-    border-radius:0 6px 6px 0;
-    padding:20px 22px;
-    margin:0 0 34px;
-  }
-  .keypoint p{margin:0;font-weight:600;line-height:1.85}
+/* ── FAQ ── */
+.faq{border-top:1px solid var(--line)}
+.faq>summary{display:flex;gap:14px;align-items:baseline;padding:16px 24px;cursor:pointer;
+  font:600 15px var(--font-b);color:var(--ink);min-height:44px;list-style:none}
+.faq>summary::-webkit-details-marker{display:none}
+.faq>summary .qn{font:600 13px var(--font-m);color:var(--accent)}
+.faq>summary .qt{flex:1}
+.faq>summary::after{content:"+";color:var(--accent);font:600 16px var(--font-m)}
+.faq[open]>summary::after{content:"\2212"}
+.faq>summary:hover{background:var(--page-bg)}
+.faq>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.faq-body{padding:0 24px 18px 58px}
+.faq-body p{margin:0 0 12px;font:400 14.5px/1.85 var(--font-b);color:var(--ink-soft)}
+.faq-body p:last-child{margin-bottom:0}
 
-  .callout{
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:8px;
-    padding:18px 20px;
-    margin:0 0 20px;
-  }
-  .callout p:last-child{margin-bottom:0}
+/* ── フッター ── */
+footer{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:20px 24px;border-top:2px solid var(--ink);margin-top:4px}
+footer a{font:600 13px var(--font-m);color:var(--accent);text-decoration:none}
+footer a:hover{text-decoration:underline}
+footer a:focus-visible{outline:2px solid var(--accent)}
+footer span{font:400 12px var(--font-m);color:var(--ink-soft)}
 
-  footer{
-    margin-top:56px;padding-top:24px;border-top:1px solid var(--line);
-    color:var(--ink-soft);font-size:13px;
-  }
-
-  [hidden]{display:none !important}
-
-  @media (max-width:520px){
-    body{font-size:15px}
-    h1{font-size:24px}
-    header{padding:40px 0 26px}
-    .wrap{padding:0 20px 72px}
-  }
+[hidden]{display:none!important}
+@media (max-width:520px){
+  h1{font-size:24px}
+  header{padding:26px 20px 20px}
+  section{padding:20px 20px 4px}
+  .toc{padding:20px 20px 8px}
+  .toc ol{grid-template-columns:1fr}
+  .point{margin:16px 20px 24px}
+  .faq>summary{padding:16px 20px}
+  .faq-body{padding:0 20px 18px 52px}
+  footer{padding:18px 20px;flex-direction:column;align-items:flex-start;gap:8px}
+}
 </style>
 </head>
 <body>
-
-<div class="band" aria-hidden="true"></div>
-
-<div class="wrap">
-
+<div class="sheet">
+<div class="band check" aria-hidden="true"></div>
 <header>
-  <p class="eyebrow" id="eyebrow">Privacy Policy</p>
+  <p class="eyebrow" id="eyebrow">[ プライバシーポリシー ]</p>
   <h1 id="pageTitle">プライバシーポリシー</h1>
-  <p class="meta" id="pageMeta">スタンプ抜き（Stamp Nuki）／最終更新日：2026年8月6日</p>
+  <p class="appline" id="appLine">APP: スタンプ抜き</p>
+  <p class="updated" id="updated">最終更新日：2026年8月21日</p>
   <div class="langbar" role="group" aria-label="Language">
     <button type="button" id="btnJa" aria-pressed="true">日本語</button>
     <button type="button" id="btnEn" aria-pressed="false">English</button>
   </div>
 </header>
 
-<!-- ───────────────────────── 日本語 ───────────────────────── -->
 <main id="ja">
-
-  <div class="keypoint">
-    <p>選んだ画像と、切り抜いた画像は、すべてお使いの端末の中だけで処理されます。サーバーへの送信も、開発者による閲覧も行いません。</p>
-  </div>
-
-  <p>「スタンプ抜き」（以下「本アプリ」）は、利用者のプライバシーを尊重し、個人情報の保護に努めます。本ポリシーは、本アプリが取り扱う情報の内容と、その利用目的について説明するものです。</p>
-
-  <h2>1. 画像の取り扱い</h2>
-  <p>本アプリの背景除去・分割・切り抜き編集の処理は、すべて端末内で完結します。利用者が選択した画像および生成された透過PNGが、外部のサーバーへ送信されることはありません。開発者がこれらの画像を取得・閲覧することもできません。</p>
-  <p>生成した画像は、利用者の操作によってのみ端末の写真ライブラリに保存されます。</p>
-
-  <h2>2. 写真ライブラリへのアクセス</h2>
-  <p>本アプリは、次の目的で写真ライブラリへのアクセス許可を求めます。</p>
-  <ul>
-    <li>編集する画像を選択するため（読み取り）</li>
-    <li>作成したスタンプを保存するため（書き込み）</li>
-  </ul>
-  <p>アクセス許可は、端末の設定からいつでも変更できます。ただし、許可を取り消した場合は画像の選択や保存ができなくなります。</p>
-
-  <h2>3. 共有機能について</h2>
-  <p>作成した画像は、OSの共有機能を通じて他のアプリへ渡すことができます。渡す先は利用者が選択します。本アプリが特定のサービスへ自動的に送信することはありません。共有先のアプリにおける取り扱いについては、それぞれのサービスのプライバシーポリシーをご確認ください。</p>
-
-  <h2>4. 利用状況の記録</h2>
-  <p>本アプリは、作成したスタンプの枚数や作業回数などの数値を、統計表示のために記録します。これらは端末内にのみ保存され、外部へ送信されることはありません。氏名、メールアドレス、電話番号などの個人を特定できる情報は記録しません。</p>
-  <p>記録した内容は、本アプリを端末から削除することで消去されます。</p>
-
-  <h2>5. 広告について</h2>
-  <p>本アプリは、Google LLC が提供する広告配信サービス「Google AdMob」を利用しています。AdMob は、利用者の興味に応じた広告を表示するために、広告識別子等の情報を取得することがあります。</p>
-  <p>取得される情報の内容および利用方法については、以下をご確認ください。</p>
-  <ul>
-    <li><a href="https://policies.google.com/technologies/partner-sites?hl=ja" target="_blank" rel="noopener">Google のサービスを使用するサイトやアプリから収集した情報の Google による使用</a></li>
-    <li><a href="https://policies.google.com/privacy?hl=ja" target="_blank" rel="noopener">Google プライバシーポリシー</a></li>
-  </ul>
-
-  <h3>iOS をお使いの場合（App Tracking Transparency）</h3>
-  <p>iOS では、初回起動時にトラッキングの許可を求めるダイアログが表示されます。許可しない場合でも本アプリの機能はすべて利用でき、広告も表示されますが、利用者の興味に合わない広告が表示されることがあります。</p>
-  <p>この設定は、端末の「設定」→「プライバシーとセキュリティ」→「トラッキング」からいつでも変更できます。</p>
-
-  <h3>欧州経済領域・英国・スイスをご利用の方（GDPR）</h3>
-  <p>これらの地域では、広告の表示に関する同意を求める画面を表示します。同意の内容は、後から変更することができます。</p>
-
-  <h3>米国の一部の州をご利用の方</h3>
-  <p>お住まいの州の法令に応じて、個人情報の販売・共有の停止を求める選択肢を提供します。</p>
-
-  <h2>6. 第三者への提供</h2>
-  <p>本アプリは、前項の広告配信を除き、利用者の情報を第三者へ提供することはありません。法令に基づく開示請求があった場合を除き、情報を外部に開示することはありません。</p>
-
-  <h2>7. お子様のプライバシー</h2>
-  <p>本アプリは、13歳未満のお子様を対象としたものではなく、13歳未満のお子様から意図的に情報を収集することはありません。</p>
-
-  <h2>8. 本ポリシーの変更</h2>
-  <p>法令の改正や本アプリの機能追加に伴い、本ポリシーを変更することがあります。重要な変更を行う場合は、本ページ上で告知します。変更後の内容は、本ページに掲載した時点から適用されます。</p>
-
-  <h2>9. お問い合わせ</h2>
-  <div class="callout">
-    <p>本ポリシーおよび本アプリに関するお問い合わせは、下記までご連絡ください。</p>
-    <p><strong>アプリ名：</strong>スタンプ抜き<br>
-    <strong>メール：</strong><a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p>
-  </div>
-
+<nav class="toc"><h2><span>TOC</span>目次</h2><ol><li><a href="#ja-1"><span>01</span>画像の取り扱い</a></li><li><a href="#ja-2"><span>02</span>写真ライブラリへのアクセス</a></li><li><a href="#ja-3"><span>03</span>共有機能について</a></li><li><a href="#ja-4"><span>04</span>利用状況の記録</a></li><li><a href="#ja-5"><span>05</span>広告について</a></li><li><a href="#ja-6"><span>06</span>第三者への提供</a></li><li><a href="#ja-7"><span>07</span>お子様のプライバシー</a></li><li><a href="#ja-8"><span>08</span>本ポリシーの変更</a></li><li><a href="#ja-9"><span>09</span>お問い合わせ</a></li></ol></nav>
+<section id="ja-1"><h2><span class="n">01</span>画像の取り扱い</h2><p>本アプリの背景除去・分割・切り抜き編集の処理は、すべて端末内で完結します。利用者が選択した画像および生成された透過PNGが、外部のサーバーへ送信されることはありません。開発者がこれらの画像を取得・閲覧することもできません。</p><p>生成した画像は、利用者の操作によってのみ端末の写真ライブラリに保存されます。</p></section>
+<section id="ja-2"><h2><span class="n">02</span>写真ライブラリへのアクセス</h2><p>本アプリは、次の目的で写真ライブラリへのアクセス許可を求めます。</p><ul><li>編集する画像を選択するため（読み取り）</li><li>作成したスタンプを保存するため（書き込み）</li></ul><p>アクセス許可は、端末の設定からいつでも変更できます。ただし、許可を取り消した場合は画像の選択や保存ができなくなります。</p></section>
+<section id="ja-3"><h2><span class="n">03</span>共有機能について</h2><p>作成した画像は、OSの共有機能を通じて他のアプリへ渡すことができます。渡す先は利用者が選択します。本アプリが特定のサービスへ自動的に送信することはありません。共有先のアプリにおける取り扱いについては、それぞれのサービスのプライバシーポリシーをご確認ください。</p></section>
+<section id="ja-4"><h2><span class="n">04</span>利用状況の記録</h2><p>本アプリは、作成したスタンプの枚数や作業回数などの数値を、統計表示のために記録します。これらは端末内にのみ保存され、外部へ送信されることはありません。氏名、メールアドレス、電話番号などの個人を特定できる情報は記録しません。</p><p>記録した内容は、本アプリを端末から削除することで消去されます。</p></section>
+<section id="ja-5"><h2><span class="n">05</span>広告について</h2><p>本アプリは、Google LLC が提供する広告配信サービス「Google AdMob」を利用しています。AdMob は、利用者の興味に応じた広告を表示するために、広告識別子等の情報を取得することがあります。</p><ul><li><a href="https://policies.google.com/technologies/partner-sites?hl=ja" target="_blank" rel="noopener">Google のサービスを使用するサイトやアプリから収集した情報の Google による使用</a></li><li><a href="https://policies.google.com/privacy?hl=ja" target="_blank" rel="noopener">Google プライバシーポリシー</a></li></ul><h3>iOS をお使いの場合（App Tracking Transparency）</h3><p>iOS では、初回起動時にトラッキングの許可を求めるダイアログが表示されます。許可しない場合でも本アプリの機能はすべて利用でき、広告も表示されますが、利用者の興味に合わない広告が表示されることがあります。この設定は、端末の「設定」→「プライバシーとセキュリティ」→「トラッキング」からいつでも変更できます。</p><h3>欧州経済領域・英国・スイスをご利用の方（GDPR）</h3><p>これらの地域では、広告の表示に関する同意を求める画面を表示します。同意の内容は、後から変更することができます。</p><h3>米国の一部の州をご利用の方</h3><p>お住まいの州の法令に応じて、個人情報の販売・共有の停止を求める選択肢を提供します。</p></section>
+<section id="ja-6"><h2><span class="n">06</span>第三者への提供</h2><p>本アプリは、前項の広告配信を除き、利用者の情報を第三者へ提供することはありません。法令に基づく開示請求があった場合を除き、情報を外部に開示することはありません。</p></section>
+<section id="ja-7"><h2><span class="n">07</span>お子様のプライバシー</h2><p>本アプリは、13歳未満のお子様を対象としたものではなく、13歳未満のお子様から意図的に情報を収集することはありません。</p></section>
+<section id="ja-8"><h2><span class="n">08</span>本ポリシーの変更</h2><p>法令の改正や本アプリの機能追加に伴い、本ポリシーを変更することがあります。重要な変更を行う場合は、本ページ上で告知します。変更後の内容は、本ページに掲載した時点から適用されます。</p></section>
+<section id="ja-9"><h2><span class="n">09</span>お問い合わせ</h2><p>本ポリシーおよび本アプリに関するお問い合わせは、下記までご連絡ください。</p><p><strong>アプリ名：</strong>スタンプ抜き<br><strong>メール：</strong><a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p></section><div class="point"><div class="tag">POINT</div><p>選んだ画像と切り抜いた画像は、すべて端末の中だけで処理されます。</p></div>
 </main>
 
-<!-- ───────────────────────── English ───────────────────────── -->
 <main id="en" hidden>
-
-  <div class="keypoint">
-    <p>The images you select and the cutouts you create are processed entirely on your device. Nothing is uploaded to a server, and the developer cannot see them.</p>
-  </div>
-
-  <p>Stamp Nuki ("the App") respects your privacy. This policy explains what information the App handles and why.</p>
-
-  <h2>1. How images are handled</h2>
-  <p>Background removal, splitting, and cutout editing all run on your device. Neither the images you select nor the transparent PNGs the App produces are sent to any server. The developer has no way to access or view them.</p>
-  <p>Generated images are saved to your photo library only when you choose to save them.</p>
-
-  <h2>2. Photo library access</h2>
-  <p>The App requests access to your photo library for two reasons:</p>
-  <ul>
-    <li>To let you select an image to edit (read access)</li>
-    <li>To save the stickers you create (write access)</li>
-  </ul>
-  <p>You can change this permission at any time in your device settings. Revoking it will prevent the App from selecting or saving images.</p>
-
-  <h2>3. Sharing</h2>
-  <p>You can pass images you create to other apps through your operating system's share sheet. You choose the destination; the App never sends images to any service automatically. Please review the privacy policy of the receiving app for how it handles your data.</p>
-
-  <h2>4. Usage statistics</h2>
-  <p>The App records counters such as the number of stickers created and how many times you have used it, in order to display statistics. This data is stored only on your device and is never transmitted. No personally identifiable information — name, email address, phone number — is recorded.</p>
-  <p>Deleting the App from your device removes this data.</p>
-
-  <h2>5. Advertising</h2>
-  <p>The App uses Google AdMob, an advertising service provided by Google LLC. AdMob may collect information such as advertising identifiers in order to show ads relevant to your interests.</p>
-  <p>For details on what is collected and how it is used:</p>
-  <ul>
-    <li><a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">How Google uses information from sites or apps that use its services</a></li>
-    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li>
-  </ul>
-
-  <h3>On iOS (App Tracking Transparency)</h3>
-  <p>On first launch, iOS will ask whether you allow tracking. If you decline, every feature of the App remains available and ads are still shown, but they may be less relevant to your interests.</p>
-  <p>You can change this at any time under Settings → Privacy &amp; Security → Tracking.</p>
-
-  <h3>European Economic Area, United Kingdom, and Switzerland (GDPR)</h3>
-  <p>In these regions, the App presents a consent screen regarding advertising. You can change your choices later.</p>
-
-  <h3>Certain U.S. states</h3>
-  <p>Depending on the laws of your state, the App offers options to opt out of the sale or sharing of personal information.</p>
-
-  <h2>6. Disclosure to third parties</h2>
-  <p>Apart from the advertising described above, the App does not provide your information to third parties. Information will not be disclosed externally except where required by law.</p>
-
-  <h2>7. Children's privacy</h2>
-  <p>The App is not directed at children under 13, and does not knowingly collect information from children under 13.</p>
-
-  <h2>8. Changes to this policy</h2>
-  <p>This policy may be updated as laws change or as features are added to the App. Significant changes will be announced on this page, and take effect once posted here.</p>
-
-  <h2>9. Contact</h2>
-  <div class="callout">
-    <p>For questions about this policy or the App, please get in touch:</p>
-    <p><strong>App:</strong> Stamp Nuki<br>
-    <strong>Email:</strong> <a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p>
-  </div>
-
+<nav class="toc"><h2><span>TOC</span>Contents</h2><ol><li><a href="#en-1"><span>01</span>How images are handled</a></li><li><a href="#en-2"><span>02</span>Photo library access</a></li><li><a href="#en-3"><span>03</span>Sharing</a></li><li><a href="#en-4"><span>04</span>Usage statistics</a></li><li><a href="#en-5"><span>05</span>Advertising</a></li><li><a href="#en-6"><span>06</span>Disclosure to third parties</a></li><li><a href="#en-7"><span>07</span>Children’s privacy</a></li><li><a href="#en-8"><span>08</span>Changes to this policy</a></li><li><a href="#en-9"><span>09</span>Contact</a></li></ol></nav>
+<section id="en-1"><h2><span class="n">01</span>How images are handled</h2><p>Background removal, splitting, and cutout editing all run on your device. Neither the images you select nor the transparent PNGs the App produces are sent to any server. The developer has no way to access or view them.</p><p>Generated images are saved to your photo library only when you choose to save them.</p></section>
+<section id="en-2"><h2><span class="n">02</span>Photo library access</h2><p>The App requests access to your photo library for two reasons:</p><ul><li>To let you select an image to edit (read access)</li><li>To save the stickers you create (write access)</li></ul><p>You can change this permission at any time in your device settings. Revoking it will prevent the App from selecting or saving images.</p></section>
+<section id="en-3"><h2><span class="n">03</span>Sharing</h2><p>You can pass images you create to other apps through your operating system’s share sheet. You choose the destination; the App never sends images to any service automatically. Please review the privacy policy of the receiving app for how it handles your data.</p></section>
+<section id="en-4"><h2><span class="n">04</span>Usage statistics</h2><p>The App records counters such as the number of stickers created and how many times you have used it, in order to display statistics. This data is stored only on your device and is never transmitted. No personally identifiable information — name, email address, phone number — is recorded.</p><p>Deleting the App from your device removes this data.</p></section>
+<section id="en-5"><h2><span class="n">05</span>Advertising</h2><p>The App uses Google AdMob, an advertising service provided by Google LLC. AdMob may collect information such as advertising identifiers in order to show ads relevant to your interests.</p><ul><li><a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">How Google uses information from sites or apps that use its services</a></li><li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li></ul><h3>On iOS (App Tracking Transparency)</h3><p>On first launch, iOS will ask whether you allow tracking. If you decline, every feature of the App remains available and ads are still shown, but they may be less relevant to your interests. You can change this at any time under Settings → Privacy &amp; Security → Tracking.</p><h3>European Economic Area, United Kingdom, and Switzerland (GDPR)</h3><p>In these regions, the App presents a consent screen regarding advertising. You can change your choices later.</p><h3>Certain U.S. states</h3><p>Depending on the laws of your state, the App offers options to opt out of the sale or sharing of personal information.</p></section>
+<section id="en-6"><h2><span class="n">06</span>Disclosure to third parties</h2><p>Apart from the advertising described above, the App does not provide your information to third parties. Information will not be disclosed externally except where required by law.</p></section>
+<section id="en-7"><h2><span class="n">07</span>Children’s privacy</h2><p>The App is not directed at children under 13, and does not knowingly collect information from children under 13.</p></section>
+<section id="en-8"><h2><span class="n">08</span>Changes to this policy</h2><p>This policy may be updated as laws change or as features are added to the App. Significant changes will be announced on this page, and take effect once posted here.</p></section>
+<section id="en-9"><h2><span class="n">09</span>Contact</h2><p>For questions about this policy or the App, please get in touch:</p><p><strong>App:</strong> Stamp Nuki<br><strong>Email:</strong> <a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p></section><div class="point"><div class="tag">POINT</div><p>The images you select and the cutouts you create are processed entirely on your device.</p></div>
 </main>
 
 <footer>
-  <p id="footText">© 2026 スタンプ抜き</p>
+  <a href="./support.html" id="otherLink">→ サポート</a>
+  <span>© 2026 SeraApps</span>
 </footer>
-
 </div>
 
 <script>
-(function () {
-  var ja = document.getElementById('ja');
-  var en = document.getElementById('en');
-  var btnJa = document.getElementById('btnJa');
-  var btnEn = document.getElementById('btnEn');
-  var title = document.getElementById('pageTitle');
-  var meta = document.getElementById('pageMeta');
-  var foot = document.getElementById('footText');
-
-  var TEXT = {
-    ja: {
-      title: 'プライバシーポリシー',
-      meta: 'スタンプ抜き（Stamp Nuki）／最終更新日：2026年8月6日',
-      foot: '© 2026 スタンプ抜き',
-      docTitle: 'プライバシーポリシー | スタンプ抜き'
-    },
-    en: {
-      title: 'Privacy Policy',
-      meta: 'Stamp Nuki — Last updated: August 6, 2026',
-      foot: '© 2026 Stamp Nuki',
-      docTitle: 'Privacy Policy | Stamp Nuki'
-    }
-  };
-
-  function show(lang) {
-    var isJa = lang === 'ja';
-    ja.hidden = !isJa;
-    en.hidden = isJa;
-    btnJa.setAttribute('aria-pressed', String(isJa));
-    btnEn.setAttribute('aria-pressed', String(!isJa));
-    document.documentElement.lang = lang;
-    title.textContent = TEXT[lang].title;
-    meta.textContent = TEXT[lang].meta;
-    foot.textContent = TEXT[lang].foot;
-    document.title = TEXT[lang].docTitle;
+(function(){
+  var ja=document.getElementById('ja'),en=document.getElementById('en'),
+      bJa=document.getElementById('btnJa'),bEn=document.getElementById('btnEn'),
+      T={
+        ja:{eyebrow:'[ プライバシーポリシー ]',title:'プライバシーポリシー',app:'APP: スタンプ抜き',
+             updated:'最終更新日：2026年8月21日',other:'→ サポート',doc:'プライバシーポリシー | スタンプ抜き'},
+        en:{eyebrow:'[ PRIVACY POLICY ]',title:'Privacy Policy',app:'APP: Stamp Nuki',
+             updated:'Last updated: August 6, 2026',other:'→ SUPPORT',doc:'Privacy Policy | Stamp Nuki'}
+      };
+  function show(l){
+    var isJa=l==='ja';
+    ja.hidden=!isJa; en.hidden=isJa;
+    bJa.setAttribute('aria-pressed',String(isJa));
+    bEn.setAttribute('aria-pressed',String(!isJa));
+    document.documentElement.lang=l;
+    document.getElementById('eyebrow').textContent=T[l].eyebrow;
+    document.getElementById('pageTitle').textContent=T[l].title;
+    document.getElementById('appLine').textContent=T[l].app;
+    document.getElementById('updated').textContent=T[l].updated;
+    document.getElementById('otherLink').textContent=T[l].other;
+    document.title=T[l].doc;
   }
-
-  btnJa.addEventListener('click', function () { show('ja'); });
-  btnEn.addEventListener('click', function () { show('en'); });
-
-  // 端末の言語が日本語でなければ英語を初期表示にする
-  var nav = (navigator.language || 'ja').toLowerCase();
-  show(nav.indexOf('ja') === 0 ? 'ja' : 'en');
+  bJa.addEventListener('click',function(){show('ja')});
+  bEn.addEventListener('click',function(){show('en')});
+  var nav=(navigator.language||'ja').toLowerCase();
+  show(nav.indexOf('ja')===0?'ja':'en');
 })();
 </script>
-
 </body>
 </html>

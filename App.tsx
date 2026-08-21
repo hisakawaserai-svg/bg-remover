@@ -287,6 +287,10 @@ function AppScreens() {
   const [bgResult,  setBgResult]  = useState<RemoveBgResult | null>(null);
   const bgResultRef = useRef<RemoveBgResult | null>(null);
   bgResultRef.current = bgResult;
+  // removeBackground 完了で row_confirm へ来た時だけ立てる一回きりのフラグ。
+  // SetupScreen が「背景を透明にしました」トーストを出したら下ろす（戻る操作では
+  // 立てないので誤発火しない）。
+  const [bgToastPending, setBgToastPending] = useState(false);
   /**
    * セル個別編集(cell_editing)の間、bg.rgba（シート全体サイズ）の作り直しを
    * サボっているかどうか。cell_editing 中の画面表示は buildCellRgba が
@@ -648,6 +652,9 @@ function AppScreens() {
         setConfirmRows(dRows);
         // 列数の初期値も推定値にセット（行数と同じく、ユーザーが確認・修正する）
         setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
+        // 実際に自動透過を掛けた時だけトーストを予約する（「透過せずに編集」= steps[]
+        // では背景を透明化していないので出さない。recordTransparencyOp と同条件）。
+        setBgToastPending(steps.some(s => s.kind === 'autoBg'));
         setAppState('row_confirm');
       }
     } catch (e: unknown) {
@@ -1693,6 +1700,8 @@ function AppScreens() {
         onSettings={goToSettings}
         onHome={reset}
         originalImageUri={currentImageUri}
+        announceTransparent={bgToastPending}
+        onAnnounced={() => setBgToastPending(false)}
       />
     );
   }

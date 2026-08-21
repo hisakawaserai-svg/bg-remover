@@ -104,9 +104,16 @@ interface Props {
   onHome?: () => void;
   /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
   originalImageUri?: string;
+  /**
+   * removeBackground 完了でこの画面に遷移してきた時だけ true。マウント時に
+   * 「背景を透明にしました」トーストを1回出し、onAnnounced で下ろす。
+   * プレビュー等からの「戻る」では false のままなので誤発火しない。
+   */
+  announceTransparent?: boolean;
+  onAnnounced?: () => void;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri, announceTransparent = false, onAnnounced }: Props) {
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
   const thumbBg = useThumbBg();
@@ -183,6 +190,19 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     }, 1400);
   }, [toastOpacity]);
   const toastAnim = useAnimatedStyle(() => ({ opacity: toastOpacity.value }));
+
+  // 背景除去の完了でこの画面へ来た時、市松模様が「透明」だと分からないユーザー向けに
+  // 「背景を透明にしました」を1回だけ知らせる。マウント時に限定し、フラグは即座に
+  // 下ろす（「戻る」での再遷移では announceTransparent=false なので出ない）。
+  const announcedRef = useRef(false);
+  useEffect(() => {
+    if (announceTransparent && !announcedRef.current) {
+      announcedRef.current = true;
+      showToast(t('setup.bgRemoved'));
+      onAnnounced?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // bgResult.rgba → base64 PNG URI（変換は1回だけ）
   const imageUri = useMemo(() => {
@@ -538,6 +558,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   return (
     // lineDragging の間だけスクロールを止める（分割線を上下に動かす時に
     // 画面ごと動いてしまうのを防ぐ）。
+    <View style={styles.flexRoot}>
     <Screen bg={IOS.bg} header={header} scrollEnabled={!lineDragging}>
       {/* 線を選択中に、線・コントロール・ボタン以外の空き領域をタップしたら選択解除する。
           子（ボタン/プレビューの PanResponder 等）が先に responder を取るので、ここは
@@ -845,13 +866,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         <AnimatedPressable style={styles.secondaryBtn} onPress={onBack} pressedScale={0.97}>
           <Text style={styles.secondaryBtnTxt}>{t('setup.rePickImage')}</Text>
         </AnimatedPressable>
-
-        {/* トースト */}
-        {toastMsg && (
-          <Animated.View style={[styles.toast, toastAnim]} pointerEvents="none">
-            <Text style={styles.toastTxt}>{toastMsg}</Text>
-          </Animated.View>
-        )}
       </View>
 
       {/* 元画像ズーム（分割結果と同じヘッダー挙動）*/}
@@ -859,6 +873,16 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         <ImageZoomModal visible={zoomVisible} uri={originalImageUri} onClose={() => setZoomVisible(false)} />
       ) : null}
     </Screen>
+
+      {/* トースト: ScrollView の外＝ビューポート基準で固定表示する。
+          スクロール内容側に置くと bottom:24 が「内容の最下部」基準になり、
+          先頭スクロール位置（マウント直後など）では画面外に出て見えなくなる。 */}
+      {toastMsg && (
+        <Animated.View style={[styles.toast, toastAnim]} pointerEvents="none">
+          <Text style={styles.toastTxt}>{toastMsg}</Text>
+        </Animated.View>
+      )}
+    </View>
   );
 }
 
@@ -888,6 +912,7 @@ const IOS = {
 } as const;
 
 const styles = StyleSheet.create({
+  flexRoot: { flex: 1 },
   wrap: {
     flex: 1,
     padding: 24,

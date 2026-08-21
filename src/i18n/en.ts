@@ -152,6 +152,7 @@ const en: typeof ja = {
     tapToRemoveBg: 'Tap to erase',
     eyedropperHint: 'Erase background',
     eyedropperDragBlocked: 'Lines can\'t be dragged while the eyedropper is active',
+    bgRemoved: 'Background is now transparent',
     manualDesc: 'Enclose the background-removed image with rectangles to cut out one character at a time.',
     noSplitButton: 'Cut out without splitting',
     toPolygonEditor: 'Go to adjust area',

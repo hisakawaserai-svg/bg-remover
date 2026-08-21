@@ -4,337 +4,189 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>サポート | スタンプ抜き</title>
-<meta name="description" content="スタンプ抜きのサポートページ / Support for Stamp Nuki">
-<style>
-  :root{
-    --ink:#1b2028;
-    --ink-soft:#5a6472;
-    --line:#dfe3e8;
-    --paper:#fbfbf9;
-    --panel:#ffffff;
-    --accent:#2f7d76;
-    --accent-soft:#e8f2f0;
-    --check-a:#eceff1;
-    --check-b:#f7f8f9;
-  }
-  *{box-sizing:border-box}
-  html{-webkit-text-size-adjust:100%}
-  body{
-    margin:0;
-    background:var(--paper);
-    color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
-    font-size:16px;
-    line-height:1.9;
-    letter-spacing:.01em;
-  }
+<meta name="description" content="スタンプ抜きのサポート / Support for Stamp Nuki">
+<style>:root{--accent:oklch(0.5 0.09 195)}
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --page-bg:oklch(0.97 0.003 240);
+  --panel:oklch(0.995 0.002 240);
+  --ink:oklch(0.22 0.006 240);
+  --ink-soft:oklch(0.48 0.006 240);
+  --line:oklch(0.78 0.006 240);
+  --font-b:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  --font-h:Georgia,"Times New Roman",serif;
+  --font-m:ui-monospace,"SF Mono",Menlo,monospace;
+}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--page-bg);color:var(--ink);font-family:var(--font-b);min-height:100vh}
+.sheet{max-width:640px;margin:0 auto;background:var(--panel);
+  border-left:1px solid var(--line);border-right:1px solid var(--line);min-height:100vh}
 
-  .band{
-    height:10px;
-    background-image:
-      linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%),
-      linear-gradient(45deg,var(--check-a) 25%,var(--check-b) 25%,var(--check-b) 75%,var(--check-a) 75%);
-    background-size:20px 20px;
-    background-position:0 0,10px 10px;
-  }
+/* ── 上部の帯（アプリごとの意匠） ── */
+.band{height:56px;border-bottom:2px solid var(--ink);display:flex;align-items:flex-end;background:var(--page-bg)}
+.band .step{background-color:var(--accent);
+  background-image:linear-gradient(var(--page-bg) 0 1px,transparent 1px 8px);
+  background-size:16px 8px;background-position:left bottom;width:16px}
+.band .step.grow{flex:1}
+.band.check{display:block;background-color:var(--accent);
+  background-image:
+    linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.28) 75%),
+    linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.28) 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px}
 
-  .wrap{max-width:720px;margin:0 auto;padding:0 24px 96px}
+/* ── ヘッダー ── */
+header{padding:32px 24px 24px;border-bottom:1px solid var(--line)}
+.eyebrow{font:600 11px var(--font-m);letter-spacing:.06em;color:var(--accent)}
+h1{font:700 30px/1.3 var(--font-h);margin:8px 0 4px;color:var(--ink)}
+.appline{font:400 13px var(--font-m);color:var(--ink-soft);margin-bottom:4px}
+.updated{font:400 12px var(--font-m);color:var(--ink-soft);margin-bottom:18px}
+.updated:empty{display:none;margin:0}
+.appline{margin-bottom:18px}
+.appline+.updated:not(:empty){margin-top:-14px}
+.langbar{display:inline-flex;border:1px solid var(--ink)}
+.langbar button{border:none;padding:8px 18px;font:600 13px var(--font-m);cursor:pointer;
+  background:transparent;color:var(--ink-soft);min-height:44px}
+.langbar button+button{border-left:1px solid var(--ink)}
+.langbar button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.langbar button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
-  header{padding:56px 0 32px;border-bottom:1px solid var(--line);margin-bottom:8px}
-  .eyebrow{
-    font-size:12px;letter-spacing:.18em;text-transform:uppercase;
-    color:var(--accent);font-weight:600;margin:0 0 14px
-  }
-  h1{font-size:30px;line-height:1.35;margin:0 0 12px;font-weight:700;letter-spacing:.01em}
-  .meta{margin:0;color:var(--ink-soft);font-size:14px}
+/* ── 目次 ── */
+.toc{padding:24px 24px 8px}
+.toc h2{font:700 16px var(--font-h);margin:0 0 12px;display:flex;gap:8px;align-items:baseline}
+.toc h2 span{font:600 11px var(--font-m);color:var(--accent)}
+.toc ol{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.toc a{display:flex;gap:6px;padding:7px 0;font:400 13px var(--font-b);color:var(--ink-soft);
+  text-decoration:none;border-bottom:1px dotted var(--line)}
+.toc a span{font:600 12px var(--font-m);color:var(--accent)}
+.toc a:hover{color:var(--accent)}
+.toc a:focus-visible{outline:2px solid var(--accent)}
 
-  .langbar{display:flex;gap:8px;margin:26px 0 0}
-  .langbar button{
-    font:inherit;font-size:13px;font-weight:600;
-    padding:7px 16px;border-radius:999px;cursor:pointer;
-    border:1px solid var(--line);background:transparent;color:var(--ink-soft);
-    transition:background .15s,color .15s,border-color .15s;
-  }
-  .langbar button[aria-pressed="true"]{
-    background:var(--accent);border-color:var(--accent);color:#fff;
-  }
-  .langbar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ── 章 ── */
+section{padding:22px 24px 4px;scroll-margin-top:16px}
+section h2{font:700 18px var(--font-h);margin:0 0 10px;display:flex;gap:10px;align-items:baseline;
+  border-top:1px solid var(--line);padding-top:20px}
+section h2 .n{font:600 13px var(--font-m);color:var(--accent)}
+section h3{font:600 15px var(--font-b);margin:20px 0 6px;color:var(--ink)}
+section p{font:400 15px/1.85 var(--font-b);color:var(--ink-soft);margin:0 0 14px}
+section ul{margin:0 0 14px;padding-left:1.3em}
+section li{font:400 15px/1.85 var(--font-b);color:var(--ink-soft);margin-bottom:4px}
+a{color:var(--accent);text-underline-offset:3px}
 
-  h2{
-    font-size:19px;font-weight:700;margin:44px 0 14px;
-    padding-top:26px;border-top:1px solid var(--line);letter-spacing:.01em;
-  }
-  h2:first-of-type{border-top:none;padding-top:0}
-  p{margin:0 0 16px}
-  ul{margin:0 0 16px;padding-left:1.25em}
-  li{margin-bottom:7px}
-  a{color:var(--accent);text-underline-offset:3px}
+/* ── POINT ── */
+.point{margin:20px 24px 28px;border:1px solid var(--ink);padding:18px 20px;position:relative}
+.point .tag{position:absolute;top:-10px;left:16px;background:var(--panel);padding:0 6px;
+  font:600 11px var(--font-m);color:var(--accent);letter-spacing:.06em}
+.point p{margin:0;font:600 15px/1.85 var(--font-b);color:var(--ink)}
 
-  /* 症状ごとの相談カード */
-  .qa{
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:8px;
-    padding:20px 22px;
-    margin:0 0 16px;
-  }
-  .qa h3{
-    font-size:16px;font-weight:700;margin:0 0 10px;
-    display:flex;gap:9px;align-items:baseline;
-  }
-  .qa h3::before{
-    content:"";
-    flex:0 0 6px;height:6px;margin-top:.5em;
-    background:var(--accent);border-radius:50%;
-  }
-  .qa p:last-child{margin-bottom:0}
+/* ── FAQ ── */
+.faq{border-top:1px solid var(--line)}
+.faq>summary{display:flex;gap:14px;align-items:baseline;padding:16px 24px;cursor:pointer;
+  font:600 15px var(--font-b);color:var(--ink);min-height:44px;list-style:none}
+.faq>summary::-webkit-details-marker{display:none}
+.faq>summary .qn{font:600 13px var(--font-m);color:var(--accent)}
+.faq>summary .qt{flex:1}
+.faq>summary::after{content:"+";color:var(--accent);font:600 16px var(--font-m)}
+.faq[open]>summary::after{content:"\2212"}
+.faq>summary:hover{background:var(--page-bg)}
+.faq>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.faq-body{padding:0 24px 18px 58px}
+.faq-body p{margin:0 0 12px;font:400 14.5px/1.85 var(--font-b);color:var(--ink-soft)}
+.faq-body p:last-child{margin-bottom:0}
 
-  /* 前提を穏やかに伝えるカード */
-  .note{
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-left:3px solid var(--accent);
-    border-radius:0 8px 8px 0;
-    padding:20px 22px;
-    margin:0 0 16px;
-  }
-  .note p:last-child{margin-bottom:0}
+/* ── フッター ── */
+footer{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:20px 24px;border-top:2px solid var(--ink);margin-top:4px}
+footer a{font:600 13px var(--font-m);color:var(--accent);text-decoration:none}
+footer a:hover{text-decoration:underline}
+footer a:focus-visible{outline:2px solid var(--accent)}
+footer span{font:400 12px var(--font-m);color:var(--ink-soft)}
 
-  .contact{
-    background:var(--accent-soft);
-    border-left:3px solid var(--accent);
-    border-radius:0 6px 6px 0;
-    padding:20px 22px;
-    margin:0 0 20px;
-  }
-  .contact p:last-child{margin-bottom:0}
-
-  footer{
-    margin-top:56px;padding-top:24px;border-top:1px solid var(--line);
-    color:var(--ink-soft);font-size:13px;
-  }
-  footer a{margin-right:14px}
-
-  [hidden]{display:none !important}
-
-  @media (max-width:520px){
-    body{font-size:15px}
-    h1{font-size:24px}
-    header{padding:40px 0 26px}
-    .wrap{padding:0 20px 72px}
-  }
+[hidden]{display:none!important}
+@media (max-width:520px){
+  h1{font-size:24px}
+  header{padding:26px 20px 20px}
+  section{padding:20px 20px 4px}
+  .toc{padding:20px 20px 8px}
+  .toc ol{grid-template-columns:1fr}
+  .point{margin:16px 20px 24px}
+  .faq>summary{padding:16px 20px}
+  .faq-body{padding:0 20px 18px 52px}
+  footer{padding:18px 20px;flex-direction:column;align-items:flex-start;gap:8px}
+}
 </style>
 </head>
 <body>
-
-<div class="band" aria-hidden="true"></div>
-
-<div class="wrap">
-
+<div class="sheet">
+<div class="band check" aria-hidden="true"></div>
 <header>
-  <p class="eyebrow" id="eyebrow">Support</p>
+  <p class="eyebrow" id="eyebrow">[ サポート ]</p>
   <h1 id="pageTitle">サポート</h1>
-  <p class="meta" id="pageMeta">スタンプ抜き（Stamp Nuki）</p>
+  <p class="appline" id="appLine">APP: スタンプ抜き</p>
+  <p class="updated" id="updated">最終更新日：2026年8月21日</p>
   <div class="langbar" role="group" aria-label="Language">
     <button type="button" id="btnJa" aria-pressed="true">日本語</button>
     <button type="button" id="btnEn" aria-pressed="false">English</button>
   </div>
 </header>
 
-<!-- ───────────────────────── 日本語 ───────────────────────── -->
 <main id="ja">
 
-  <div class="contact">
-    <p><strong>お問い合わせ</strong><br>
-    不具合の報告・ご要望・その他のご質問は、下記までお送りください。<br>
-    <a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p>
-    <p style="margin-top:12px;font-size:14px">お使いの端末（機種名・OSバージョン）と、どの画面で何をしたときに起きたかを書いていただけると、原因を特定しやすくなります。</p>
-  </div>
-
-  <h2>使いかたの流れ</h2>
-  <p>複数のキャラクターが並んだイラストシートを1枚選ぶと、背景を消して1体ずつに切り分け、透過PNGとして保存できます。</p>
-  <p>自動処理でうまくいかない部分は、あとから手で直せます。アプリ内の「設定 → 使い方」に、画面ごとの詳しい説明とアニメーション付きのチュートリアルがあります。</p>
-
-  <h2>どんな画像に向いているか</h2>
-  <div class="note">
-    <p>背景が単色に近いイラストシートを想定して作っています。白や薄いグレーの背景でいちばんきれいに抜けます。</p>
-    <p>写真や、背景にグラデーション・風景・模様が入った画像は、うまく抜けません。人物写真の切り抜きをお探しの場合は、その用途に合ったアプリのほうがきれいに仕上がります。</p>
-  </div>
-
-  <h2>困ったときは</h2>
-
-  <div class="qa">
-    <h3>保存できない・アルバムに入らない</h3>
-    <p>写真へのアクセスが「選択した写真のみ」になっていると、アルバムへ保存できません。端末の設定から「フルアクセス」に変更してください。</p>
-    <p style="font-size:14px;color:var(--ink-soft)">iOS: 設定 → プライバシーとセキュリティ → 写真 → スタンプ抜き<br>
-    Android: 設定 → アプリ → スタンプ抜き → 権限</p>
-  </div>
-
-  <div class="qa">
-    <h3>背景が消えきらない・キャラの一部まで消えた</h3>
-    <p>背景の色数が多いイラストや、背景とキャラクターの色が近い場合に起きやすくなります。</p>
-    <p>まず「設定 → 自動除去の強さ」を調整してみてください。背景が残るなら「背景優先」寄りに、絵が欠けるなら「人物優先」寄りに動かします。</p>
-    <p>部分的に残った色は、編集画面の「スポイト」でタップして追加で消せます。消えすぎた部分は「復元ブラシ」でなぞって戻せます。</p>
-    <p>白や薄いグレーの単色背景がもっともきれいに抜けます。</p>
-  </div>
-
-  <div class="qa">
-    <h3>キャラクターが分かれない・1枚に2体入る</h3>
-    <p>セットアップ画面で「行数（段数）」と「列数」を実際の枚数に合わせてから分割し直してください。プレビューに出る分割線は、指でドラッグして位置を調整できます。</p>
-    <p>それでも分かれない場合は、そのカットだけ「範囲を調整」で直接囲むのが確実です。</p>
-    <p>逆に分かれすぎた場合は、カットを長押しして選択し「合体する」でまとめられます。</p>
-  </div>
-
-  <div class="qa">
-    <h3>段によって切り出し位置がずれる</h3>
-    <p>自動分割はすべての段で共通の区切り線を使うため、段ごとにキャラクターの数が違う画像ではズレが出ることがあります。</p>
-    <p>ずれた段のカットを長押しして選択し「合体する」でまとめてから、そのカットをタップして「範囲を調整」で形を整えるのが確実です。</p>
-  </div>
-
-  <div class="qa">
-    <h3>読み込めない画像がある</h3>
-    <p>対応形式は PNG・JPEG（JPG）・HEIC です。それ以外の形式は正しく読み込めない場合があります。</p>
-    <p>書き出しは透過PNGのみです。JPEGは透過情報を保持できないため対応していません。</p>
-  </div>
-
-  <div class="qa">
-    <h3>処理の途中で止まる・動作が重い</h3>
-    <p>背景除去や分割の処理中はアプリを閉じないでください。サイズの大きい画像ほど時間がかかります。</p>
-    <p>処理が終わらない、または途中で落ちる場合は、お手数ですが端末の機種名とおおよその画像サイズを添えてご連絡ください。</p>
-  </div>
-
-  <h2>広告について</h2>
-  <p>本アプリは広告収入により無料で提供しています。広告の表示には Google AdMob を利用しています。</p>
-  <p>iOSでは初回起動時にトラッキングの許可を確認します。許可しない場合でもすべての機能をお使いいただけます。欧州経済領域・英国・スイスにお住まいの方は、アプリ内の「設定 → このアプリ → 広告のプライバシー設定」から同意内容を変更できます。</p>
-
-  <h2>プライバシー</h2>
-  <p>選んだ画像と作成した画像は、すべて端末の中だけで処理されます。サーバーへ送信することはありません。詳しくは<a href="privacy.html">プライバシーポリシー</a>をご覧ください。</p>
-
+<section><h2><span class="n">01</span>このアプリについて</h2><p>複数のキャラクターが並んだイラストシートを1枚選ぶと、背景を消して1体ずつに切り分け、透過PNGとして保存できます。</p><p>自動処理でうまくいかない部分は、あとから手で直せます。アプリ内の「設定 → 使い方」に、画面ごとの詳しい説明とアニメーション付きのチュートリアルがあります。</p><h3>どんな画像に向いているか</h3><p>背景が単色に近いイラストシートを想定して作っています。白や薄いグレーの背景でいちばんきれいに抜けます。</p><p>写真や、背景にグラデーション・風景・模様が入った画像は、うまく抜けません。人物写真の切り抜きをお探しの場合は、その用途に合ったアプリのほうがきれいに仕上がります。</p></section><div class="point"><div class="tag">POINT</div><p>選んだ画像と切り抜いた画像は、すべて端末の中だけで処理されます。</p></div><section style="padding-bottom:0"><h2><span class="n">02</span>よくある質問</h2></section><div>
+<details class="faq"><summary><span class="qn">Q1</span><span class="qt">保存できない・アルバムに入らない</span></summary><div class="faq-body"><p>写真へのアクセスが「選択した写真のみ」になっていると、アルバムへ保存できません。端末の設定から「フルアクセス」に変更してください。</p><p>iOS: 設定 → プライバシーとセキュリティ → 写真 → スタンプ抜き<br>Android: 設定 → アプリ → スタンプ抜き → 権限</p></div></details>
+<details class="faq"><summary><span class="qn">Q2</span><span class="qt">背景が消えきらない・キャラの一部まで消えた</span></summary><div class="faq-body"><p>背景の色数が多いイラストや、背景とキャラクターの色が近い場合に起きやすくなります。</p><p>まず「設定 → 自動除去の強さ」を調整してみてください。背景が残るなら「背景優先」寄りに、絵が欠けるなら「人物優先」寄りに動かします。</p><p>部分的に残った色は、編集画面の「スポイト」でタップして追加で消せます。消えすぎた部分は「復元ブラシ」でなぞって戻せます。</p></div></details>
+<details class="faq"><summary><span class="qn">Q3</span><span class="qt">キャラクターが分かれない・1枚に2体入る</span></summary><div class="faq-body"><p>セットアップ画面で「行数（段数）」と「列数」を実際の枚数に合わせてから分割し直してください。プレビューに出る分割線は、指でドラッグして位置を調整できます。</p><p>それでも分かれない場合は、そのカットだけ「範囲を調整」で直接囲むのが確実です。</p><p>逆に分かれすぎた場合は、カットを長押しして選択し「合体する」でまとめられます。</p></div></details>
+<details class="faq"><summary><span class="qn">Q4</span><span class="qt">段によって切り出し位置がずれる</span></summary><div class="faq-body"><p>自動分割はすべての段で共通の区切り線を使うため、段ごとにキャラクターの数が違う画像ではズレが出ることがあります。</p><p>ずれた段のカットを長押しして選択し「合体する」でまとめてから、そのカットをタップして「範囲を調整」で形を整えるのが確実です。</p></div></details>
+<details class="faq"><summary><span class="qn">Q5</span><span class="qt">読み込めない画像がある</span></summary><div class="faq-body"><p>対応形式は PNG・JPEG（JPG）・HEIC です。それ以外の形式は正しく読み込めない場合があります。</p><p>書き出しは透過PNGのみです。JPEGは透過情報を保持できないため対応していません。</p></div></details>
+<details class="faq"><summary><span class="qn">Q6</span><span class="qt">処理の途中で止まる・動作が重い</span></summary><div class="faq-body"><p>背景除去や分割の処理中はアプリを閉じないでください。サイズの大きい画像ほど時間がかかります。</p><p>処理が終わらない、または途中で落ちる場合は、お手数ですが端末の機種名とおおよその画像サイズを添えてご連絡ください。</p></div></details>
+</div><section><h2><span class="n">03</span>広告について</h2><p>本アプリは広告収入により無料で提供しています。広告の表示には Google AdMob を利用しています。</p><p>iOSでは初回起動時にトラッキングの許可を確認します。許可しない場合でもすべての機能をお使いいただけます。欧州経済領域・英国・スイスにお住まいの方は、アプリ内の「設定 → このアプリ → 広告のプライバシー設定」から同意内容を変更できます。</p></section><section><h2><span class="n">04</span>お問い合わせ</h2><p>不具合の報告・ご要望・その他のご質問は、下記までお送りください。</p><p><strong>メール：</strong><a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p><p>お使いの端末（機種名・OSバージョン）と、どの画面で何をしたときに起きたかを書いていただけると、原因を特定しやすくなります。</p></section>
 </main>
 
-<!-- ───────────────────────── English ───────────────────────── -->
 <main id="en" hidden>
 
-  <div class="contact">
-    <p><strong>Contact</strong><br>
-    For bug reports, feature requests, or any other questions, please write to:<br>
-    <a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p>
-    <p style="margin-top:12px;font-size:14px">Including your device model, OS version, and what you were doing when the problem occurred helps a lot in tracking down the cause.</p>
-  </div>
-
-  <h2>How it works</h2>
-  <p>Pick one illustration sheet containing several characters, and the app removes the background, splits it into individual characters, and saves each one as a transparent PNG.</p>
-  <p>Anything the automatic pass gets wrong, you can fix by hand afterwards. Detailed walkthroughs, including animated tutorials, are available inside the app under Settings → How to use.</p>
-
-  <h2>What kind of images this works with</h2>
-  <div class="note">
-    <p>The app is built around illustration sheets with a flat, near-solid background. White or light grey backgrounds give the cleanest results.</p>
-    <p>Photographs, and images with gradients, scenery, or patterned backgrounds, won't come out well. If you're looking to cut people out of photos, an app built for that will give you better results.</p>
-  </div>
-
-  <h2>Troubleshooting</h2>
-
-  <div class="qa">
-    <h3>Can't save, or images don't appear in the album</h3>
-    <p>If photo access is set to "Selected Photos", the app can't save to an album. Change it to full access in your device settings.</p>
-    <p style="font-size:14px;color:var(--ink-soft)">iOS: Settings → Privacy &amp; Security → Photos → Stamp Nuki<br>
-    Android: Settings → Apps → Stamp Nuki → Permissions</p>
-  </div>
-
-  <div class="qa">
-    <h3>Background isn't fully removed, or part of the character disappeared</h3>
-    <p>This happens most often when the background uses many colors, or when the background and the character are close in color.</p>
-    <p>Start with Settings &rarr; Auto-removal strength. Move it toward "background" if background is being left behind, or toward "subject" if parts of the artwork are being erased.</p>
-    <p>For anything still remaining, use the eyedropper in the editor to tap additional colors, or the restore brush to paint back what was erased too aggressively.</p>
-    <p>Flat white or light grey backgrounds give the cleanest results.</p>
-  </div>
-
-  <div class="qa">
-    <h3>Characters aren't separated, or two end up in one cut</h3>
-    <p>On the setup screen, set the row and column counts to match the actual sheet, then split again. You can also drag the preview's dividing lines with your finger.</p>
-    <p>If they still won't separate, use "Adjust area" on that cut to draw around the character directly — that always works.</p>
-    <p>If a character was split into too many pieces, long-press the cuts to select them and use Merge.</p>
-  </div>
-
-  <div class="qa">
-    <h3>Some rows are cut in the wrong place</h3>
-    <p>Automatic splitting uses the same dividing lines across every row, so sheets where rows contain different numbers of characters can end up misaligned.</p>
-    <p>Long-press the cuts in the affected row to select and merge them, then tap that cut and use "Adjust area" to reshape it.</p>
-  </div>
-
-  <div class="qa">
-    <h3>An image won't load</h3>
-    <p>Supported formats are PNG, JPEG (JPG), and HEIC. Other formats may not load correctly.</p>
-    <p>Output is transparent PNG only. JPEG can't preserve transparency, so it isn't offered.</p>
-  </div>
-
-  <div class="qa">
-    <h3>Processing stalls, or the app feels slow</h3>
-    <p>Please don't close the app while background removal or splitting is running. Larger images take longer.</p>
-    <p>If processing never finishes or the app closes partway through, please get in touch and include your device model and roughly how large the image was.</p>
-  </div>
-
-  <h2>About ads</h2>
-  <p>This app is free, supported by advertising through Google AdMob.</p>
-  <p>On iOS, you'll be asked about tracking on first launch. Declining doesn't limit any feature of the app. If you're in the European Economic Area, the UK, or Switzerland, you can change your consent choices at any time under Settings → About this app → Ad privacy settings.</p>
-
-  <h2>Privacy</h2>
-  <p>The images you select and the ones you create are processed entirely on your device and never sent to a server. See the <a href="privacy.html">privacy policy</a> for details.</p>
-
+<section><h2><span class="n">01</span>About this app</h2><p>Pick one illustration sheet containing several characters, and the app removes the background, splits it into individual characters, and saves each one as a transparent PNG.</p><p>Anything the automatic pass gets wrong, you can fix by hand afterwards. Detailed walkthroughs, including animated tutorials, are available inside the app under Settings → How to use.</p><h3>What kind of images this works with</h3><p>The app is built around illustration sheets with a flat, near-solid background. White or light grey backgrounds give the cleanest results.</p><p>Photographs, and images with gradients, scenery, or patterned backgrounds, won’t come out well. If you’re looking to cut people out of photos, an app built for that will give you better results.</p></section><div class="point"><div class="tag">POINT</div><p>The images you select and the cutouts you create are processed entirely on your device.</p></div><section style="padding-bottom:0"><h2><span class="n">02</span>Troubleshooting</h2></section><div>
+<details class="faq"><summary><span class="qn">Q1</span><span class="qt">Can’t save, or images don’t appear in the album</span></summary><div class="faq-body"><p>If photo access is set to "Selected Photos", the app can’t save to an album. Change it to full access in your device settings.</p><p>iOS: Settings → Privacy &amp; Security → Photos → Stamp Nuki<br>Android: Settings → Apps → Stamp Nuki → Permissions</p></div></details>
+<details class="faq"><summary><span class="qn">Q2</span><span class="qt">Background isn’t fully removed, or part of the character disappeared</span></summary><div class="faq-body"><p>This happens most often when the background uses many colors, or when the background and the character are close in color.</p><p>Start with Settings → Auto-removal strength. Move it toward "background" if background is being left behind, or toward "subject" if parts of the artwork are being erased.</p><p>For anything still remaining, use the eyedropper in the editor to tap additional colors, or the restore brush to paint back what was erased too aggressively.</p></div></details>
+<details class="faq"><summary><span class="qn">Q3</span><span class="qt">Characters aren’t separated, or two end up in one cut</span></summary><div class="faq-body"><p>On the setup screen, set the row and column counts to match the actual sheet, then split again. You can also drag the preview’s dividing lines with your finger.</p><p>If they still won’t separate, use "Adjust area" on that cut to draw around the character directly — that always works.</p><p>If a character was split into too many pieces, long-press the cuts to select them and use Merge.</p></div></details>
+<details class="faq"><summary><span class="qn">Q4</span><span class="qt">Some rows are cut in the wrong place</span></summary><div class="faq-body"><p>Automatic splitting uses the same dividing lines across every row, so sheets where rows contain different numbers of characters can end up misaligned.</p><p>Long-press the cuts in the affected row to select and merge them, then tap that cut and use "Adjust area" to reshape it.</p></div></details>
+<details class="faq"><summary><span class="qn">Q5</span><span class="qt">An image won’t load</span></summary><div class="faq-body"><p>Supported formats are PNG, JPEG (JPG), and HEIC. Other formats may not load correctly.</p><p>Output is transparent PNG only. JPEG can’t preserve transparency, so it isn’t offered.</p></div></details>
+<details class="faq"><summary><span class="qn">Q6</span><span class="qt">Processing stalls, or the app feels slow</span></summary><div class="faq-body"><p>Please don’t close the app while background removal or splitting is running. Larger images take longer.</p><p>If processing never finishes or the app closes partway through, please get in touch and include your device model and roughly how large the image was.</p></div></details>
+</div><section><h2><span class="n">03</span>About ads</h2><p>This app is free, supported by advertising through Google AdMob.</p><p>On iOS, you’ll be asked about tracking on first launch. Declining doesn’t limit any feature of the app. If you’re in the European Economic Area, the UK, or Switzerland, you can change your consent choices at any time under Settings → About this app → Ad privacy settings.</p></section><section><h2><span class="n">04</span>Contact</h2><p>For bug reports, feature requests, or any other questions, please write to:</p><p><strong>Email:</strong> <a href="mailto:stampnuki.app@gmail.com">stampnuki.app@gmail.com</a></p><p>Including your device model, OS version, and what you were doing when the problem occurred helps a lot in tracking down the cause.</p></section>
 </main>
 
 <footer>
-  <p id="footLinks"><a href="privacy.html">プライバシーポリシー</a></p>
-  <p id="footText">© 2026 SeraApps</p>
+  <a href="./privacy.html" id="otherLink">→ プライバシーポリシー</a>
+  <span>© 2026 SeraApps</span>
 </footer>
-
 </div>
 
 <script>
-(function () {
-  var ja = document.getElementById('ja');
-  var en = document.getElementById('en');
-  var btnJa = document.getElementById('btnJa');
-  var btnEn = document.getElementById('btnEn');
-  var title = document.getElementById('pageTitle');
-  var meta = document.getElementById('pageMeta');
-  var footLinks = document.getElementById('footLinks');
-
-  var TEXT = {
-    ja: {
-      title: 'サポート',
-      meta: 'スタンプ抜き（Stamp Nuki）',
-      link: 'プライバシーポリシー',
-      docTitle: 'サポート | スタンプ抜き'
-    },
-    en: {
-      title: 'Support',
-      meta: 'Stamp Nuki',
-      link: 'Privacy Policy',
-      docTitle: 'Support | Stamp Nuki'
-    }
-  };
-
-  function show(lang) {
-    var isJa = lang === 'ja';
-    ja.hidden = !isJa;
-    en.hidden = isJa;
-    btnJa.setAttribute('aria-pressed', String(isJa));
-    btnEn.setAttribute('aria-pressed', String(!isJa));
-    document.documentElement.lang = lang;
-    title.textContent = TEXT[lang].title;
-    meta.textContent = TEXT[lang].meta;
-    footLinks.innerHTML = '<a href="privacy.html">' + TEXT[lang].link + '</a>';
-    document.title = TEXT[lang].docTitle;
+(function(){
+  var ja=document.getElementById('ja'),en=document.getElementById('en'),
+      bJa=document.getElementById('btnJa'),bEn=document.getElementById('btnEn'),
+      T={
+        ja:{eyebrow:'[ サポート ]',title:'サポート',app:'APP: スタンプ抜き',
+             updated:'最終更新日：2026年8月21日',other:'→ プライバシーポリシー',doc:'サポート | スタンプ抜き'},
+        en:{eyebrow:'[ SUPPORT ]',title:'Support',app:'APP: Stamp Nuki',
+             updated:'Last updated: August 21, 2026',other:'→ PRIVACY POLICY',doc:'Support | Stamp Nuki'}
+      };
+  function show(l){
+    var isJa=l==='ja';
+    ja.hidden=!isJa; en.hidden=isJa;
+    bJa.setAttribute('aria-pressed',String(isJa));
+    bEn.setAttribute('aria-pressed',String(!isJa));
+    document.documentElement.lang=l;
+    document.getElementById('eyebrow').textContent=T[l].eyebrow;
+    document.getElementById('pageTitle').textContent=T[l].title;
+    document.getElementById('appLine').textContent=T[l].app;
+    document.getElementById('updated').textContent=T[l].updated;
+    document.getElementById('otherLink').textContent=T[l].other;
+    document.title=T[l].doc;
   }
-
-  btnJa.addEventListener('click', function () { show('ja'); });
-  btnEn.addEventListener('click', function () { show('en'); });
-
-  var nav = (navigator.language || 'ja').toLowerCase();
-  show(nav.indexOf('ja') === 0 ? 'ja' : 'en');
+  bJa.addEventListener('click',function(){show('ja')});
+  bEn.addEventListener('click',function(){show('en')});
+  var nav=(navigator.language||'ja').toLowerCase();
+  show(nav.indexOf('ja')===0?'ja':'en');
 })();
 </script>
-
 </body>
 </html>

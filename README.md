@@ -32,6 +32,14 @@ React Native (TypeScript) 製。画像の処理はすべて端末内で完結し
 
 ---
 
+## スクリーンショット
+
+| <img src="screenshots/01-split-settings.png" width="240" alt="分割設定画面"> | <img src="screenshots/02-range-adjust.png" width="240" alt="範囲を調整画面"> | <img src="screenshots/03-split-result.png" width="240" alt="分割結果画面"> |
+|:---:|:---:|:---:|
+| **① 行数・列数を指定して自動分割** | **② はみ出た範囲を手動で調整** | **③ 1体ずつ透過PNGとして書き出し** |
+
+---
+
 ## 開発体制
 
 **実装はClaude Code（AIコーディングエージェント）に指示して行いました。** 私自身の役割は、仕様の決定、実機での検証、不具合の切り分け、実装方針の判断です。

@@ -79,3 +79,5 @@ yarn-error.log
 
 # 署名パスワードを含むため追跡しない
 android/gradle.properties
+# ローカル専用の起動手順スクリプト（メモ）
+scripts/run-ios.sh

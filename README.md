@@ -1,6 +1,6 @@
 # スタンプ抜き
 
-<a href="https://apps.apple.com/us/app/id6798574833"><img src="screenshots/app-icon.png" width="64" align="middle" alt="スタンプ抜き アプリアイコン"></a> &nbsp; [**App Store で見る**](https://apps.apple.com/us/app/id6798574833)
+<a href="https://apps.apple.com/us/app/id6798574833"><img src="screenshots/app-icon-day.png" width="64" align="middle" alt="スタンプ抜き アプリアイコン"></a> &nbsp; [**App Store で見る**](https://apps.apple.com/us/app/id6798574833)
 
 AIイラストシートからキャラクターを1体ずつ切り出し、背景を除去して透過PNGを書き出すiOS / Androidアプリです。LINEスタンプの申請用画像を作ることを想定しています。
 

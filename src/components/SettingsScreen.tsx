@@ -20,10 +20,12 @@ import {
   Alert,
   LayoutAnimation,
   Linking,
+  NativeModules,
   Platform,
   StyleSheet,
   Switch,
   Text,
+  TurboModuleRegistry,
   UIManager,
   View,
 } from 'react-native';
@@ -52,11 +54,30 @@ import { useStats } from '../stats/StatsContext';
 import { openStoreReviewPage, devForceRequestReview, devResetReviewGate } from '../review';
 import { useAdsConsent } from '../ads/consent';
 
-// ── package.json からバージョンを取得 ─────────────────────────────────────────
-// require は TS の moduleResolution によっては型エラーになる場合がある。
-// その場合は直値にフォールバックしてコメントで TODO を残す。
+// ── バージョンを取得 ───────────────────────────────────────────────────────
+// Xcode の MARKETING_VERSION / build.gradle の versionName にアプリ内表示を自動
+// 追従させるため、package.json ではなくネイティブモジュール（iOS: ios/AppInfo.swift,
+// Android: AppInfoModule.kt）から取得する。New Architecture（bridgeless）では
+// NativeModules 経由で取れないことがあるため、review/index.ts と同じく
+// TurboModuleRegistry.get を先に試してフォールバックする。
+// ネイティブモジュールが無い環境（開発時など）では package.json の値にフォールバックする。
+interface AppInfoModule {
+  version: string;
+}
+
+function getNativeAppInfo(): AppInfoModule | undefined {
+  try {
+    const mod = TurboModuleRegistry.get('AppInfo') as AppInfoModule | null;
+    if (mod) return mod;
+  } catch {
+    // 次の経路へ。
+  }
+  return (NativeModules as { AppInfo?: AppInfoModule }).AppInfo;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const APP_VERSION: string = (require('../../package.json') as { version: string }).version;
+const PACKAGE_JSON_VERSION: string = (require('../../package.json') as { version: string }).version;
+const APP_VERSION: string = getNativeAppInfo()?.version || PACKAGE_JSON_VERSION;
 
 /** プライバシーポリシー（GitHub Pages）。外部ブラウザで開く。 */
 const PRIVACY_POLICY_URL = 'https://hisakawaserai-svg.github.io/bg-remover/privacy.html';

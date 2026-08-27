@@ -49,6 +49,7 @@ import type { AppIconSetting, LoupeMode, LoupeZoomMode, SplashAnimationSetting }
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
 import { useStats } from '../stats/StatsContext';
+import { openStoreReviewPage, devForceRequestReview, devResetReviewGate } from '../review';
 import { useAdsConsent } from '../ads/consent';
 
 // ── package.json からバージョンを取得 ─────────────────────────────────────────
@@ -669,6 +670,48 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             <Text style={styles.rowLabel}>{t('settings.licenses')}</Text>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
+          <Divider />
+          {/* アプリを評価する: ストアのレビューページを外部で開く。
+              ガイドライン上ボタンから直接 requestReview は呼べないため、ここは
+              ストア遷移で代替する（保存完了直後の自動レビュー要求とは別導線）。 */}
+          <AnimatedPressable
+            style={styles.row}
+            onPress={() => {
+              void openStoreReviewPage();
+            }}
+            pressedScale={0.98}
+          >
+            <Text style={styles.rowLabel}>{t('settings.rateApp')}</Text>
+            <Icon name="open-in-new" size={18} color={IOS.secondary} />
+          </AnimatedPressable>
+          {/* 開発用: レビュー要求の動作確認。__DEV__ のときだけ表示され、
+              リリースビルドには出ない。ゲート（閾値・60日間隔）を無視して即出す。 */}
+          {__DEV__ && (
+            <>
+              <Divider />
+              <AnimatedPressable
+                style={styles.row}
+                onPress={() => {
+                  void devForceRequestReview();
+                }}
+                pressedScale={0.98}
+              >
+                <Text style={styles.rowLabel}>[DEV] レビュー要求を今すぐ出す</Text>
+                <Icon name="rate-review" size={18} color={IOS.secondary} />
+              </AnimatedPressable>
+              <Divider />
+              <AnimatedPressable
+                style={styles.row}
+                onPress={() => {
+                  void devResetReviewGate();
+                }}
+                pressedScale={0.98}
+              >
+                <Text style={styles.rowLabel}>[DEV] レビューゲートをリセット</Text>
+                <Icon name="restart-alt" size={18} color={IOS.secondary} />
+              </AnimatedPressable>
+            </>
+          )}
           <Divider />
           {/* プライバシーポリシー: 外部ブラウザで開く。アプリ内WebViewは持たない。 */}
           <AnimatedPressable

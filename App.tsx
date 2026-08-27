@@ -146,6 +146,7 @@ import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
 import LoadingView from './src/components/ui/LoadingView';
 import { describeSaveError } from './src/imaging/saveErrors';
 import { t, useT } from './src/i18n';
+import { maybeRequestReview } from './src/review';
 import { useSettings } from './src/settings/SettingsContext';
 import { isSplashEnabled } from './src/settings/store';
 import { useAlbumName } from './src/settings/useAlbumName';
@@ -1168,8 +1169,10 @@ function AppScreens() {
       // 「作成したスタンプ」は生成した個数ではなく書き出しが成功した個数で数える
       // （途中で分割し直したり合体したりで生成数と完成数はズレるため、
       // ユーザーが見て嬉しいのは「実際に完成した枚数」の方）。
-      recordExportCompleted();
+      const exportsCompleted = recordExportCompleted();
       recordStampsCreated(count);
+      // 保存成功直後・累計回数が節目のときだけ OS のレビュー要求を出す（内部で判定・no-op）。
+      void maybeRequestReview(exportsCompleted);
 
       // 書き出し完了 → step を 'done' に更新
       const sessionToFinish = currentSessionId
@@ -1956,8 +1959,10 @@ function AppScreens() {
           onSave={async (count: number, paths: string[]) => {
             // 書き出し成功 → 統計を加算。「作成したスタンプ」は書き出しが成功した個数で数える
             // （doAutoExport 側と同じ方針。詳細はそちらのコメント参照）。
-            recordExportCompleted();
+            const exportsCompleted = recordExportCompleted();
             recordStampsCreated(count);
+            // 保存成功直後・累計回数が節目のときだけ OS のレビュー要求を出す（内部で判定・no-op）。
+            void maybeRequestReview(exportsCompleted);
             // 手動書き出し完了 → step を 'done' に更新。
             // polygons を明示的に保持することで、書き出し後も「1個だけ修正して再書き出し」
             // できるよう頂点を残す。done セッションを再開しても復元できる。

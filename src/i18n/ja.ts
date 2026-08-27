@@ -380,6 +380,7 @@ const ja = {
     howTo: '使い方',
     replayTutorial: 'チュートリアルをもう一度見る',
     licenses: 'オープンソースライセンス',
+    rateApp: 'アプリを評価する',
     privacyPolicy: 'プライバシーポリシー',
     adsPrivacyOptions: '広告のプライバシー設定',
     adsPrivacyOptionsHint: '広告に関する同意の内容を変更できます',

@@ -1,4 +1,4 @@
-package com.bgremover.app
+package com.seraapps.stampnuki
 
 import android.content.Intent
 import com.facebook.react.ReactActivity

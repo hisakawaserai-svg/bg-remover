@@ -82,12 +82,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.bgremover.app"
+    namespace "com.seraapps.stampnuki"
     defaultConfig {
-        applicationId "com.bgremover.app"
+        applicationId "com.seraapps.stampnuki"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 3
         versionName "1.0"
     }
     signingConfigs {
@@ -97,15 +97,24 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // 本番（アップロード）鍵。認証情報は追跡対象外の gradle.properties に置く。
+            // MYAPP_UPLOAD_STORE_FILE が定義されていない環境（CI 等で未設定の場合）は
+            // このブロックを構成せず、release は下の signingConfig 未指定＝無署名になる。
+            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -115,6 +124,10 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+
+    // アプリ内レビュー（自作 ReviewModule が使用）。ktx で ReviewManager の
+    // Task 連携を簡潔に扱える。Play 側の依存はこの1行のみ（別途 Play Console 設定は不要）。
+    implementation("com.google.android.play:review-ktx:2.0.2")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

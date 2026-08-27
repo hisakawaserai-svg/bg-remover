@@ -33,8 +33,8 @@ interface StatsContextValue {
   recordTransparencyOp: () => void;
   /** 書き出しが成功した時に、実際に書き出せた枚数をまとめて加算する */
   recordStampsCreated: (count: number) => void;
-  /** 書き出しが成功した時に呼ぶ */
-  recordExportCompleted: () => void;
+  /** 書き出しが成功した時に呼ぶ。加算後の累計書き出し回数を返す（レビュー要求の閾値判定に使う） */
+  recordExportCompleted: () => number;
   /** 作業時間を加算する（ミリ秒） */
   addWorkTimeMs: (ms: number) => void;
 }
@@ -45,7 +45,7 @@ const StatsContext = createContext<StatsContextValue>({
   recordImageEdited: () => {},
   recordTransparencyOp: () => {},
   recordStampsCreated: () => {},
-  recordExportCompleted: () => {},
+  recordExportCompleted: () => 0,
   addWorkTimeMs: () => {},
 });
 
@@ -84,7 +84,9 @@ export function StatsProvider({ children }: { children: React.ReactNode }) {
   }, [apply]);
 
   const recordExportCompleted = useCallback(() => {
-    apply({ exportsCompleted: statsRef.current.exportsCompleted + 1 });
+    const next = statsRef.current.exportsCompleted + 1;
+    apply({ exportsCompleted: next });
+    return next;
   }, [apply]);
 
   const addWorkTimeMs = useCallback((ms: number) => {

@@ -87,7 +87,7 @@ android {
         applicationId "com.seraapps.stampnuki"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
+        versionCode 10
         versionName "1.2"
     }
     signingConfigs {

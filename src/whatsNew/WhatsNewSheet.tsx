@@ -21,7 +21,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from '../components/ui/AnimatedPressable';
 import { useT, getLocale } from '../i18n';
-import { RELEASES, findRelease, normalizeVersion, type Release } from './releases';
+import { RELEASES, copyForStore, findRelease, normalizeVersion, type Release } from './releases';
 
 interface Props {
   visible: boolean;
@@ -31,7 +31,8 @@ interface Props {
 }
 
 function copyOf(release: Release) {
-  return getLocale() === 'ja' ? release.ja : release.en;
+  const os = Platform.OS === 'android' ? 'android' : 'ios';
+  return copyForStore(release, getLocale(), os);
 }
 
 function displayVersion(version: string): string {

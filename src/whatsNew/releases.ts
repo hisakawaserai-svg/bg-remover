@@ -2,7 +2,8 @@
  * releases.ts — お知らせに出す更新内容。次の版は配列の先頭に1件足す。
  *
  * 文言は CHANGELOG/<版>.md の「リリースノート」（ストア貼り付け文）を短く写す。
- * ja / en を同じ見出し・同じ件数・同じ意味で書く。コード名は使わない。
+ * ja / en は共通。店ごとに違う行は jaIos / jaAndroid / enIos / enAndroid。
+ * 同じロケール＋同じ店の中では、見出し・件数・意味を揃える。コード名は使わない。
  *
  * sections の heading は自由（新機能 / 改善 / 修正 など）。空なら見出しなし。
  *
@@ -26,20 +27,30 @@ export interface Release {
   dateAndroid?: string;
   ja: ReleaseCopy;
   en: ReleaseCopy;
+  jaIos?: ReleaseCopy;
+  jaAndroid?: ReleaseCopy;
+  enIos?: ReleaseCopy;
+  enAndroid?: ReleaseCopy;
+}
+
+export function copyForStore(release: Release, locale: 'ja' | 'en', os: 'ios' | 'android'): ReleaseCopy {
+  if (locale === 'ja') {
+    return (os === 'android' ? release.jaAndroid : release.jaIos) ?? release.ja;
+  }
+  return (os === 'android' ? release.enAndroid : release.enIos) ?? release.en;
 }
 
 export const RELEASES: Release[] = [
   {
     version: '1.2.0',
     dateIos: '2026-09-05',
-    ja: {
+    jaIos: {
       title: '背景除去の方式と編集まわり',
       sections: [
         {
           heading: '新機能',
           items: [
-            '背景除去に被写体検出を追加しました。複雑な背景や人物の切り抜きに強くなりました',
-            '背景除去は色ベース（推奨）で始まります。被写体検出は設定、または分割画面のきらきらから切り替えられます',
+            '背景除去に被写体検出を追加しました。iOS 17以降はVisionです。複雑な背景や人物の切り抜きに強くなりました',
             '「範囲を調整」の道具に消しゴムを追加しました。なぞった部分を透過できます',
             '「範囲を調整」で、未囲みの塊を色枠から選んでまとめて囲めるようにしました',
           ],
@@ -60,16 +71,68 @@ export const RELEASES: Release[] = [
         },
       ],
     },
-    en: {
+    jaAndroid: {
+      title: '背景除去の方式と編集まわり',
+      sections: [
+        {
+          heading: '新機能',
+          items: [
+            '背景除去に被写体検出を追加しました。ML Kitにより、複雑な背景や人物の切り抜きに強くなりました',
+            '「範囲を調整」の道具に消しゴムを追加しました。なぞった部分を透過できます',
+            '「範囲を調整」で、未囲みの塊を色枠から選んでまとめて囲めるようにしました',
+          ],
+        },
+        {
+          heading: '改善',
+          items: [
+            '「範囲を調整」のあとも、保存後と同じく拡大して透過の残りを確認できます',
+            '各画面に使い方を追加しました',
+          ],
+        },
+        {
+          heading: '修正',
+          items: [
+            'プレビュー画面で、拡大したまま次の画像へ送ると前の画像が重なって残る不具合を直しました',
+            '横向き画面になる不具合を直しました',
+          ],
+        },
+      ],
+    },
+    ja: {
+      title: '背景除去の方式と編集まわり',
+      sections: [
+        {
+          heading: '新機能',
+          items: [
+            '背景除去に被写体検出を追加しました。複雑な背景や人物の切り抜きに強くなりました',
+            '「範囲を調整」の道具に消しゴムを追加しました。なぞった部分を透過できます',
+            '「範囲を調整」で、未囲みの塊を色枠から選んでまとめて囲めるようにしました',
+          ],
+        },
+        {
+          heading: '改善',
+          items: [
+            '「範囲を調整」のあとも、保存後と同じく拡大して透過の残りを確認できます',
+            '各画面に使い方を追加しました',
+          ],
+        },
+        {
+          heading: '修正',
+          items: [
+            'プレビュー画面で、拡大したまま次の画像へ送ると前の画像が重なって残る不具合を直しました',
+          ],
+        },
+      ],
+    },
+    enIos: {
       title: 'Background removal and editing',
       sections: [
         {
           heading: 'New',
           items: [
-            'Added subject detection for background removal. Better for complex backgrounds and cutting out people',
-            'Background removal starts with the color-based method (recommended). Switch to subject detection in Settings or with the sparkle on the split screen',
-            'Added Eraser to the Adjust range tools. Trace to make areas transparent',
-            'In Adjust range, you can pick leftover shapes from colored frames and enclose them together',
+            'Added subject detection for background removal. On iOS 17 or later this uses Vision. Better for complex backgrounds and cutting out people',
+            'Added Eraser to Adjust range. Trace to make areas transparent',
+            'In Adjust range, pick leftover shapes from colored frames and enclose them together',
           ],
         },
         {
@@ -83,6 +146,59 @@ export const RELEASES: Release[] = [
           heading: 'Fixes',
           items: [
             'Fixed the app name staying in English on Japanese devices',
+            'Fixed leftover images overlapping in Preview when you move to the next image while zoomed in',
+          ],
+        },
+      ],
+    },
+    enAndroid: {
+      title: 'Background removal and editing',
+      sections: [
+        {
+          heading: 'New',
+          items: [
+            'Added subject detection for background removal using ML Kit. Better for complex backgrounds and cutting out people',
+            'Added Eraser to Adjust range. Trace to make areas transparent',
+            'In Adjust range, pick leftover shapes from colored frames and enclose them together',
+          ],
+        },
+        {
+          heading: 'Improvements',
+          items: [
+            'After Adjust range, you can zoom the preview the same way as after saving',
+            'Added how-to help on each screen',
+          ],
+        },
+        {
+          heading: 'Fixes',
+          items: [
+            'Fixed leftover images overlapping in Preview when you move to the next image while zoomed in',
+            'Fixed the screen rotating to landscape',
+          ],
+        },
+      ],
+    },
+    en: {
+      title: 'Background removal and editing',
+      sections: [
+        {
+          heading: 'New',
+          items: [
+            'Added subject detection for background removal. Better for complex backgrounds and cutting out people',
+            'Added Eraser to Adjust range. Trace to make areas transparent',
+            'In Adjust range, pick leftover shapes from colored frames and enclose them together',
+          ],
+        },
+        {
+          heading: 'Improvements',
+          items: [
+            'After Adjust range, you can zoom the preview the same way as after saving',
+            'Added how-to help on each screen',
+          ],
+        },
+        {
+          heading: 'Fixes',
+          items: [
             'Fixed leftover images overlapping in Preview when you move to the next image while zoomed in',
           ],
         },

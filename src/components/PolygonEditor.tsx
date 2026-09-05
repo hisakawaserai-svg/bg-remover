@@ -285,6 +285,12 @@ interface Props {
    */
   onRestore?: (points: Array<[number, number]>, radius: number) => void;
   /**
+   * 消しゴム（復元ブラシと同じ操作感で、なぞった範囲を色に関係なく透過する）。
+   * 同じブラシ・同じストローク記録を使い回し、パネルのトグルで
+   * onRestore と onErase のどちらを呼ぶか切り替える。
+   */
+  onErase?: (points: Array<[number, number]>, radius: number) => void;
+  /**
    * 元画像（透過前）の画素。bgResult と同じ寸法であること。
    * 復元ブラシで「どこが消えたか」を透かして見せるために使う。
    */
@@ -552,7 +558,7 @@ PolyBadge.displayName = 'PolyBadge';
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, onErase, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
   const { settings, updateSettings } = useSettings();
@@ -682,7 +688,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 走らせてから処理へ入る（そうしないと表示が出ないまま固まる）。
   const [eyeBusy, setEyeBusy] = useState(false);
   /** 処理中オーバーレイの文言キー。処理の種類で出し分ける。 */
-  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy'>('editor.eyedropBusy');
+  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.eraseBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy'>('editor.eyedropBusy');
   // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
   const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
   // 透過強度パネルは既定で畳んでおく。開きっぱなしだと画像の上側を覆って
@@ -1408,6 +1414,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 親のコールバックは PanResponder のクロージャからも呼ぶので ref 経由で読む。
   const onEyedropRef  = useRef(onEyedrop);  onEyedropRef.current  = onEyedrop;
   const onRestoreRef  = useRef(onRestore);  onRestoreRef.current  = onRestore;
+  const onEraseRef    = useRef(onErase);    onEraseRef.current    = onErase;
 
   // ── スポイトのタップ波紋 ────────────────────────────────────────────────────
   // 押してから画像が更新されるまでに間があり「押せたのか分からない」ので、
@@ -1464,7 +1471,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 戻し、実行経路を1本にする。1つ目でコミット、2つ目で描画が乗る。
    * 待ち時間は固定せず、処理が終わったら解除する。
    */
-  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy') => {
+  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.eraseBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy') => {
     if (key) setBusyKey(key);
     eyeBusyRef.current = true;
     setEyeBusy(true);
@@ -1538,6 +1545,13 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const [restoreRecording, setRestoreRecording] = useState(false);
   const restoreRecordingRef = useRef(false);
   /**
+   * 復元ブラシと消しゴムは同じストローク記録の仕組みを共有し、
+   * このトグルだけで「離した時にonRestoreを呼ぶかonEraseを呼ぶか」を分ける。
+   * ジェスチャー・録画のロジック自体は一切複製しない。
+   */
+  const [eraseMode, setEraseMode] = useState(false);
+  const eraseModeRef = useRef(eraseMode); eraseModeRef.current = eraseMode;
+  /**
    * ref と同じ値を持つ共有値。UIスレッドの useAnimatedReaction から
    * 「録画中かどうか」を読むためのもの（ref は JS スレッド専用で
    * worklet から読めない）。録画中でない時にここで弾ければ、パン中
@@ -1552,12 +1566,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     const pts = strokeImgRef.current;
     strokeImgRef.current = [];
     setStrokePts([]);
-    if (pts.length > 0 && onRestoreRef.current) {
+    const isErase = eraseModeRef.current;
+    const cb = isErase ? onEraseRef.current : onRestoreRef.current;
+    if (pts.length > 0 && cb) {
       pushPast({ kind: 'edit' });
       setFuture([]);
       const radius = brushRadiusRef.current;
       const thinned = thinStroke(pts, radius);
-      runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.restoreBusy');
+      runHeavy(() => cb(thinned, radius), isErase ? 'editor.eraseBusy' : 'editor.restoreBusy');
     }
   }, [runHeavy, pushPast]);
 
@@ -3643,19 +3659,21 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         }
       }
 
-      // 復元ブラシ: 離した時に1回だけ親へ渡す。1ストローク＝undo 1回になる。
+      // 復元ブラシ/消しゴム: 離した時に1回だけ親へ渡す。1ストローク＝undo 1回になる。
       if (gPhase.current === 'restore') {
         const pts = strokeImgRef.current;
         strokeImgRef.current = [];
         setStrokePts([]);
-        if (pts.length > 0 && onRestoreRef.current) {
+        const isErase = eraseModeRef.current;
+        const cb = isErase ? onEraseRef.current : onRestoreRef.current;
+        if (pts.length > 0 && cb) {
           pushPast({ kind: 'edit' });
           setFuture([]);
           const radius = brushRadiusRef.current;
           // 保存サイズ対策。操作列は永続化されるので、同じ場所に溜まった点を
           // 落としてから渡す。塗る側が補間するので結果は変わらない。
           const thinned = thinStroke(pts, radius);
-          runHeavy(() => onRestoreRef.current?.(thinned, radius), 'editor.restoreBusy');
+          runHeavy(() => cb(thinned, radius), isErase ? 'editor.eraseBusy' : 'editor.restoreBusy');
         }
       }
 
@@ -4229,7 +4247,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             {appMode === 'restore' && strokePath && (
               <Path
                 path={strokePath}
-                color="rgba(52,199,89,0.55)"
+                color={eraseMode ? 'rgba(255,59,48,0.55)' : 'rgba(52,199,89,0.55)'}
                 style="stroke"
                 strokeWidth={brushPx * ds}
                 strokeCap="round"
@@ -5030,6 +5048,27 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // 復元ブラシの太さ。透過強度が開いている間は出さない（同じ場所を
               // 使うため、appMode === 'restore' の間だけ出るのでその心配は無い）。
               <>
+                {/* 復元(alphaを元に戻す)／消しゴム(alphaを問答無用で0にする)の切り替え。
+                    同じブラシ・同じストローク記録を共有し、離した時にどちらの
+                    コールバックを呼ぶかだけが変わる（finishRestoreStroke 等参照）。 */}
+                <View style={styles.brushModeRow}>
+                  <AnimatedPressable
+                    style={[styles.brushModeBtn, !eraseMode && styles.brushModeBtnOn]}
+                    onPress={() => { discardStroke(); setEraseMode(false); }}
+                    pressedScale={0.96}
+                  >
+                    <Icon name="healing" size={16} color={!eraseMode ? '#FFF' : 'rgba(255,255,255,0.6)'} />
+                    <Text style={[styles.brushModeTxt, !eraseMode && styles.brushModeTxtOn]}>{t('editor.brushModeRestore')}</Text>
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    style={[styles.brushModeBtn, eraseMode && styles.brushModeBtnOn]}
+                    onPress={() => { discardStroke(); setEraseMode(true); }}
+                    pressedScale={0.96}
+                  >
+                    <Icon name="backspace" size={16} color={eraseMode ? '#FFF' : 'rgba(255,255,255,0.6)'} />
+                    <Text style={[styles.brushModeTxt, eraseMode && styles.brushModeTxtOn]}>{t('editor.brushModeErase')}</Text>
+                  </AnimatedPressable>
+                </View>
                 <View style={styles.brushHead}>
                   <Text style={styles.brushLabel}>{t('editor.brushSize')}</Text>
                   <View style={styles.brushHeadRight}>
@@ -5805,6 +5844,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
   },
+  // 復元／消しゴムの切り替え。drawMethodRow/Btn と同じ2択トグルの見た目に揃える。
+  brushModeRow: { flexDirection: 'row', gap: 6, marginBottom: 8 },
+  brushModeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  brushModeBtnOn: { backgroundColor: IOS.blue },
+  brushModeTxt: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
+  brushModeTxtOn: { color: '#FFF', fontWeight: '600' },
   brushHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   brushHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   ghostBtn: {

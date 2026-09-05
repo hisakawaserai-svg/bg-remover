@@ -11,6 +11,7 @@
  */
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   // 画面状態の AppState 型と名前がぶつかるので別名で入れる。
@@ -46,6 +47,8 @@ import {
   persistSourceImage,
   applyEditSteps,
   loadImagePixels,
+  removeBackgroundVision,
+  isVisionBgRemovalSupported,
   rebuildCellFromOriginal,
   isBBoxInside,
   cropFromOriginal,
@@ -149,6 +152,7 @@ import { t, useT } from './src/i18n';
 import { maybeRequestReview } from './src/review';
 import { useSettings } from './src/settings/SettingsContext';
 import { isSplashEnabled } from './src/settings/store';
+import type { BgEngine } from './src/settings/store';
 import { useAlbumName } from './src/settings/useAlbumName';
 
 // ── 利用統計（端末内のみ・外部送信なし）───────────────────────────────────────
@@ -271,6 +275,38 @@ function AppScreens() {
   const redoStepsRef = useRef<EditStep[]>([]);
   // 元画像（背景除去前）の画素。操作列を掛け直すときの基準。
   const baseRgbaRef = useRef<Uint8Array | null>(null);
+  /**
+   * 先頭の autoBg ステップが Vision(engine:'vision') のときだけ使う、
+   * 「Vision適用直後」の画素のキャッシュ。undo/redo・リセットで autoBg まで
+   * 巻き戻るたびに Vision（ネイティブ推論）を再実行しないための専用バッファ。
+   * baseRgbaRef と同じ寸法。Vision を使わないセッションでは null のまま。
+   */
+  const visionBaselineRgbaRef = useRef<Uint8Array | null>(null);
+
+  /**
+   * 操作列の先頭が Vision の autoBg かどうか。
+   * 復元ブラシで RGB も一緒に復元するかどうかの判断に使う（Vision適用後の
+   * バッファは alpha=0 の画素の RGB が黒に潰れているため。詳しくは
+   * restoreBrush.ts のコメント参照）。
+   */
+  const isVisionSteps = useCallback((steps: EditStep[]): boolean => {
+    const first = steps[0];
+    return first?.kind === 'autoBg' && first.engine === 'vision';
+  }, []);
+
+  /**
+   * 操作列を先頭から作り直すときの出発点を選ぶ。
+   * 先頭が Vision の autoBg で、そのキャッシュがあればそこから
+   * （Visionはこの関数を呼んだ側では再実行できない同期経路のため）。
+   * それ以外は従来どおり元画像から。
+   */
+  const pickRebuildStartBuffer = useCallback((steps: EditStep[]): Uint8Array | null => {
+    const first = steps[0];
+    if (first?.kind === 'autoBg' && first.engine === 'vision' && visionBaselineRgbaRef.current) {
+      return visionBaselineRgbaRef.current;
+    }
+    return baseRgbaRef.current;
+  }, []);
 
   /**
    * セル編集中の「透過強度」。null = 未調整で、従来どおり bgResult（シート全体を
@@ -393,12 +429,14 @@ function AppScreens() {
         if (isAppend) {
           // 増えた分だけ掛ける（0件なら何もしない）。
           if (next.length > cur.length) {
-            applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length), base);
+            applyEditSteps(bg.rgba, bg.width, bg.height, next.slice(cur.length), base, isVisionSteps(next));
           }
         } else {
-          // 取り消し・リセットなど。操作は巻き戻せないので元画像から作り直す。
-          bg.rgba.set(base);
-          applyEditSteps(bg.rgba, bg.width, bg.height, next, base);
+          // 取り消し・リセットなど。操作は巻き戻せないので作り直す。
+          // 先頭が Vision の autoBg ならキャッシュ済みの結果から
+          // （ネイティブ推論をここで再実行しないため）、それ以外は従来どおり元画像から。
+          bg.rgba.set(pickRebuildStartBuffer(next) ?? base);
+          applyEditSteps(bg.rgba, bg.width, bg.height, next, base, isVisionSteps(next));
         }
       }
       setBgVersion(v => v + 1);
@@ -459,11 +497,11 @@ function AppScreens() {
     const base = baseRgbaRef.current;
     const bg = bgResultRef.current;
     if (base && bg) {
-      bg.rgba.set(base);
-      applyEditSteps(bg.rgba, bg.width, bg.height, editsRef.current, base);
+      bg.rgba.set(pickRebuildStartBuffer(editsRef.current) ?? base);
+      applyEditSteps(bg.rgba, bg.width, bg.height, editsRef.current, base, isVisionSteps(editsRef.current));
     }
     bgRgbaDirtyRef.current = false;
-  }, []);
+  }, [pickRebuildStartBuffer]);
 
 
   // AsyncStorage からセッション一覧と設定を再取得（マウント時に1回）
@@ -518,6 +556,53 @@ function AppScreens() {
   };
 
   /**
+   * 画像を選んだ直後に「背景除去の方式」をアクションシートで尋ねる。
+   * Visionが使える端末のときだけ出す（使えない端末で1択のシートを出しても
+   * 邪魔なだけなので、その場合は何も聞かずに 'flood' を返す）。
+   * 選んだ内容は次回以降の既定値としても保存する（設定画面の値と一本化）。
+   * シートをキャンセルした場合は画像選択自体は中断せず、現在の既定値のまま進める。
+   *
+   * force=true は「分割画面の✨ボタン」用。設定「毎回確認する」がOFFでも
+   * 明示的にやり直す操作なので、この場合だけは無条件でシートを出す。
+   */
+  const chooseBgEngine = async (force = false): Promise<BgEngine> => {
+    if (!force && !appSettings.confirmBgEngineEachTime) return appSettings.bgEngine;
+    if (!(await isVisionBgRemovalSupported())) return 'flood';
+
+    return new Promise<BgEngine>(resolve => {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: t('settings.bgEngine'),
+          message: t('settings.bgEngineHint'),
+          options: [t('settings.bgEngineFlood'), t('settings.bgEngineVision'), t('common.cancel')],
+          cancelButtonIndex: 2,
+          userInterfaceStyle: 'light',
+        },
+        index => {
+          if (index === 2 || index == null) { resolve(appSettings.bgEngine); return; }
+          const chosen: BgEngine = index === 1 ? 'vision' : 'flood';
+          void updateSettings({ bgEngine: chosen });
+          resolve(chosen);
+        },
+      );
+    });
+  };
+
+  /**
+   * 「分割画面」（row_confirm/SetupScreen）から、背景除去の方式を選び直して
+   * 同じ画像を最初からやり直す。画像選択時と同じ質問（chooseBgEngine）を
+   * もう一度出すだけで、以降の処理は新規画像を選んだ時と完全に同じ経路を通る。
+   * これまでの編集（スポイト等）はどのみち別方式でのやり直しには意味を
+   * なさないため、破棄する。
+   */
+  const restartWithDifferentEngine = async () => {
+    if (!currentImageUri) return;
+    const engine = await chooseBgEngine(true);
+    editsRef.current = []; redoStepsRef.current = [];
+    await processImage(currentImageUri, splitMode, undefined, undefined, engine);
+  };
+
+  /**
    * 選んだ／共有された画像1枚から処理を開始する。
    * ピッカー経由でも共有シート経由でも、ここから先は完全に同じ扱いにする。
    */
@@ -538,16 +623,28 @@ function AppScreens() {
     // 画像読み込み成功 → 統計「編集した画像」を加算（新規に選んだ画像のみ。セッション再開はカウントしない）
     recordImageEdited();
 
+    const engine = await chooseBgEngine();
+
     setSplitMode('auto'); // 新規画像は常に自動モードからスタート
     editsRef.current = []; redoStepsRef.current = []; // 前の画像の編集を持ち越さない
-    await processImage(uri);
+    await processImage(uri, undefined, undefined, undefined, engine);
   };
 
   // ── 処理（モード共通: removeBackground、その後モード別分岐）──────────────
   // overrideMode: resumeSession から呼ぶ際に保存済みモードを注入する
   // （setState は非同期のため、splitMode state は即座に反映されない）
 
-  const processImage = async (uri: string, overrideMode?: SplitMode, resumePolygons?: Polygon[], resumeEdits?: EditStep[]) => {
+  const processImage = async (
+    uri: string,
+    overrideMode?: SplitMode,
+    resumePolygons?: Polygon[],
+    resumeEdits?: EditStep[],
+    // updateSettings は非同期(setState)なので、選んだ直後の同じ呼び出しでは
+    // appSettings.bgEngine にまだ反映されていないことがある。startWithImage
+    // から選んだ値をここへ直接渡してもらい、そのレースを避ける
+    // （overrideMode と同じ理由）。
+    overrideEngine?: BgEngine,
+  ) => {
     const effectiveMode = overrideMode ?? splitMode; // ← 追加: overrideMode 優先
     setAppState('processing');
     setBgResult(null);
@@ -574,11 +671,20 @@ function AppScreens() {
         // してしまう（実際に発生した不具合）。null/undefined 判定にする。
         steps = resumeEdits;
       } else {
+        // 'vision' を指定されても、この端末で実際に使えなければ 'flood' に落とす。
+        // appSettings.bgEngine が古い端末から引き継がれた値の可能性がある
+        // （例: 以前iOS17+実機で選んだ設定を、iOS16実機や別端末に引き継いだ場合）ため、
+        // ここで必ず実際のサポート状況を確認してから使う。
+        const requestedEngine = overrideEngine ?? appSettings.bgEngine;
+        const engine: BgEngine = requestedEngine === 'vision' && await isVisionBgRemovalSupported()
+          ? 'vision'
+          : 'flood';
         const defaultStep: EditStep = {
           kind: 'autoBg',
           tolerance: appSettings.tolerance,
           feather: appSettings.featherEdges,
           fillHoles: appSettings.fillTextHoles,
+          engine,
         };
         // 「既に透過済みの画像」チェック。ChatGPT等で書き出された画像は
         // 見た目は普通でも実は背景が抜けていることがあり、気づかずもう一度
@@ -626,7 +732,55 @@ function AppScreens() {
           steps = [defaultStep];
         }
       }
-      applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
+      // 先頭が Vision の autoBg なら、ここで一度だけネイティブ推論を実行して
+      // その結果を result.rgba に書き込む。applyEditSteps 側は同期関数のため
+      // Vision を呼べず、このステップを素通りする実装にしてある（index.ts 参照）。
+      // 新規処理・セッション再開のどちらの経路でもここを通る（再開時はVisionの
+      // 結果を保存していないので毎回作り直す。undo/redoでの再実行はしない —
+      // その用途には visionBaselineRgbaRef を使う）。
+      const firstStep = steps[0];
+      if (firstStep?.kind === 'autoBg' && firstStep.engine === 'vision') {
+        try {
+          const visionResult = await removeBackgroundVision(uri);
+          if (visionResult.width !== result.width || visionResult.height !== result.height) {
+            throw new Error(t('errors.visionSizeMismatch'));
+          }
+          result.rgba.set(visionResult.rgba);
+          visionBaselineRgbaRef.current = visionResult.rgba.slice();
+        } catch (e) {
+          // Vision失敗時は、ただのエラー表示で終わらせず「色ベースでその場で
+          // 試す」導線を出す。ユーザーは既に一度方式を選んでいるので、
+          // 失敗を伝えるだけで再度ゼロから選び直させるのは手間が大きい。
+          const message = e instanceof Error ? e.message : t('common.unknownError');
+          const retryWithFlood = await new Promise<boolean>(resolveRetry => {
+            ActionSheetIOS.showActionSheetWithOptions(
+              {
+                title: t('errors.processTitle'),
+                message,
+                options: [t('errors.retryWithFlood'), t('common.cancel')],
+                cancelButtonIndex: 1,
+                userInterfaceStyle: 'light',
+              },
+              idx => resolveRetry(idx === 0),
+            );
+          });
+          if (retryWithFlood) {
+            // ✨ボタン(chooseBgEngine)と同じ挙動にする: 既定値も更新しておく。
+            // ここを更新しないと、edits がまだ永続化されていない段階
+            // （row_confirm まで進む前）で何かの拍子にこの画像の処理が
+            // やり直されたとき、appSettings.bgEngine が 'vision' のままなので
+            // また同じ理由でVisionが失敗する（実際に報告された不具合）。
+            void updateSettings({ bgEngine: 'flood' });
+            await processImage(uri, overrideMode, resumePolygons, undefined, 'flood');
+          } else {
+            setAppState('idle');
+          }
+          return;
+        }
+      } else {
+        visionBaselineRgbaRef.current = null;
+      }
+      applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current, firstStep?.kind === 'autoBg' && firstStep.engine === 'vision');
       // 透過処理完了 → 統計「透過処理」を加算。セッション再開時の再生（resumeEdits）は
       // 既に実行済みの操作をなぞるだけなので数えない。新規に autoBg を実行した時だけ数える。
       if (resumeEdits == null && steps.some(s => s.kind === 'autoBg')) {
@@ -917,13 +1071,26 @@ function AppScreens() {
     if (!base || !isBBoxInside(bbox, bg.width, bg.height)) return null;
 
     const firstStep = editsRef.current[0];
-    const sheetTolerance = firstStep?.kind === 'autoBg' ? firstStep.tolerance : appSettings.tolerance;
+    const isVisionSheet = firstStep?.kind === 'autoBg' && firstStep.engine === 'vision';
+    // Vision は tolerance という概念を持たないため、セル単位の作り直し（常に
+    // 色ベース）にはこの値を使えない。その場合は設定の既定値にフォールバックする。
+    const sheetTolerance = isVisionSheet ? appSettings.tolerance : (firstStep?.kind === 'autoBg' ? firstStep.tolerance : appSettings.tolerance);
+
+    // Visionのシートでは、このセルの範囲を「元画像から色ベースで作り直す」
+    // のではなく「Visionが一度だけ切り抜いた結果から該当範囲を切り出す」に
+    // する。背景が複雑な写真では、セルの矩形だけを単色フラッドフィルで
+    // 掛け直すと破綻するため（Visionの判定は画像全体の文脈を見て行われる）。
+    // ただし、ユーザーがこのセルだけ明示的に強さ（cellTolerance）を調整した
+    // 場合は、Visionでは救えなかった箇所への手動の逃げ道として、その意図を
+    // 優先し色ベースの掛け直しに切り替える。
+    const useVisionBaseline = isVisionSheet && cellTolerance === null;
 
     return rebuildCellFromOriginal(base, bg.width, bg.height, bbox, {
       tolerance: cellTolerance ?? sheetTolerance,
       feather: appSettings.featherEdges,
       fillHoles: appSettings.fillTextHoles,
       steps: editsRef.current,
+      visionBaseRgba: useVisionBaseline ? (visionBaselineRgbaRef.current ?? undefined) : undefined,
     });
   }, [cellTolerance, appSettings.tolerance, appSettings.featherEdges, appSettings.fillTextHoles]);
 
@@ -1348,7 +1515,34 @@ function AppScreens() {
               feather: appSettings.featherEdges,
               fillHoles: appSettings.fillTextHoles,
             }];
-        applyEditSteps(result.rgba, result.width, result.height, resumeSteps, baseRgbaRef.current);
+        // Vision の結果は保存していないため、再開のたびに1回だけ作り直す
+        // （processImage の新規処理経路と同じ理由。詳しくはそちらのコメント参照）。
+        let resumeFirstStep = resumeSteps[0];
+        if (resumeFirstStep?.kind === 'autoBg' && resumeFirstStep.engine === 'vision') {
+          try {
+            const visionResult = await removeBackgroundVision(latest.imageUri);
+            if (visionResult.width !== result.width || visionResult.height !== result.height) {
+              throw new Error(t('errors.visionSizeMismatch'));
+            }
+            result.rgba.set(visionResult.rgba);
+            visionBaselineRgbaRef.current = visionResult.rgba.slice();
+          } catch (e) {
+            // 自動再開の途中でシートを出すのは体験として不自然なため、
+            // ここでは静かに色ベースへフォールバックする（processImage の
+            // 新規処理経路とは異なり、選び直しを尋ねない）。
+            console.warn('[App] Vision再開に失敗、色ベースへフォールバック:', e);
+            resumeFirstStep = { ...resumeFirstStep, engine: 'flood' };
+            resumeSteps[0] = resumeFirstStep;
+            visionBaselineRgbaRef.current = null;
+            // ここで保存し直さないと、次回また同じ理由でVisionが失敗し続ける
+            // （processImage 側の新規処理経路と同じ理由の不具合。詳しくは
+            // そちらのコメント参照）。
+            void patchSession(latest.id, { edits: resumeSteps, updatedAt: Date.now() });
+          }
+        } else {
+          visionBaselineRgbaRef.current = null;
+        }
+        applyEditSteps(result.rgba, result.width, result.height, resumeSteps, baseRgbaRef.current, resumeFirstStep?.kind === 'autoBg' && resumeFirstStep.engine === 'vision');
         editsRef.current = resumeSteps;
         setEdits(resumeSteps);
         setRedoSteps([]);
@@ -1403,7 +1597,30 @@ function AppScreens() {
         const steps: EditStep[] = latest.edits != null
           ? latest.edits
           : [{ kind: 'autoBg', tolerance: appSettings.tolerance, feather: appSettings.featherEdges, fillHoles: appSettings.fillTextHoles }];
-        applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current);
+        // Vision の結果は保存していないため、再開のたびに1回だけ作り直す
+        // （processImage の新規処理経路と同じ理由。詳しくはそちらのコメント参照）。
+        let manualFirstStep = steps[0];
+        if (manualFirstStep?.kind === 'autoBg' && manualFirstStep.engine === 'vision') {
+          try {
+            const visionResult = await removeBackgroundVision(latest.imageUri);
+            if (visionResult.width !== result.width || visionResult.height !== result.height) {
+              throw new Error(t('errors.visionSizeMismatch'));
+            }
+            result.rgba.set(visionResult.rgba);
+            visionBaselineRgbaRef.current = visionResult.rgba.slice();
+          } catch (e) {
+            // 自動再開の途中でシートを出すのは体験として不自然なため、
+            // ここでは静かに色ベースへフォールバックする。
+            console.warn('[App] Vision再開に失敗、色ベースへフォールバック:', e);
+            manualFirstStep = { ...manualFirstStep, engine: 'flood' };
+            steps[0] = manualFirstStep;
+            visionBaselineRgbaRef.current = null;
+            void patchSession(latest.id, { edits: steps, updatedAt: Date.now() });
+          }
+        } else {
+          visionBaselineRgbaRef.current = null;
+        }
+        applyEditSteps(result.rgba, result.width, result.height, steps, baseRgbaRef.current, manualFirstStep?.kind === 'autoBg' && manualFirstStep.engine === 'vision');
         editsRef.current = steps;
         setEdits(steps);
         redoStepsRef.current = [];
@@ -1687,6 +1904,7 @@ function AppScreens() {
         canUndoEdit={edits.length > 0}
         canRedoEdit={redoSteps.length > 0}
         bgVersion={bgVersion}
+        onChangeEngine={restartWithDifferentEngine}
         onConfirm={(rows, cols, mode, noSplit, bounds) => {
           setSplitMode(mode);
           if (mode === 'auto') {
@@ -1785,6 +2003,12 @@ function AppScreens() {
               points: points.map(([px, py]) => [px + bbox.minX, py + bbox.minY] as [number, number]),
               radius,
             })}
+            // 消しゴム。座標変換は復元ブラシと同じ。
+            onErase={(points, radius) => pushEdit({
+              kind: 'erase',
+              points: points.map(([px, py]) => [px + bbox.minX, py + bbox.minY] as [number, number]),
+              radius,
+            })}
             baseRgba={cellBaseRgba}
             onUndoEdit={undoEdit}
             onRedoEdit={redoEdit}
@@ -1849,6 +2073,7 @@ function AppScreens() {
           onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
           // 復元ブラシ。座標はこの画面では元画像そのものなので変換不要。
           onRestore={(points, radius) => pushEdit({ kind: 'restore', points, radius })}
+          onErase={(points, radius) => pushEdit({ kind: 'erase', points, radius })}
           // 復元ブラシの透かし用。この画面では元画像そのものを渡す。
           baseRgba={baseRgbaRef.current}
           onUndoEdit={undoEdit}

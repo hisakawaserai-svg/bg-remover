@@ -34,12 +34,26 @@ export type EditStep =
   // fillHoles は「文字の穴を透過する」オプション。省略時 false。
   // 既存の保存済みセッションにはこのキーが無いため optional にしてある
   // （無い＝当時の挙動＝穴埋めなし、として正しく再現できる）。
-  | { kind: 'autoBg'; tolerance: number; feather: boolean; fillHoles?: boolean }
+  //
+  // engine は初期背景除去の方式。省略時は 'flood'（＝今までの色ベース
+  // フラッドフィル）として扱う。既存の保存済みセッションにはこのキーが
+  // 無いため optional にしてあり、'flood' 固定として正しく再現できる。
+  // 'vision' の場合、tolerance/feather/fillHoles は無視される
+  // （Visionは背景色という概念を持たないため）。呼び出し側はこのステップを
+  // 再生するとき、autoBg を毎回計算し直すのではなく、Vision適用直後の
+  // 結果を1回だけキャッシュしたバッファへ復元すること（undo/redoのたびに
+  // ネイティブ推論を再実行しないため）。
+  | { kind: 'autoBg'; tolerance: number; feather: boolean; fillHoles?: boolean; engine?: 'flood' | 'vision' }
   | { kind: 'eyedrop'; x: number; y: number; tolerance: number; feather: boolean }
   // restore = 復元ブラシ。消えすぎた部分の alpha を元画像の値へ戻す。
   // 1ストローク＝1ステップにしてある（点ごとに積むと undo が1画素ずつになり、
   // 操作列も一瞬で膨れ上がるため）。座標は元画像基準。
   | { kind: 'restore'; points: Array<[number, number]>; radius: number }
+  // erase = 消しゴムブラシ。restore の逆で、なぞった範囲を色に関係なく
+  // 問答無用で透過する（alpha=0）。スポイトは同系色の連続領域しか消せない
+  // ため、地続きでない孤立した消し残しを消す救済策として追加。
+  // restore と違い元画像を必要としない（戻す先が無いため）。
+  | { kind: 'erase'; points: Array<[number, number]>; radius: number }
   // retransRegion = 「選択範囲だけ再透過」。矩形(bbox)だけ元画像から作り直す。
   // maskPoints があれば、その多角形の内側だけを貼り戻す（矩形の四隅は
   // フラッドフィルの起点として使うだけで、実際に書き換えるのは多角形の

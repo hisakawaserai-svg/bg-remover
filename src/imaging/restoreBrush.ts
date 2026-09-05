@@ -1,12 +1,21 @@
 /**
  * restoreBrush.ts — 消えすぎた部分を元画像から復元するブラシ。
  *
- * 【なぜ alpha だけ戻すのか】
- * 背景除去は alpha を 0 にするだけで、RGB は元の色を残している
- * （フェザリングが掛かった境界画素だけは RGB も書き換わる）。
- * なので「元に戻す」に必要なのは alpha だけで、RGB は現在の透過結果の
- * ものをそのまま使ってよい。RGB まで元画像で上書きすると、せっかく
+ * 【なぜ既定は alpha だけ戻すのか】
+ * 色ベースのフラッドフィル(removeBackgroundInPlace)は alpha を 0 にするだけで、
+ * RGB は元の色を残している（フェザリングが掛かった境界画素だけは RGB も
+ * 書き換わる）。なので「元に戻す」に必要なのは alpha だけで、RGB は現在の
+ * 透過結果のものをそのまま使ってよい。RGB まで元画像で上書きすると、せっかく
  * フェザリングで背景色を差し引いた境界がまた白フチに戻ってしまう。
+ *
+ * 【restoreRgb（第10引数）が必要な理由】
+ * この前提は Vision (VNGenerateForegroundInstanceMaskRequest) の出力には
+ * 成り立たない。Visionは背景を透明合成する過程で、透明になった画素の RGB を
+ * 黒(0,0,0)に潰してしまう（premultiplied alphaの一般的な性質）。そのため
+ * Vision適用後のバッファは「alpha=0の画素はRGBも黒」であり、alphaだけ戻すと
+ * 黒いままの色が alpha だけ蘇って真っ黒に見える不具合になる。
+ * restoreRgb=true を渡すと、alphaと一緒にRGBも元画像から復元する
+ * （Vision由来のセルを復元ブラシで直すときに使う）。
  *
  * 【なぜ元画像が要るのか】
  * 現在の透過結果には「そこが元々どれだけ不透明だったか」が残っていない
@@ -39,6 +48,8 @@ export function applyRestoreStroke(
   stroke: RestoreStroke,
   offsetX = 0,
   offsetY = 0,
+  /** true なら alpha と一緒に RGB も元画像から復元する（Vision由来のバッファ用）。 */
+  restoreRgb = false,
 ): number {
   const r = Math.max(0.5, stroke.radius);
   const rSq = r * r;
@@ -63,9 +74,17 @@ export function applyRestoreStroke(
       const bx0 = ccx + offsetX;
       const by0 = ccy + offsetY;
       if (bx0 >= 0 && by0 >= 0 && bx0 < baseWidth && by0 < baseHeight) {
-        const d0 = (ccy * width + ccx) * 4 + 3;
-        const s0 = (by0 * baseWidth + bx0) * 4 + 3;
-        if (rgba[d0] < baseRgba[s0]) { rgba[d0] = baseRgba[s0]; changed++; }
+        const d0px = (ccy * width + ccx) * 4;
+        const s0px = (by0 * baseWidth + bx0) * 4;
+        if (rgba[d0px + 3] < baseRgba[s0px + 3]) {
+          rgba[d0px + 3] = baseRgba[s0px + 3];
+          if (restoreRgb) {
+            rgba[d0px] = baseRgba[s0px];
+            rgba[d0px + 1] = baseRgba[s0px + 1];
+            rgba[d0px + 2] = baseRgba[s0px + 2];
+          }
+          changed++;
+        }
       }
     }
 
@@ -86,12 +105,75 @@ export function applyRestoreStroke(
         const by = y + offsetY;
         if (bx < 0 || by < 0 || bx >= baseWidth || by >= baseHeight) continue;
 
-        const dst = (y * width + x) * 4 + 3;
-        const src = (by * baseWidth + bx) * 4 + 3;
+        const dstpx = (y * width + x) * 4;
+        const srcpx = (by * baseWidth + bx) * 4;
         // 元より濃くはしない。すでに元と同じかそれ以上なら触らないことで、
         // 同じ場所を何度なぞっても結果が変わらない（冪等）。
-        if (rgba[dst] >= baseRgba[src]) continue;
-        rgba[dst] = baseRgba[src];
+        if (rgba[dstpx + 3] >= baseRgba[srcpx + 3]) continue;
+        rgba[dstpx + 3] = baseRgba[srcpx + 3];
+        if (restoreRgb) {
+          rgba[dstpx] = baseRgba[srcpx];
+          rgba[dstpx + 1] = baseRgba[srcpx + 1];
+          rgba[dstpx + 2] = baseRgba[srcpx + 2];
+        }
+        changed++;
+      }
+    }
+  }
+  return changed;
+}
+
+/**
+ * ストロークがなぞった範囲を透過する（破壊的、消しゴム）。
+ *
+ * applyRestoreStroke の逆方向。スポイトは「タップ地点と同系色の連続領域」しか
+ * 消せないため、背景と地続きでない孤立した消し残し（色が離れた小さな点など）を
+ * 消せない場面がある。これはその救済策で、色を一切見ずに「なぞった場所を
+ * 問答無用でalpha=0にする」。元画像を必要としない（戻す先が無いため）。
+ *
+ * 同じ場所を何度なぞっても結果は変わる（すでに0の画素はchangedに数えない
+ * だけで、副作用としては冪等）。
+ *
+ * 返り値は実際に alpha を書き換えた画素数。
+ */
+export function applyEraseStroke(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  stroke: RestoreStroke,
+  /** rgba が元画像の一部を切り出したものである場合、その左上が元画像のどこかを示す。 */
+  offsetX = 0,
+  offsetY = 0,
+): number {
+  const r = Math.max(0.5, stroke.radius);
+  const rSq = r * r;
+  let changed = 0;
+
+  const points = densifyStroke(stroke.points, r).map(([px, py]): [number, number] => [px - offsetX, py - offsetY]);
+
+  for (const [gx, gy] of points) {
+    // 半径が 1px 未満でも中心画素だけは必ず消す（applyRestoreStroke と同じ理由）。
+    const ccx = Math.round(gx);
+    const ccy = Math.round(gy);
+    if (ccx >= 0 && ccy >= 0 && ccx < width && ccy < height) {
+      const off = (ccy * width + ccx) * 4 + 3;
+      if (rgba[off] !== 0) { rgba[off] = 0; changed++; }
+    }
+
+    const x0 = Math.max(0, Math.floor(gx - r));
+    const x1 = Math.min(width - 1, Math.ceil(gx + r));
+    const y0 = Math.max(0, Math.floor(gy - r));
+    const y1 = Math.min(height - 1, Math.ceil(gy + r));
+
+    for (let y = y0; y <= y1; y++) {
+      const dy = y - gy;
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - gx;
+        if (dx * dx + dy * dy > rSq) continue;
+
+        const off = (y * width + x) * 4 + 3;
+        if (rgba[off] === 0) continue;
+        rgba[off] = 0;
         changed++;
       }
     }

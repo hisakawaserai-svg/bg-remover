@@ -13,7 +13,7 @@
  * スポイトの結果が巻き戻って見える。座標をセル内に変換し、範囲外は捨てる。
  */
 import { removeBackgroundInPlace, removeColorAt, TOLERANCE } from './removeBackground';
-import { applyRestoreStroke } from './restoreBrush';
+import { applyRestoreStroke, applyEraseStroke } from './restoreBrush';
 import { pointInPolygon } from './maskPolygon';
 import type { EditStep } from '../session/types';
 import type { RemoveBgResult } from './removeBackground';
@@ -51,6 +51,17 @@ export interface RebuildOptions {
    * eyedrop だけをセル座標へ移して掛け直す。
    */
   steps?: EditStep[];
+  /**
+   * シート全体に対して Vision を1回だけ適用した結果（呼び出し側がキャッシュ
+   * している visionBaselineRgba）。渡された場合、このセルは baseRgba から
+   * 色ベースで作り直すのではなく、この結果から該当範囲を切り出すだけにする
+   * （tolerance/feather/fillHoles は無視され、removeBackgroundInPlace も
+   * 呼ばない）。Visionは複雑な背景も判定できるが、その判定は画像全体の
+   * 文脈を見て行われるため、セルの矩形だけを切り出して単色フラッドフィルで
+   * 掛け直すと（背景が単色でない場合）破綻した結果になる。既に正しく
+   * 分離済みの結果を再利用するのが正しい。
+   */
+  visionBaseRgba?: Uint8Array;
 }
 
 /**
@@ -58,6 +69,9 @@ export interface RebuildOptions {
  *
  * baseRgba は「背景除去前の元画像」であること。透過済みのバッファを渡すと
  * この関数の意味がなくなる（消えた画素は戻らない）。
+ * ただし visionBaseRgba を渡した場合は、そちらを「このセルの出発点」として
+ * 使う（baseRgba は steps 内の restore/retransRegion が元の色を参照するために
+ * 引き続き必要）。
  */
 export function rebuildCellFromOriginal(
   baseRgba: Uint8Array,
@@ -71,13 +85,18 @@ export function rebuildCellFromOriginal(
     feather = true,
     fillHoles = false,
     steps = [],
+    visionBaseRgba,
   } = opts;
 
-  const cell = cropFromOriginal(baseRgba, width, bbox);
+  const cell = visionBaseRgba
+    ? cropFromOriginal(visionBaseRgba, width, bbox)
+    : cropFromOriginal(baseRgba, width, bbox);
 
-  // 切り出してから掛けるので、背景色の推定もセル内の端から行われる。
-  // シート全体で推定するより、そのセルの実際の背景に素直に追従する。
-  removeBackgroundInPlace(cell.rgba, cell.width, cell.height, tolerance, feather, fillHoles);
+  if (!visionBaseRgba) {
+    // 切り出してから掛けるので、背景色の推定もセル内の端から行われる。
+    // シート全体で推定するより、そのセルの実際の背景に素直に追従する。
+    removeBackgroundInPlace(cell.rgba, cell.width, cell.height, tolerance, feather, fillHoles);
+  }
 
   // スポイトと復元ブラシを掛け直す。autoBg は上で tolerance 指定のものに
   // 置き換えたので飛ばす。
@@ -92,10 +111,14 @@ export function rebuildCellFromOriginal(
     } else if (s.kind === 'restore') {
       // 座標は元画像基準のまま渡し、bbox のぶんを offset として教える。
       // 範囲外の点は applyRestoreStroke 側で捨てられる。
+      // visionBaseRgba から切り出したセルは alpha=0 の画素の RGB が黒に
+      // 潰れているため、alpha だけでなく RGB も元画像から復元する。
       applyRestoreStroke(
         cell.rgba, baseRgba, cell.width, cell.height, width, height,
-        { points: s.points, radius: s.radius }, bbox.minX, bbox.minY,
+        { points: s.points, radius: s.radius }, bbox.minX, bbox.minY, !!visionBaseRgba,
       );
+    } else if (s.kind === 'erase') {
+      applyEraseStroke(cell.rgba, cell.width, cell.height, { points: s.points, radius: s.radius }, bbox.minX, bbox.minY);
     } else if (s.kind === 'retransRegion') {
       // 「選択範囲だけ再透過」。元画像基準の矩形を切り出して掛け直し、
       // このセルのローカル座標へ貼り戻す（セルの外へはみ出た分は捨てる）。

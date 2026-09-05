@@ -12,9 +12,12 @@ interface Props {
   showHome?:          boolean;
   showSettings?:      boolean;
   showOriginalImage?: boolean;
+  /** 背景除去の方式を変えてやり直す（Visionが使える端末でのみ呼び出し側が true にする）。 */
+  showChangeEngine?:  boolean;
   onHome?:            () => void;
   onSettings?:        () => void;
   onOriginalImage?:   () => void;
+  onChangeEngine?:    () => void;
 }
 
 /**
@@ -29,14 +32,21 @@ export default function HeaderActions({
   showHome,
   showSettings,
   showOriginalImage,
+  showChangeEngine,
   onHome,
   onSettings,
   onOriginalImage,
+  onChangeEngine,
 }: Props) {
-  if (!showHome && !showSettings && !showOriginalImage) return null;
+  if (!showHome && !showSettings && !showOriginalImage && !showChangeEngine) return null;
 
   return (
     <View style={styles.row}>
+      {showChangeEngine && (
+        <AnimatedPressable onPress={onChangeEngine!} style={styles.btn}>
+          <Icon name="auto-awesome" size={ICON_SIZE} color={colors.accent} />
+        </AnimatedPressable>
+      )}
       {showOriginalImage && (
         <AnimatedPressable onPress={onOriginalImage!} style={styles.btn}>
           <Icon name="image" size={ICON_SIZE} color={colors.accent} />

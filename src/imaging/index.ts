@@ -3,7 +3,7 @@ import type { SkImage } from '@shopify/react-native-skia';
 import RNFS from 'react-native-fs';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import { removeBackground, TOLERANCE, removeColorAt, removeBackgroundInPlace } from './removeBackground';
-import { applyRestoreStroke } from './restoreBrush';
+import { applyRestoreStroke, applyEraseStroke } from './restoreBrush';
 import type { EditStep } from '../session/types';
 import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
@@ -11,6 +11,7 @@ import type { BBox } from './splitObjects';
 
 export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace, analyzeExistingTransparency } from './removeBackground';
 export type { TransparencyStats } from './removeBackground';
+export { removeBackgroundVision, isVisionBgRemovalSupported } from './removeBackgroundVision';
 
 /**
  * 元画像の画素に編集操作を順番に掛け直して、現在の見た目を作る（破壊的）。
@@ -29,14 +30,27 @@ export function applyEditSteps(
    * 必要とする。渡さない場合はどちらも何もしない（元の画素が分からないため）。
    */
   baseRgba?: Uint8Array | null,
+  /**
+   * true なら復元ブラシ(restore)で RGB も元画像から復元する。
+   * 先頭が engine:'vision' の autoBg のときに呼び出し側から渡す。
+   * ここで steps[0] を見て自動判定しない理由: applyEdits 側は「追加分の
+   * 差分だけ」を steps として渡すことがあり（先頭の autoBg を含まない）、
+   * その場合は正しく判定できないため、呼び出し側が常に把握している
+   * 完全な操作列から渡してもらう契約にしてある。
+   */
+  restoreRgb = false,
 ): void {
   for (const s of steps) {
     if (s.kind === 'autoBg') {
+      // engine:'vision' の場合、この関数はネイティブ推論を呼べない（同期関数のため）。
+      // 呼び出し側が rgba の初期値として「Vision適用直後の画素」を渡している前提で、
+      // ここでは何もしない（既に反映済み）。engine 未指定/'flood' は従来どおり。
+      if (s.engine === 'vision') continue;
       removeBackgroundInPlace(rgba, width, height, s.tolerance, s.feather, s.fillHoles ?? false);
     } else if (s.kind === 'restore') {
       if (!baseRgba) continue;
       applyRestoreStroke(rgba, baseRgba, width, height, width, height,
-        { points: s.points, radius: s.radius });
+        { points: s.points, radius: s.radius }, 0, 0, restoreRgb);
     } else if (s.kind === 'retransRegion') {
       // 「選択範囲だけ再透過」。矩形を元画像から切り出し、その小さい範囲だけ
       // フラッドフィルし直してから、結果を元の位置へ貼り戻す。矩形の外は
@@ -76,6 +90,8 @@ export function applyEditSteps(
           rgba.set(region.subarray(y * bw * 4, y * bw * 4 + bw * 4), dstOff);
         }
       }
+    } else if (s.kind === 'erase') {
+      applyEraseStroke(rgba, width, height, { points: s.points, radius: s.radius });
     } else {
       removeColorAt(rgba, width, height, s.x, s.y, s.tolerance, s.feather);
     }
@@ -88,7 +104,7 @@ export type { BBox } from './splitObjects';
 export type { RemoveBgResult } from './removeBackground';
 export { maskOutsidePolygon, findUncoveredRegions } from './maskPolygon';
 export { rebuildCellFromOriginal, cropFromOriginal, isBBoxInside } from './rebuildCell';
-export { applyRestoreStroke, densifyStroke, thinStroke } from './restoreBrush';
+export { applyRestoreStroke, applyEraseStroke, densifyStroke, thinStroke } from './restoreBrush';
 export { initialRectFromBBox, INIT_PAD_RATIO, INIT_PAD_MIN_RATIO, INIT_PAD_MIN_PX } from './polygonInit';
 export type { RestoreStroke } from './restoreBrush';
 export type { CellBBox, RebuildOptions } from './rebuildCell';

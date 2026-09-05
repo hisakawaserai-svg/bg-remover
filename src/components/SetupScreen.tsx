@@ -44,6 +44,7 @@ import { useT } from '../i18n';
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
+import { useVisionSupported } from '../hooks/useVisionSupported';
 import { isTransparentAt, detectRowCount, detectColCount, toleranceToGapParams } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 
@@ -111,12 +112,15 @@ interface Props {
    */
   announceTransparent?: boolean;
   onAnnounced?: () => void;
+  /** 背景除去の方式を変えてやり直す（呼び出し側が画像選択時と同じ方式選択を再度出す）。 */
+  onChangeEngine?: () => void;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri, announceTransparent = false, onAnnounced }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
   const thumbBg = useThumbBg();
+  const visionSupported = useVisionSupported();
   const [rows, setRows] = useState(initialRows);
   // 列数。行数ステッパーと全く同じUI・挙動。初期値は自動推定した列数(initialCols)。
   const [cols, setCols] = useState(initialCols ?? 1);
@@ -547,9 +551,11 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           showOriginalImage={!!originalImageUri}
           showHome={!!onHome}
           showSettings={!!onSettings}
+          showChangeEngine={!!onChangeEngine && !!visionSupported}
           onOriginalImage={() => setZoomVisible(true)}
           onHome={onHome}
           onSettings={onSettings}
+          onChangeEngine={onChangeEngine}
         />
       }
     />

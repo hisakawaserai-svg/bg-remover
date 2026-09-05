@@ -44,6 +44,8 @@ import { BRUSH_MAX_PX, BRUSH_MIN_PX, DEFAULTS, isSplashEnabled, LOUPE_MODE_ICONS
 import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
+import { useVisionSupported } from '../hooks/useVisionSupported';
+import type { BgEngine } from '../settings/store';
 import LoupeMagnifySlider from './ui/LoupeMagnifySlider';
 import LoupeSizeSlider from './ui/LoupeSizeSlider';
 import RangeValueSlider from './ui/RangeValueSlider';
@@ -168,6 +170,10 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // スポイトの許容値。背景除去の tolerance とは別のツマミ（store.ts のコメント参照）。
   const [eyeTolerance, setEyeTolerance] = useState(settings.eyedropperTolerance);
 
+  // Vision(iOS17+実機)が使えるか。null=判定中。Android・iOS16以下・Simulatorはfalse。
+  // 「選ぶと壊れる選択肢」を出さないよう、使えない端末では選択肢自体を出さない。
+  const visionSupported = useVisionSupported();
+
   // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -219,6 +225,38 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           expanded={!!openSections.transparency}
           onToggle={() => toggleSection('transparency')}
         >
+          {/* 初期背景除去の方式。'vision' が使えない端末（Android・iOS16以下・
+              Simulator）では選択肢自体を出さず、色ベースのみにする。 */}
+          <SelectRow<BgEngine>
+            label={t('settings.bgEngine')}
+            sub={visionSupported === false ? t('settings.bgEngineHintUnavailable') : t('settings.bgEngineHint')}
+            value={visionSupported ? settings.bgEngine : 'flood'}
+            options={
+              visionSupported
+                ? [
+                    { value: 'flood',  label: t('settings.bgEngineFlood'),  icon: 'opacity' },
+                    { value: 'vision', label: t('settings.bgEngineVision'), icon: 'auto-awesome' },
+                  ]
+                : [{ value: 'flood', label: t('settings.bgEngineFlood'), icon: 'opacity' }]
+            }
+            onChange={v => void updateSettings({ bgEngine: v })}
+          />
+          {/* Visionが使えない端末では選ぶ余地が無いので、確認自体が無意味なため出さない。 */}
+          {!!visionSupported && (
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.confirmBgEngineEachTime')}</Text>
+                <Text style={styles.rowSub}>{t('settings.confirmBgEngineEachTimeHint')}</Text>
+              </View>
+              <Switch
+                value={settings.confirmBgEngineEachTime}
+                onValueChange={v => void updateSettings({ confirmBgEngineEachTime: v })}
+                trackColor={{ false: IOS.fill, true: IOS.blue }}
+                thumbColor="#FFF"
+              />
+            </View>
+          )}
+          <Divider />
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
             <View style={styles.rowLeft}>

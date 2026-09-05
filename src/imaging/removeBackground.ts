@@ -100,14 +100,21 @@ export async function removeBackground(
   return img;
 }
 
+// OOM対策: 長辺がこの上限(px)を超える場合のみ縮小する。
+// removeBackground はピクセル数分のバッファ(rgba/visited/queue)を複数確保するため、
+// 巨大画像だとメモリを圧迫する。通常のイラストシート(~1000px前後)は対象外で
+// 実質何も変わらない。縦横比は維持し、単純な縮小のみ(パディングや正方化はしない)。
+//
+// removeBackgroundVision.ts もこの定数・関数を経由して同じ縮小結果を得ることで、
+// 色ベース経路とVision経路とで画像サイズが食い違わないようにしている
+// （食い違うと bbox・ポリゴン座標の基準がズレて全部おかしくなる）。
+export const MAX_DIMENSION = 2500;
+
 /**
- * 元画像を読み込んでピクセル配列にする（背景除去はしない）。
- *
- * 背景除去を「取り消せる1つの操作」として扱えるようにするため、読み込みと
- * 除去を分けてある。呼び出し側はここで得た素の画素を基準として保持しておき、
- * 除去やスポイトを掛け直すことで任意の時点へ戻せる。
+ * ファイルを読み込み、OOM対策の縮小まで済ませた SkImage を返す。
+ * 呼び出し側は返った image を dispose する責任を持つ。
  */
-export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> {
+export async function decodeAndResizeImage(fileUri: string) {
   // file:// のローカルファイルが存在しない場合、Skia.Data.fromURI は reject せず
   // ハングすることがある（→ 呼び出し側が 'processing' のまま無限ローディング）。
   // 事前に存在チェックして明示的に throw し、呼び出し側の catch で扱えるようにする。
@@ -124,11 +131,6 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
     throw new Error(t('errors.decodeFailed'));
   }
 
-  // OOM対策: 長辺が上限(2500px)を超える場合のみ縮小する。
-  // removeBackground はピクセル数分のバッファ(rgba/visited/queue)を複数確保するため、
-  // 巨大画像だとメモリを圧迫する。通常のイラストシート(~1000px前後)は対象外で
-  // 実質何も変わらない。縦横比は維持し、単純な縮小のみ(パディングや正方化はしない)。
-  const MAX_DIMENSION = 2500;
   let processedImage = image;
   const origW = image.width();
   const origH = image.height();
@@ -156,9 +158,21 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
     console.log(`[removeBg] resized ${origW}x${origH} → ${newW}x${newH} (OOM対策)`);
   }
 
+  return processedImage;
+}
+
+/**
+ * 元画像を読み込んでピクセル配列にする（背景除去はしない）。
+ *
+ * 背景除去を「取り消せる1つの操作」として扱えるようにするため、読み込みと
+ * 除去を分けてある。呼び出し側はここで得た素の画素を基準として保持しておき、
+ * 除去やスポイトを掛け直すことで任意の時点へ戻せる。
+ */
+export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> {
+  const processedImage = await decodeAndResizeImage(fileUri);
+
   const width = processedImage.width();
   const height = processedImage.height();
-  const pixelCount = width * height;
 
   const rawPixels = processedImage.readPixels(0, 0, {
     width,
@@ -166,6 +180,7 @@ export async function loadImagePixels(fileUri: string): Promise<RemoveBgResult> 
     colorType: ColorType.RGBA_8888,
     alphaType: AlphaType.Unpremul,
   });
+  processedImage.dispose();
   if (!rawPixels) {
     throw new Error(t('errors.pixelsFailed'));
   }

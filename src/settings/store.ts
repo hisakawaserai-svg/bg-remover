@@ -27,6 +27,9 @@ export const BRUSH_MAX_PX = 80;
 
 export type ThumbBg = 'white' | 'gray' | 'checker' | 'black';
 
+/** 初期背景除去の方式。'flood' = 色ベースフラッドフィル（従来）、'vision' = iOS Vision。 */
+export type BgEngine = 'flood' | 'vision';
+
 export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 
 /**
@@ -138,6 +141,19 @@ export interface AppSettings {
    * スタンプ作成では誤除去のほうが痛いので、既定は OFF。
    */
   fillTextHoles: boolean;
+  /**
+   * 初期背景除去の方式。既定 'flood'（従来の色ベースフラッドフィル）。
+   * 'vision' は iOS Vision (VNGenerateForegroundInstanceMaskRequest, iOS17+実機のみ)。
+   * スポイト・復元ブラシ・再透過・セル単位の調整はどちらを選んでも常に色ベースのまま
+   * （Visionが関わるのは最初の1回の除去だけ）。
+   */
+  bgEngine: BgEngine;
+  /**
+   * 画像を選ぶたびに背景除去の方式をアクションシートで確認するか。既定 true。
+   * falseにすると確認せず bgEngine をそのまま使う（Visionが使えない場合は
+   * 呼び出し側が自動でflood-fillへフォールバックする）。
+   */
+  confirmBgEngineEachTime: boolean;
   gridColumns: 2 | 3 | 4;
   thumbBg: ThumbBg;
   splitLineColor: SplitLineColor;
@@ -242,6 +258,8 @@ export const DEFAULTS: AppSettings = {
   featherEdges:   true,
   // 既定 OFF。誤除去を増やさないことを優先する（上級者が明示的に ON にする想定）。
   fillTextHoles:  false,
+  bgEngine:       'flood',
+  confirmBgEngineEachTime: true,
   gridColumns:    3,
   thumbBg:        'checker',
   splitLineColor: '#007AFF',

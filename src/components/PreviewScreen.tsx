@@ -1,11 +1,12 @@
 /**
- * PreviewScreen — ポリゴン切り取り結果のサムネイル一覧 + 保存確認画面
+ * PreviewScreen — ポリゴン切り取り結果の確認 + 保存画面
  *
  * フロー:
- *   1) マウント時に各ポリゴンをクロップ+マスクしてサムネイル(base64)を生成
- *   2) ScrollView で 2列グリッド表示（市松模様で透過部分を可視化）
- *   3) 「保存」タップ → savePolygons でギャラリーへ書き出し → onSave() を呼ぶ
- *   4) 「編集に戻る」→ onBack() でポリゴンは保持したまま PolygonEditor に戻る
+ *   1) マウント時に各ポリゴンを保存と同じ経路で PNG 化し、file:// を持つ
+ *   2) 2列グリッドで見せる。背景色・番号は結果画面と同じ一時切替（永続化しない）
+ *   3) タップで ImagePreviewModal（保存完了と同じピンチズーム・左右送り）
+ *   4) 「保存」→ savePolygons でギャラリーへ → onSave()
+ *   5) 「編集に戻る」→ onBack()（polygons は App 側で保持済み）
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import {
@@ -15,154 +16,73 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import CheckerboardBg from './ui/CheckerboardBg';
-import ImageZoomModal from './ui/ImageZoomModal';
+import ImagePreviewModal from './ui/ImagePreviewModal';
 import { useThumbBg } from '../hooks/useThumbBg';
-import { Skia, ColorType, AlphaType, FilterMode, MipmapMode } from '@shopify/react-native-skia';
-import { savePolygons } from '../imaging';
+import { clearPreviewDir, savePolygons, writePreviewPolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
-import { pointInPolygon } from '../imaging/maskPolygon';
+import type { ThumbBg } from '../settings/store';
 import type { RemoveBgResult } from '../imaging';
 import type { Polygon } from './PolygonEditor';
 
-// サムネイル表示サイズ (px)
-const THUMB_SIZE = 140;
+/** 下地ごとのアイコン。ResultScreen / PolygonEditor と同じ。 */
+const BG_ICONS: Record<ThumbBg, string> = {
+  checker: 'grid-on',
+  white: 'wb-sunny',
+  black: 'brightness-2',
+  gray: 'grid-on',
+};
 
 interface Props {
   bgResult: RemoveBgResult;
   polygons: Polygon[];
-  onBack: () => void;             // 編集に戻る（polygons はApp側で保持済み）
+  onBack: () => void;
   /** 保存完了後に App.tsx の state を 'done' へ。paths は書き出した PNG の file:// URI。 */
   onSave: (count: number, paths: string[]) => void;
-  onRequestSave: () => Promise<boolean>; // 保存前の権限確認。App.tsx の requestSave をそのまま渡してもらう
+  onRequestSave: () => Promise<boolean>;
 }
-
-// ── サムネイル生成 ────────────────────────────────────────────────────────────
-
-/**
- * 1ポリゴン分を切り出し・マスクして base64 data URI を返す（プレビュー専用）。
- * imaging/index.ts の cropAndMask と同じアルゴリズムだが、
- * サムネイルサイズへのリサイズも行う。
- * 画像範囲外の頂点は外接矩形計算でクランプされ、
- * ポリゴン外のピクセルは alpha=0 になる。
- */
-function buildThumbnail(
-  rgba: Uint8Array,
-  srcW: number,
-  srcH: number,
-  points: [number, number][],
-): string | null {
-  if (points.length < 3) return null;
-
-  // 1) 外接矩形（画像範囲内にクランプ）
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const [x, y] of points) {
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-  }
-  const left   = Math.max(0, Math.floor(minX));
-  const top    = Math.max(0, Math.floor(minY));
-  const right  = Math.min(srcW - 1, Math.ceil(maxX));
-  const bottom = Math.min(srcH - 1, Math.ceil(maxY));
-  const cropW  = right - left + 1;
-  const cropH  = bottom - top + 1;
-  if (cropW <= 0 || cropH <= 0) return null;
-
-  // 2) 切り出し + ポリゴン外を透過（レイキャスティング法）
-  const bytes = new Uint8Array(cropW * cropH * 4);
-  for (let row = 0; row < cropH; row++) {
-    for (let col = 0; col < cropW; col++) {
-      const imgX = left + col;
-      const imgY = top + row;
-      const si = (imgY * srcW + imgX) * 4;
-      const di = (row * cropW + col) * 4;
-      bytes[di]     = rgba[si];
-      bytes[di + 1] = rgba[si + 1];
-      bytes[di + 2] = rgba[si + 2];
-      // ピクセル中心(+0.5)で判定して端部誤差を最小化
-      bytes[di + 3] = pointInPolygon(imgX + 0.5, imgY + 0.5, points) ? rgba[si + 3] : 0;
-    }
-  }
-
-  // 3) SkImage 生成
-  const data = Skia.Data.fromBytes(bytes);
-  const img  = Skia.Image.MakeImage(
-    { width: cropW, height: cropH, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
-    data, cropW * 4,
-  );
-  if (!img) return null;
-
-  // 4) THUMB_SIZE に収まるようリサイズ（アスペクト比維持）
-  const scale = Math.min(THUMB_SIZE / cropW, THUMB_SIZE / cropH);
-  const dstW  = Math.round(cropW * scale);
-  const dstH  = Math.round(cropH * scale);
-  const surf  = Skia.Surface.Make(dstW, dstH)!;
-  const c     = surf.getCanvas();
-  c.clear(Skia.Color('transparent'));
-  const paint = Skia.Paint();
-  paint.setAntiAlias(true);
-  // 既定のサンプリング（ニアレスト）だと縮小時にジャギーが出るので Linear を明示する。
-  c.drawImageRectOptions(
-    img,
-    Skia.XYWHRect(0, 0, cropW, cropH),
-    Skia.XYWHRect(0, 0, dstW, dstH),
-    FilterMode.Linear,
-    MipmapMode.None,
-    paint,
-  );
-  const thumb = surf.makeImageSnapshot();
-  const b64   = thumb.encodeToBase64();
-
-  img.dispose();
-  thumb.dispose();
-  surf.dispose();
-
-  return `data:image/png;base64,${b64}`;
-}
-
-// ── コンポーネント ──────────────────────────────────────────────────────────
 
 export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
   const { t } = useT();
   const { ensureAlbumName } = useAlbumName();
-  const bg = useThumbBg();
-  // thumbs[i]: polygon[i] のサムネイル data URI（null = 生成失敗）
-  const [thumbs,   setThumbs]   = useState<(string | null)[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  // タップしたサムネイルの拡大表示用。null なら非表示。
-  const [zoomUri, setZoomUri] = useState<string | null>(null);
+  const { width: winW } = useWindowDimensions();
+  const defaultBg = useThumbBg();
+  const [bgMode, setBgMode] = useState<ThumbBg>(defaultBg);
+  const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  const [showNumbers, setShowNumbers] = useState(true);
 
-  // マウント時にサムネイルを一括生成。
-  // buildThumbnail はポリゴンごとに画素単位でループする重い同期処理で、
-  // 件数や画像が大きいと数百ms〜数秒 JS スレッドを止める。1フレーム目で
-  // 直に回すと、上の ActivityIndicator が実際に画面へコミットされる前に
-  // 処理が始まってしまい、スピナーが出ないまま固まって見える。
-  // PolygonEditor 遷移時と同じく2フレーム待ってから始める。
+  const cellSize = Math.floor((winW - 16 * 2 - 12) / 2);
+
+  // null = 生成中。要素はポリゴン順。失敗は null。
+  const [uris, setUris] = useState<(string | null)[] | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    const outer = requestAnimationFrame(() => {
-      if (cancelled) return;
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        const { rgba, width, height } = bgResult;
-        const results = polygons.map(p => buildThumbnail(rgba, width, height, p.points));
-        setThumbs(results);
-      });
-    });
-    return () => { cancelled = true; cancelAnimationFrame(outer); };
+    const isCancelled = () => cancelled;
+    void (async () => {
+      const { rgba, width, height } = bgResult;
+      const results = await writePreviewPolygons(rgba, width, height, polygons, isCancelled);
+      if (!cancelled) setUris(results);
+    })();
+    return () => {
+      cancelled = true;
+      void clearPreviewDir();
+    };
   // polygons・bgResult はマウント時に確定するので deps は空でよい
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ギャラリーへ保存（savePolygons は imaging/index.ts に集約）
   const handleSave = useCallback(async () => {
     const ok = await onRequestSave();
     if (!ok) {
@@ -175,12 +95,18 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
       const { count, paths } = await savePolygons(rgba, width, height, polygons, await ensureAlbumName());
       onSave(count, paths);
     } catch (e: unknown) {
-      // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
       Alert.alert(t('preview.saveErrorTitle'), describeSaveError(e));
     } finally {
       setIsSaving(false);
     }
   }, [bgResult, polygons, onSave, onRequestSave, ensureAlbumName, t]);
+
+  const previewUris = (uris ?? []).filter((u): u is string => !!u);
+
+  const openPreview = (uri: string) => {
+    const idx = previewUris.indexOf(uri);
+    if (idx >= 0) setPreviewIdx(idx);
+  };
 
   const header = (
     <AppHeader
@@ -190,7 +116,6 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
     />
   );
 
-  // 保存ボタンは自動分割(ResultScreen)と同じく画面下部に固定する
   const footer = (
     <View style={styles.footer}>
       <AnimatedPressable
@@ -207,60 +132,91 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
   );
 
   return (
-    // scrollable={false}: サムネイル有無で内部レイアウトが切り替わるため
-    // ScrollView は内側で制御し、Screen は非スクロールの固定レイアウトとして使う。
     <Screen header={header} footer={footer} scrollable={false} bg={IOS.bg}>
-      {/* ── サムネイル一覧 または ローディング ── */}
-      {polygons.length === 0
-        ? (
-          // ポリゴンが1件も無い場合: 生成中ではなく「対象なし」を明示
-          <View style={styles.loading}>
-            <Text style={styles.loadingTxt}>{t('preview.nothingToExport')}</Text>
+      {polygons.length === 0 ? (
+        <View style={styles.loading}>
+          <Text style={styles.loadingTxt}>{t('preview.nothingToExport')}</Text>
+        </View>
+      ) : uris == null ? (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={IOS.blue} />
+          <Text style={styles.loadingTxt}>{t('loading.previewGenerating')}</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.gridWrap}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionLabel}>{t('preview.cutsLabel', { count: polygons.length })}</Text>
+            <View style={styles.sectionHintRow}>
+              <AnimatedPressable
+                style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
+                onPress={() => setShowNumbers(v => !v)}
+                pressedScale={0.9}
+              >
+                <Icon name="looks-one" size={16} color="#FFF" />
+              </AnimatedPressable>
+              <View style={styles.bgToggleWrap}>
+                <AnimatedPressable
+                  style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
+                  onPress={() => setBgPickerOpen(o => !o)}
+                  pressedScale={0.9}
+                >
+                  <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
+                </AnimatedPressable>
+                {bgPickerOpen && (
+                  <View style={styles.bgToggleColumn}>
+                    {(['checker', 'white', 'black'] as const).map(mode => (
+                      <AnimatedPressable
+                        key={mode}
+                        style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
+                        onPress={() => setBgMode(mode)}
+                        pressedScale={0.9}
+                      >
+                        <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
-        )
-        : thumbs.length === 0
-        ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={IOS.blue} />
-            <Text style={styles.loadingTxt}>{t('loading.previewGenerating')}</Text>
-          </View>
-        )
-        : (
-          <ScrollView contentContainerStyle={styles.grid}>
-            {thumbs.map((uri, idx) => (
-              <View key={polygons[idx]?.id ?? idx} style={styles.cell}>
-                <CheckerboardBg mode={bg} tile={14} width={THUMB_SIZE} height={THUMB_SIZE} />
-                {uri
-                  ? (
-                    <TouchableOpacity onPress={() => setZoomUri(uri)} activeOpacity={0.8}>
-                      <Image source={{ uri }} style={styles.thumb} resizeMode="contain" />
-                    </TouchableOpacity>
-                  )
-                  : <Text style={styles.errorTxt}>×</Text>
-                }
-                {/* 通し番号バッジ */}
-                <View style={styles.badge}>
-                  <Text style={styles.badgeTxt}>{idx + 1}</Text>
-                </View>
+
+          <View style={styles.grid}>
+            {uris.map((uri, idx) => (
+              <View key={polygons[idx]?.id ?? idx} style={[styles.cell, { width: cellSize, height: cellSize }]}>
+                <CheckerboardBg mode={bgMode} tile={14} width={cellSize} height={cellSize} />
+                {uri ? (
+                  <AnimatedPressable
+                    style={{ width: cellSize, height: cellSize }}
+                    onPress={() => openPreview(uri)}
+                    pressedScale={0.96}
+                  >
+                    <Image source={{ uri }} style={{ width: cellSize, height: cellSize }} resizeMode="contain" />
+                  </AnimatedPressable>
+                ) : (
+                  <Text style={styles.errorTxt}>×</Text>
+                )}
+                {showNumbers && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeTxt}>{idx + 1}</Text>
+                  </View>
+                )}
               </View>
             ))}
-          </ScrollView>
-        )
-      }
+          </View>
+        </ScrollView>
+      )}
 
-      {/* サムネイルタップ拡大用モーダル(SetupScreen/PolygonEditorと同じ共通部品を再利用) */}
-      <ImageZoomModal
-        visible={zoomUri != null}
-        uri={zoomUri ?? ''}
-        onClose={() => setZoomUri(null)}
-        showShare // 開くのはカット画像なので共有できる
-        useBgSetting // 透過画像なので、サムネと同じ「背景色」設定で見せる
-      />
+      {previewIdx !== null && previewUris.length > 0 && (
+        <ImagePreviewModal
+          uris={previewUris}
+          initial={previewIdx}
+          onClose={() => setPreviewIdx(null)}
+          bg={bgMode}
+        />
+      )}
     </Screen>
   );
 }
-
-// ── スタイル ──────────────────────────────────────────────────────────────────
 
 const IOS = {
   bg:        '#F2F2F7',
@@ -271,7 +227,6 @@ const IOS = {
 } as const;
 
 const styles = StyleSheet.create({
-  // 下部固定フッター（ResultScreen の保存ボタンと同じ見た目）
   footer: { paddingHorizontal: 16, paddingTop: 12 },
   saveBtn: {
     backgroundColor: IOS.blue,
@@ -286,27 +241,94 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingTxt: { fontSize: 14, color: IOS.secondary },
 
-  // 2列グリッド
+  gridWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 6,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000',
+  },
+  sectionHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bgToggleWrap: {
+    position: 'relative',
+  },
+  bgToggleBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: 'rgba(30,30,30,0.80)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  bgToggleBtnActive: { backgroundColor: IOS.blue, borderColor: IOS.blue },
+  bgToggleColumn: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 6,
+    padding: 4,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  bgToggleDot: {
+    width: 30,
+    height: 26,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  bgToggleDotOn: { backgroundColor: IOS.blue },
+
   grid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    gap: 16, padding: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
     justifyContent: 'center',
   },
   cell: {
-    width: THUMB_SIZE, height: THUMB_SIZE,
-    borderRadius: 12, overflow: 'hidden',
-    borderWidth: 0.5, borderColor: IOS.separator,
-    alignItems: 'center', justifyContent: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: IOS.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  thumb: { width: THUMB_SIZE, height: THUMB_SIZE },
   errorTxt: { fontSize: 24, color: IOS.secondary },
 
-  // 番号バッジ（左上）
   badge: {
-    position: 'absolute', top: 6, left: 6,
-    minWidth: 20, height: 20, borderRadius: 10,
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 5,
   },
   badgeTxt: { fontSize: 11, fontWeight: '700', color: '#FFF' },

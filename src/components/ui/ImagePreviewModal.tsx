@@ -5,7 +5,7 @@
  *   <ImagePreviewModal uris={uris} initial={idx} onClose={() => setIdx(null)} />
  *
  * 特徴:
- *   - 背景は設定「背景色」に連動（市松/白/黒）。サムネのグリッドと同じ見え方になる
+ *   - 背景は設定「背景色」に連動（市松/白/黒）。bg prop があればそちらを優先する
  *   - 左右スワイプ / ボタンで前後に移動（1枚ならナビ非表示）
  *   - 等倍時: 画像タップ / ✕ボタン / OS バックボタンで閉じる
  *   - ピンチで拡大縮小、拡大中は1本指ドラッグで移動できる。拡大中はページ送りの
@@ -38,6 +38,7 @@ import CheckerboardBg from './CheckerboardBg';
 import { shareImages } from '../../share/shareImages';
 import { resolvePhUri } from '../../imaging/resolvePhUri';
 import { useThumbBg } from '../../hooks/useThumbBg';
+import type { ThumbBg } from '../../settings/store';
 
 // 市松のタイルサイズ。
 // TILE=60 で典型画面(390×844)→ 7×15 = 105 View。size*2 にすると ~20,000 View でフリーズ。
@@ -53,13 +54,19 @@ interface Props {
   uris: string[];
   initial?: number;
   onClose: () => void;
+  /**
+   * 指定時は設定「背景色」より優先する。PreviewScreen など、画面上の
+   * 一時切替と拡大表示を揃えるため。未指定なら従来どおり設定値。
+   */
+  bg?: ThumbBg;
 }
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props) {
+export default function ImagePreviewModal({ uris, initial = 0, onClose, bg: bgOverride }: Props) {
   const { width: w, height: h } = useWindowDimensions();
-  const bg = useThumbBg();
+  const settingsBg = useThumbBg();
+  const bg = bgOverride ?? settingsBg;
   const [idx, setIdx] = useState(initial);
   const total = uris.length;
   const scrollRef = useRef<ScrollView>(null);
@@ -119,7 +126,18 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
     setScrollEnabled(true);
   }, [idx, scale, translateX, translateY, baseScale, baseTranslateX, baseTranslateY]);
 
+  // ScrollView のネイティブ横スワイプ。ピンチが始まったらこちらを止める。
+  // 止めないと、2本指のわずかな横移動でページ送りが勝ち、拡大しづらい。
+  const nativeScroll = Gesture.Native();
+
   const pinch = Gesture.Pinch()
+    .onTouchesDown(e => {
+      // onStart より前。2本目が乗った時点でスクロールを切らないと、
+      // ピンチ成立前にページが横へ滑り始める。
+      if (e.numberOfTouches >= 2) {
+        runOnJS(setScrollEnabled)(false);
+      }
+    })
     .onStart(e => {
       baseScale.value = scale.value;
       baseTranslateX.value = translateX.value;
@@ -147,9 +165,12 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
       baseScale.value = scale.value;
       baseTranslateX.value = translateX.value;
       baseTranslateY.value = translateY.value;
-      // 等倍まで戻っていればページ送りのスワイプを再度使えるようにする。
+    })
+    .onFinalize(() => {
+      // キャンセル（2本指を置いてすぐ離す等）でも、等倍ならスワイプを戻す。
       runOnJS(setScrollEnabled)(scale.value <= 1.001);
-    });
+    })
+    .blocksExternalGesture(nativeScroll);
 
   const pan = Gesture.Pan()
     .maxPointers(1)
@@ -178,7 +199,10 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
     .onEnd(() => {
       baseTranslateX.value = translateX.value;
       baseTranslateY.value = translateY.value;
-    });
+    })
+    .blocksExternalGesture(nativeScroll);
+
+  const composed = Gesture.Simultaneous(pinch, pan, nativeScroll);
 
   const imgAnimStyle = useAnimatedStyle(() => ({
     transform: [
@@ -188,11 +212,25 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
     ],
   }));
 
+  /** ページを離れる前に拡大を戻す。戻さないと、前ページの Animated.Image から
+   *  animated style が外れたあとネイティブ側に最後の transform が残り、
+   *  拡大した前の画像が次ページの上に重なって見える。 */
+  const resetZoom = useCallback(() => {
+    scale.value = 1;
+    translateX.value = 0;
+    translateY.value = 0;
+    baseScale.value = 1;
+    baseTranslateX.value = 0;
+    baseTranslateY.value = 0;
+    setScrollEnabled(true);
+  }, [scale, translateX, translateY, baseScale, baseTranslateX, baseTranslateY]);
+
   const goTo = useCallback((newIdx: number) => {
     const clamped = Math.max(0, Math.min(newIdx, total - 1));
+    resetZoom();
     setIdx(clamped);
     scrollRef.current?.scrollTo({ x: clamped * w, animated: true });
-  }, [total, w]);
+  }, [total, w, resetZoom]);
 
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
@@ -204,11 +242,9 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
         </View>
 
         {/* 画像ページ群: 左右スワイプ対応。等倍時は各ページタップで閉じる。
-            拡大中はページ送り(scrollEnabled)を止め、ピンチ/ドラッグに切り替える
-            （上のコメント参照）。ページごとに Gesture インスタンスを作る
-            （同じ Gesture オブジェクトを複数の GestureDetector へ同時に
-            付けるとハンドラーが衝突するため）。共有値・onClose 等は
-            クロージャ経由で共通のものを使う。 */}
+            ピンチは ScrollView より優先（composed の blocksExternalGesture）。
+            GestureDetector は ScrollView を1つ包む（ページごとだと横スワイプと争う）。 */}
+        <GestureDetector gesture={composed}>
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -223,27 +259,26 @@ export default function ImagePreviewModal({ uris, initial = 0, onClose }: Props)
           }}
         >
           {uris.map((uri, i) => (
-            <GestureDetector key={i} gesture={Gesture.Simultaneous(pinch, pan)}>
-              <View style={{ width: w, height: h }}>
-                <Pressable
-                  style={{ width: w, height: h }}
-                  onPress={onClose}
-                >
-                  {/* key={uri} で URI が変わるたびに Image を再マウント → 白化・キャッシュ誤表示を防ぐ。
-                      今見ているページだけ拡大・移動を反映する（他ページは画面外で
-                      タッチできないので等倍のままで問題ない）。 */}
-                  <Animated.Image
-                    key={displayUri(uri)}
-                    source={{ uri: displayUri(uri) }}
-                    style={[{ width: w, height: h }, i === idx ? imgAnimStyle : undefined]}
-                    resizeMode="contain"
-                    onError={() => {}}
-                  />
-                </Pressable>
-              </View>
-            </GestureDetector>
+            <View key={i} style={{ width: w, height: h }}>
+              <Pressable
+                style={{ width: w, height: h }}
+                onPress={onClose}
+              >
+                {/* key={uri} で URI が変わるたびに Image を再マウント → 白化・キャッシュ誤表示を防ぐ。
+                    今見ているページだけ拡大・移動を反映する。他ページは identity を
+                    明示する（style を外すだけだと、直前の拡大 transform が残る）。 */}
+                <Animated.Image
+                  key={`${displayUri(uri)}-${i === idx ? 'on' : 'off'}`}
+                  source={{ uri: displayUri(uri) }}
+                  style={[{ width: w, height: h }, i === idx ? imgAnimStyle : styles.imgIdentity]}
+                  resizeMode="contain"
+                  onError={() => {}}
+                />
+              </Pressable>
+            </View>
           ))}
         </ScrollView>
+        </GestureDetector>
 
         {/* ✕ 閉じるボタン */}
         <AnimatedPressable style={styles.closeBtn} onPress={onClose}>
@@ -292,6 +327,9 @@ const styles = StyleSheet.create({
   bg: {
     flex: 1,
     backgroundColor: '#111111',
+  },
+  imgIdentity: {
+    transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
   },
   closeBtn: {
     position: 'absolute',

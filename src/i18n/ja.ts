@@ -282,6 +282,7 @@ const ja = {
   preview: {
     title: 'プレビュー',
     backToEdit: '編集に戻る',
+    cutsLabel: { one: '切り取り（{count}枚）', other: '切り取り（{count}枚）' },
     saveCount: { one: '保存する（{count}枚）', other: '保存する（{count}枚）' },
     nothingToExport: '書き出す対象がありません',
     saveErrorTitle: '保存エラー',

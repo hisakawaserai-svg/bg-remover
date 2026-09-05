@@ -243,6 +243,7 @@ const en: typeof ja = {
   preview: {
     title: 'Preview',
     backToEdit: 'Back to editing',
+    cutsLabel: { one: 'Cutout ({count} image)', other: 'Cutouts ({count} images)' },
     saveCount: { one: 'Save ({count} image)', other: 'Save ({count} images)' },
     nothingToExport: 'There is nothing to export',
     saveErrorTitle: 'Save Error',

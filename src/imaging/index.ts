@@ -322,6 +322,86 @@ function cropAndMask(
   return { bytes, w: cropW, h: cropH };
 }
 
+/**
+ * 1ポリゴンを保存と同じ経路（切り出し・余白・TARGET_SIZE）で PNG にする。
+ * PreviewScreen と savePolygons が同じ画素を見るために共通化する。
+ */
+function encodePolygonExportPng(
+  rgba: Uint8Array,
+  srcW: number,
+  srcH: number,
+  points: [number, number][],
+): Uint8Array | null {
+  const masked = cropAndMask(rgba, srcW, srcH, points);
+  if (!masked) return null;
+
+  const data = Skia.Data.fromBytes(masked.bytes);
+  const img = Skia.Image.MakeImage(
+    {
+      width: masked.w,
+      height: masked.h,
+      colorType: ColorType.RGBA_8888,
+      alphaType: AlphaType.Unpremul,
+    },
+    data,
+    masked.w * 4,
+  );
+  if (!img) return null;
+
+  const withMargin = addMarginToImage(img);
+  img.dispose();
+  const resized = resizeImage(withMargin, TARGET_SIZE);
+  const bytes = resized.encodeToBytes();
+  withMargin.dispose();
+  if (resized !== withMargin) resized.dispose();
+  return bytes;
+}
+
+/** 範囲調整後プレビュー用。Caches 配下なので OS に消されても構わない。 */
+export const PREVIEW_DIR = `${RNFS.CachesDirectoryPath}/preview`;
+
+export async function clearPreviewDir(): Promise<void> {
+  try {
+    if (await RNFS.exists(PREVIEW_DIR)) await RNFS.unlink(PREVIEW_DIR);
+  } catch (e) {
+    console.warn('[imaging] failed to clear preview dir', e);
+  }
+}
+
+/**
+ * 保存と同じ PNG をプレビュー用ディレクトリに書き、file:// URI を返す。
+ * 失敗したポリゴンは null。isCancelled が true なら途中でやめてディレクトリを空にする。
+ */
+export async function writePreviewPolygons(
+  rgba: Uint8Array,
+  srcW: number,
+  srcH: number,
+  polygons: Array<{ points: [number, number][] }>,
+  isCancelled?: () => boolean,
+): Promise<(string | null)[]> {
+  await clearPreviewDir();
+  await RNFS.mkdir(PREVIEW_DIR);
+  const stamp = Date.now();
+  const uris: (string | null)[] = [];
+
+  for (let i = 0; i < polygons.length; i++) {
+    if (isCancelled?.()) {
+      await clearPreviewDir();
+      return [];
+    }
+    const bytes = encodePolygonExportPng(rgba, srcW, srcH, polygons[i].points);
+    if (!bytes) {
+      uris.push(null);
+      continue;
+    }
+    const name = `preview_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
+    const outPath = `${PREVIEW_DIR}/${name}`;
+    await RNFS.writeFile(outPath, bytesToBase64(bytes), 'base64');
+    uris.push(`file://${outPath}`);
+  }
+  return uris;
+}
+
 // 各ポリゴンをマスク済み PNG としてギャラリーに保存する。
 export async function savePolygons(
   rgba: Uint8Array,
@@ -337,28 +417,8 @@ export async function savePolygons(
   await prepareExportDir();
 
   for (let i = 0; i < polygons.length; i++) {
-    const masked = cropAndMask(rgba, srcW, srcH, polygons[i].points);
-    if (!masked) continue;
-
-    const data = Skia.Data.fromBytes(masked.bytes);
-    const img = Skia.Image.MakeImage(
-      {
-        width: masked.w,
-        height: masked.h,
-        colorType: ColorType.RGBA_8888,
-        alphaType: AlphaType.Unpremul,
-      },
-      data,
-      masked.w * 4,
-    );
-    if (!img) continue;
-
-    const withMargin = addMarginToImage(img);
-    img.dispose();
-    const resized = resizeImage(withMargin, TARGET_SIZE);
-    const bytes = resized.encodeToBytes();
-    withMargin.dispose();
-    if (resized !== withMargin) resized.dispose();
+    const bytes = encodePolygonExportPng(rgba, srcW, srcH, polygons[i].points);
+    if (!bytes) continue;
 
     const name = `sticker_${String(i + 1).padStart(2, '0')}_${stamp}.png`;
     const outPath = `${EXPORT_DIR}/${name}`;

@@ -1712,7 +1712,7 @@ function AppScreens() {
   // ── 切り取りプレビューへの遷移: 同じくローディングを挟む ────────────────────
   //
   // PolygonEditor の「プレビュー」を押した直後、PreviewScreen 側でもポリゴン
-  // ごとに画素単位でサムネイルを作る重い処理が走る（PreviewScreen 内の
+  // ごとに保存と同じ PNG を書く処理が走る（PreviewScreen 内の
   // ActivityIndicator だけでは、画面が実際にコミットされる前に処理が始まって
   // 固まって見えることがある）。ここでも一段ローディングを挟んでおく。
   const [pendingPreview, setPendingPreview] = useState(false);

@@ -143,8 +143,8 @@ function CellItem({
           resizeMode="contain"
         />
       )}
-      {/* 複数入り警告枠（選択ハイライトより下層）*/}
-      {cell.kind === 'auto' && cell.multipleObjects && !selected && (
+      {/* 複数入り警告枠（選択ハイライトより下層）。番号と同じトグルで消す。 */}
+      {showNumbers && cell.kind === 'auto' && cell.multipleObjects && !selected && (
         <View style={styles.multipleOverlay} pointerEvents="none" />
       )}
       {/* 選択ハイライト: Image の上に border overlay（borderWidth を wrapper に当てると白化するため）*/}
@@ -156,8 +156,8 @@ function CellItem({
           <Text style={styles.numBadgeTxt}>{index + 1}</Text>
         </View>
       )}
-      {/* 複数入り警告アイコン（右下）*/}
-      {cell.kind === 'auto' && cell.multipleObjects && (
+      {/* 複数入り警告アイコン（右下）。番号を消したら一緒に隠す。 */}
+      {showNumbers && cell.kind === 'auto' && cell.multipleObjects && (
         <View style={styles.multipleBadge} pointerEvents="none">
           <Icon name="warning" size={13} color="#FFF" />
         </View>
@@ -472,7 +472,7 @@ export default function ResultScreen({
                 </Text>
               )}
               <AnimatedPressable
-                style={styles.saveBtn}
+                style={[styles.saveBtn, !canMerge && styles.saveBtnDisabled]}
                 onPress={handleMergePress}
                 disabled={!canMerge}
                 pressedScale={0.97}
@@ -527,7 +527,7 @@ export default function ResultScreen({
 
                 {/* 保存する */}
                 <AnimatedPressable
-                  style={styles.saveBtn}
+                  style={[styles.saveBtn, styles.saveBtnGrow]}
                   onPress={() => void handleSave()}
                   disabled={saving}
                   pressedScale={0.97}
@@ -896,13 +896,17 @@ const styles = StyleSheet.create({
 
   // ── 保存 / 合体ボタン ─────────────────────────────────────────────────────
   saveBtn: {
-    flex: 2,
+    // 行の中（リセット＋保存）では幅を広げる。縦に積む合体ボタンでは
+    // flex を付けない。親の高さが中身任せだと flex 子は高さ 0 になる。
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: spacing.lg,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
+  },
+  saveBtnGrow: {
+    flex: 2,
   },
   saveBtnDisabled: {
     opacity: 0.4,

@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './ui/AnimatedPressable';
@@ -29,6 +30,8 @@ import AdMrec from '../ads/AdMrec';
 
 // グリッドの最大表示枚数
 const MAX_GRID = 9;
+/** 「保存できました」を中央に出す時間。フッターの広告は覆わない。 */
+const SAVED_BEAT_MS = 1300;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -63,6 +66,12 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
   const [allUris,   setAllUris]   = useState<string[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const [showSavedBeat, setShowSavedBeat] = useState(true);
+
+  useEffect(() => {
+    const id = setTimeout(() => setShowSavedBeat(false), SAVED_BEAT_MS);
+    return () => clearTimeout(id);
+  }, []);
 
   // 保存直後なので最新 savedCount 枚が目的の画像。
   // ここは「今保存した先」だけを見ればよいので現在名で引く（履歴は使わない）。
@@ -107,7 +116,7 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
 
   const header = (
     <AppHeader
-      title={t('saveComplete.title')}
+      title={t('saveComplete.savedCount', { count: savedCount })}
       right={<HeaderActions showHelp={!!onHelp} showSettings onHelp={onHelp} onSettings={onSettings} />}
     />
   );
@@ -144,54 +153,59 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
   );
 
   return (
-    <Screen header={header} bg={IOS.bg} footer={footer}>
+    <Screen header={header} bg={IOS.bg} footer={footer} scrollable={false}>
+      <View style={styles.body}>
+        {/* ── サムネグリッド ────────────────────────────────────────────── */}
+        {loading ? (
+          <View style={styles.gridLoading}>
+            <ActivityIndicator color={IOS.blue} />
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {thumbUris.map((uri, i) => {
+              // 最後のセルで overflow がある場合は "+N" バッジを重ねる
+              const isLast  = i === thumbUris.length - 1;
+              const showAdd = isLast && overflow > 0;
+              return (
+                <AnimatedPressable
+                  key={uri}
+                  style={styles.cell}
+                  onPress={() => setPreviewIdx(showAdd ? MAX_GRID : i)}
+                  pressedScale={0.93}
+                >
+                  <CheckerboardBg mode={bg} tile={30} width={CELL_SIZE} height={CELL_SIZE} />
+                  <Image source={{ uri }} style={styles.cellImg} resizeMode="contain" />
+                  {showAdd && (
+                    <View style={styles.overflowOverlay}>
+                      <Text style={styles.overflowTxt}>+{overflow + 1}</Text>
+                    </View>
+                  )}
+                </AnimatedPressable>
+              );
+            })}
+            {!loading && thumbUris.length === 0 && (
+              <View style={styles.empty}>
+                <Icon name="photo-library" size={32} color={IOS.secondary} />
+              </View>
+            )}
+          </View>
+        )}
 
-      {/* ── 完了サマリ ────────────────────────────────────────────────── */}
-      <View style={styles.summary}>
-        <View style={styles.iconCircle}>
-          <Icon name="check" size={28} color="#0F6E56" />
-        </View>
-        <View style={styles.summaryText}>
-          <Text style={styles.summaryTitle}>{t('saveComplete.savedCount', { count: savedCount })}</Text>
-          <Text style={styles.summaryAlbum}>{t('saveComplete.albumSuffix', { album: albumName })}</Text>
-        </View>
-      </View>
-
-      {/* ── サムネグリッド ────────────────────────────────────────────── */}
-      {loading ? (
-        <View style={styles.gridLoading}>
-          <ActivityIndicator color={IOS.blue} />
-        </View>
-      ) : (
-        <View style={styles.grid}>
-          {thumbUris.map((uri, i) => {
-            // 最後のセルで overflow がある場合は "+N" バッジを重ねる
-            const isLast  = i === thumbUris.length - 1;
-            const showAdd = isLast && overflow > 0;
-            return (
-              <AnimatedPressable
-                key={uri}
-                style={styles.cell}
-                onPress={() => setPreviewIdx(showAdd ? MAX_GRID : i)}
-                pressedScale={0.93}
-              >
-                <CheckerboardBg mode={bg} tile={30} width={CELL_SIZE} height={CELL_SIZE} />
-                <Image source={{ uri }} style={styles.cellImg} resizeMode="contain" />
-                {showAdd && (
-                  <View style={styles.overflowOverlay}>
-                    <Text style={styles.overflowTxt}>+{overflow + 1}</Text>
-                  </View>
-                )}
-              </AnimatedPressable>
-            );
-          })}
-          {!loading && thumbUris.length === 0 && (
-            <View style={styles.empty}>
-              <Icon name="photo-library" size={32} color={IOS.secondary} />
+        {/* サムネ領域だけ覆う。下のボタンと MREC は隠さない。 */}
+        {showSavedBeat && (
+          <Animated.View
+            entering={FadeIn.duration(180)}
+            exiting={FadeOut.duration(280)}
+            pointerEvents="none"
+            style={styles.savedBeat}
+          >
+            <View style={styles.savedBeatIcon}>
+              <Icon name="check" size={36} color="#0F6E56" />
             </View>
-          )}
-        </View>
-      )}
+            <Text style={styles.savedBeatTxt}>{t('saveComplete.savedBeat')}</Text>
+          </Animated.View>
+        )}
+      </View>
 
       {previewIdx !== null && (
         <ImagePreviewModal
@@ -200,7 +214,6 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
           onClose={() => setPreviewIdx(null)}
         />
       )}
-
     </Screen>
   );
 }
@@ -221,34 +234,27 @@ const IOS = {
 // ── スタイル ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-
-  // ── 完了サマリ ──────────────────────────────────────────────────────────────
-  summary: {
-    flexDirection: 'row',
+  body: { flex: 1 },
+  savedBeat: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(242,242,247,0.88)',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: IOS.card,
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginTop: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    justifyContent: 'center',
+    gap: 12,
   },
-  iconCircle: {
-    width: 52, height: 52,
-    borderRadius: 26,
+  savedBeatIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#E1F5EE',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  summaryText: { flex: 1, gap: 2 },
-  summaryTitle: { fontSize: 17, fontWeight: '700', color: '#111' },
-  summaryAlbum: { fontSize: 13, color: IOS.secondary },
+  savedBeatTxt: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F6E56',
+  },
 
   // ── サムネグリッド ──────────────────────────────────────────────────────────
   grid: {
@@ -256,8 +262,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: 16,
+    marginBottom: 16,
     justifyContent: 'center',
   },
   gridLoading: {

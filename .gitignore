@@ -77,6 +77,10 @@ yarn-error.log
 # AI context and instructions
 .ai_context/
 
+# リリース進捗（日付・判断・審査メモを書く。機密はここにも書かない）
+docs/release-status-ios.md
+docs/release-status-android.md
+
 # 署名パスワードを含むため追跡しない
 android/gradle.properties
 # ローカル専用の起動手順スクリプト（メモ）

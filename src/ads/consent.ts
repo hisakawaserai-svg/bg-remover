@@ -36,6 +36,7 @@ import {
   AdsConsentStatus,
 } from 'react-native-google-mobile-ads';
 import { initAds } from './init';
+import { preloadInterstitial } from './interstitial';
 
 export interface AdsConsentState {
   /**
@@ -144,6 +145,7 @@ export function gatherAdsConsentAndInit(): void {
     }
     initAds();
     publish({ ready: true, npa, privacyOptionsRequired });
+    preloadInterstitial(npa);
   };
   // 例外は run 内で全て処理済みなので、ここで待たずに投げっぱなしにする。
   run();

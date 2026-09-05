@@ -143,6 +143,7 @@ import type { SplashAnimationType } from './src/components/splash/types';
 import { applyAppIcon, resolveAppIcon } from './src/appIcon';
 // 広告の同意フロー(UMP+ATT)。オンボーディング完了後に一度だけ呼ぶ（下の effect 参照）。
 import { gatherAdsConsentAndInit } from './src/ads/consent';
+import { showInterstitialIfReady } from './src/ads/interstitial';
 import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
@@ -163,6 +164,9 @@ import { useStats } from './src/stats/StatsContext';
 // 置くのはホーム・保存完了・保存先の3画面だけ。SetupScreen / PolygonEditor などの
 // 編集画面には置かない（キャンバスをタッチ操作するため誤タップの温床になる）。
 import AdBanner from './src/ads/AdBanner';
+import WhatsNewSheet from './src/whatsNew/WhatsNewSheet';
+import { getAppVersion } from './src/whatsNew/appVersion';
+import { findRelease, normalizeVersion } from './src/whatsNew/releases';
 
 // ── 型 ────────────────────────────────────────────────────────────────────────
 type SplitMode = 'auto' | 'manual';
@@ -365,6 +369,14 @@ function AppScreens() {
   // App.tsx 側での useState / loadSettings / saveSettings は不要になった。
   const { settings: appSettings, loaded: settingsLoaded, updateSettings } = useSettings();
   const thumbBg = useThumbBg();
+
+  const appVersion = getAppVersion();
+  const showAutoWhatsNew =
+    appState === 'idle' &&
+    settingsLoaded &&
+    appSettings.hasSeenOnboarding &&
+    !!findRelease(appVersion) &&
+    normalizeVersion(appVersion) !== normalizeVersion(appSettings.lastSeenWhatsNewVersion);
 
   // ── 利用統計（端末内のみ）───────────────────────────────────────────────────
   const { recordImageEdited, recordTransparencyOp, recordStampsCreated, recordExportCompleted } = useStats();
@@ -1394,6 +1406,8 @@ function AppScreens() {
       // autoDeleteOnExport で消えることもない。
       setSavedLocalUris(paths);
       setAppState('done');
+      // 保存完了の上に全画面広告。未準備なら出さない。再開で done に戻る経路では呼ばない。
+      showInterstitialIfReady();
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
       Alert.alert(t('errors.exportTitle'), describeSaveError(e));
@@ -1883,7 +1897,12 @@ function AppScreens() {
         // 「はじめる」(最終ステップ)タップで初回フラグを永続化 → 以後は出ない。
         // 書き込みは onComplete の1回だけ(スキップ/離脱では書かない)。
         // フラグ=true で本ゲート条件が false になり、通常ホーム(idle)へ自動遷移する。
-        onComplete={() => void updateSettings({ hasSeenOnboarding: true })}
+        onComplete={() =>
+          void updateSettings({
+            hasSeenOnboarding: true,
+            lastSeenWhatsNewVersion: normalizeVersion(getAppVersion()),
+          })
+        }
       />
     );
   }
@@ -2244,6 +2263,7 @@ function AppScreens() {
             setSavedCount(count);
             setSavedLocalUris(paths);
             setAppState('done');
+            showInterstitialIfReady();
           }}
         />
       </>
@@ -2509,6 +2529,12 @@ function AppScreens() {
       visible={bgEngineChoiceVisible}
       onChoose={handleBgEngineChoose}
       onCancel={handleBgEngineCancel}
+    />
+    <WhatsNewSheet
+      visible={showAutoWhatsNew}
+      mode="current"
+      appVersion={appVersion}
+      onClose={() => void updateSettings({ lastSeenWhatsNewVersion: normalizeVersion(appVersion) })}
     />
     </>
   );

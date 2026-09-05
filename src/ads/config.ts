@@ -53,6 +53,17 @@ export const BANNER_UNIT_ID =
     ? TEST_BANNER_UNIT_IDS[TEST_BANNER_KIND]
     : PROD_BANNER_UNIT_ID;
 
+const PROD_INTERSTITIAL_UNIT_ID = Platform.select({
+  android: 'ca-app-pub-3194046005390900/9714334291',
+  ios: 'ca-app-pub-3194046005390900/3340497637',
+  default: '',
+}) as string;
+
+/** インタースティシャル用。開発はテストID。本番IDが空のリリースでは出さない。 */
+export const INTERSTITIAL_UNIT_ID = __DEV__
+  ? TestIds.INTERSTITIAL
+  : PROD_INTERSTITIAL_UNIT_ID;
+
 /**
  * 広告枠の動作モード。
  *

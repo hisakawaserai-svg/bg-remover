@@ -169,6 +169,11 @@ export interface AppSettings {
    */
   hasSeenEraserTool: boolean;
   /**
+   * お知らせシートで既読にした版（normalize 済み、例 1.2.0）。
+   * 空文字 = まだ見ていない（既存ユーザーの初回起動で今の版を出す）。
+   */
+  lastSeenWhatsNewVersion: string;
+  /**
    * 写真アルバムの名前。**初回保存時に決まり、以後変わらない。**
    *
    * null = まだ一度も保存していない（＝アルバム未作成）。
@@ -272,6 +277,7 @@ export const DEFAULTS: AppSettings = {
   skipPolygonTutorial: false,
   hasSeenOnboarding: false,
   hasSeenEraserTool: false,
+  lastSeenWhatsNewVersion: '',
   albumName: null,
   albumNameHistory: [],
   language: 'auto',

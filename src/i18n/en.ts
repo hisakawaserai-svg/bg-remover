@@ -275,6 +275,11 @@ const en: typeof ja = {
     visionCaution: 'Note: text or logos judged to be "not the subject" may also be removed.',
   },
 
+  whatsNew: {
+    kicker: 'What\'s new',
+    versionLabel: 'Version {version}',
+  },
+
   settings: {
     title: 'Settings',
     sectionTransparency: 'Transparency',
@@ -354,6 +359,7 @@ const en: typeof ja = {
     splashDrop: 'Drop (rare)',
     sectionAbout: 'About',
     version: 'Version',
+    versionHint: 'Tap to see what\'s new',
     howTo: 'How to use',
     replayTutorial: 'Watch the tutorial again',
     licenses: 'Open source licenses',

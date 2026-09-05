@@ -55,6 +55,8 @@ import { useAlbumName } from '../settings/useAlbumName';
 import { useStats } from '../stats/StatsContext';
 import { openStoreReviewPage, devForceRequestReview, devResetReviewGate } from '../review';
 import { useAdsConsent } from '../ads/consent';
+import WhatsNewSheet from '../whatsNew/WhatsNewSheet';
+import { getAppVersion } from '../whatsNew/appVersion';
 
 // ── バージョンを取得 ───────────────────────────────────────────────────────
 // Xcode の MARKETING_VERSION / build.gradle の versionName にアプリ内表示を自動
@@ -204,6 +206,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   const { stats } = useStats();
   // GDPR対象地域でのみ「広告のプライバシー設定」行を出すための判定。
   const { privacyOptionsRequired } = useAdsConsent();
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const appVersion = getAppVersion();
 
   // スライダーの操作中の値を local state で持ち、
   // スライド完了（onSlidingComplete）時だけ updateSettings を呼ぶことで
@@ -760,10 +764,13 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <Text style={styles.sectionTitle}>{t('settings.sectionAbout')}</Text>
         <Card style={styles.card} padding={0}>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.version')}</Text>
+          <AnimatedPressable style={styles.row} onPress={() => setWhatsNewOpen(true)} pressedScale={0.98}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowLabel}>{t('settings.version')}</Text>
+              <Text style={styles.rowSub}>{t('settings.versionHint')}</Text>
+            </View>
             <Text style={styles.rowValueMuted}>{APP_VERSION}</Text>
-          </View>
+          </AnimatedPressable>
           <Divider />
           {/* 「アルバム名（内部）」の行は廃止した。
               アルバム名は初回保存時に確定して以後動かさない方式にしたので、
@@ -879,6 +886,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         />
       </View>
     )}
+    <WhatsNewSheet
+      visible={whatsNewOpen}
+      mode="all"
+      appVersion={appVersion}
+      onClose={() => setWhatsNewOpen(false)}
+    />
     </>
   );
 }

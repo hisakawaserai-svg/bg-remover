@@ -320,6 +320,11 @@ const ja = {
     visionCaution: '注意: 文字やロゴなど「被写体ではない」と判定した部分も一緒に消えることがあります。',
   },
 
+  whatsNew: {
+    kicker: '更新内容',
+    versionLabel: 'バージョン {version}',
+  },
+
   // ── 設定画面（SettingsScreen）─────────────────────────────────────────────
   settings: {
     title: '設定',
@@ -401,6 +406,7 @@ const ja = {
     splashDrop: 'Drop（レア）',
     sectionAbout: 'このアプリについて',
     version: 'バージョン',
+    versionHint: 'タップして更新内容を見る',
     howTo: '使い方',
     replayTutorial: 'チュートリアルをもう一度見る',
     licenses: 'オープンソースライセンス',

@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
 import BgEngineChoiceModal from './src/components/BgEngineChoiceModal';
+import { useVisionSupported } from './src/hooks/useVisionSupported';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { consumeSharedImage, onShareSheetClosed, onAndroidSharedImageReceived } from './src/share/sharedInput';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -369,6 +370,7 @@ function AppScreens() {
   // App.tsx 側での useState / loadSettings / saveSettings は不要になった。
   const { settings: appSettings, loaded: settingsLoaded, updateSettings } = useSettings();
   const thumbBg = useThumbBg();
+  const subjectSupported = !!useVisionSupported();
 
   const appVersion = getAppVersion();
   const showAutoWhatsNew =
@@ -574,9 +576,9 @@ function AppScreens() {
   };
 
   /**
-   * 画像を選んだ直後に「背景除去の方式」をアクションシートで尋ねる。
-   * Visionが使える端末のときだけ出す（使えない端末で1択のシートを出しても
-   * 邪魔なだけなので、その場合は何も聞かずに 'flood' を返す）。
+   * 画像を選んだ直後に「背景除去の方式」を尋ねる。
+   * 被写体検出が使えないOSでは毎回確認を出さない（使えない方式を催促しないため）。
+   * 設定の保存値は書き換えないので、OS更新後はまた確認が出る。
    * 選んだ内容は次回以降の既定値としても保存する（設定画面の値と一本化）。
    *
    * 戻り値が null なのは「本当にキャンセルした」場合だけ（呼び出し側は
@@ -1969,6 +1971,7 @@ function AppScreens() {
       />
       <BgEngineChoiceModal
         visible={bgEngineChoiceVisible}
+        subjectSupported={subjectSupported}
         onChoose={handleBgEngineChoose}
         onCancel={handleBgEngineCancel}
       />
@@ -2527,6 +2530,7 @@ function AppScreens() {
     </Screen>
     <BgEngineChoiceModal
       visible={bgEngineChoiceVisible}
+      subjectSupported={subjectSupported}
       onChoose={handleBgEngineChoose}
       onCancel={handleBgEngineCancel}
     />

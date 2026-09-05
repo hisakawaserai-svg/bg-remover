@@ -10,6 +10,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,6 +36,19 @@ function copyOf(release: Release) {
 
 function displayVersion(version: string): string {
   return version.replace(/\.0$/, '');
+}
+
+function formatReleaseDate(iso: string, locale: 'ja' | 'en'): string {
+  const [y, m, d] = iso.split('-').map(n => parseInt(n, 10));
+  if (!y || !m || !d) return iso;
+  if (locale === 'ja') return `${y}年${m}月${d}日`;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[m - 1]} ${d}, ${y}`;
+}
+
+/** 今見ているストア側の日付。まだ出していない店は出さない。 */
+function dateForThisStore(rel: Release): string | undefined {
+  return Platform.OS === 'android' ? rel.dateAndroid : rel.dateIos;
 }
 
 export default function WhatsNewSheet({ visible, onClose, mode, appVersion }: Props) {
@@ -65,6 +79,7 @@ export default function WhatsNewSheet({ visible, onClose, mode, appVersion }: Pr
               const copy = copyOf(rel);
               const id = normalizeVersion(rel.version);
               const open = openId === id;
+              const storeDate = dateForThisStore(rel);
               return (
                 <View key={rel.version} style={styles.acc}>
                   <AnimatedPressable
@@ -75,6 +90,9 @@ export default function WhatsNewSheet({ visible, onClose, mode, appVersion }: Pr
                     <View style={styles.accHeadText}>
                       <Text style={styles.version}>
                         {t('whatsNew.versionLabel', { version: displayVersion(rel.version) })}
+                        {storeDate
+                          ? `  ·  ${formatReleaseDate(storeDate, getLocale())}`
+                          : ''}
                       </Text>
                       <Text style={styles.title} numberOfLines={open ? undefined : 1}>
                         {copy.title}

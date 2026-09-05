@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
-import { isVisionBgRemovalSupported } from '../imaging';
+import { isVisionBgRemovalSupported, subscribeSubjectDetectionSupport } from '../imaging';
 
 /**
- * この端末でVision(iOS17+実機)による背景除去が使えるか。
- * null=判定中。設定画面・分割確認画面など、Visionの選択肢を出すかどうかの
- * 判定に使う（使えない端末では選択肢自体を出さない）。
+ * 被写体検出（iOS Vision / Android ML Kit）がこの端末で使えるか。
+ * null=判定中。OS不足・この起動中の方式停止のどちらでも false になる。
  */
 export function useVisionSupported(): boolean | null {
   const [supported, setSupported] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
-    isVisionBgRemovalSupported().then(v => { if (!cancelled) setSupported(v); });
-    return () => { cancelled = true; };
+    const refresh = () => {
+      isVisionBgRemovalSupported().then(v => { if (!cancelled) setSupported(v); });
+    };
+    refresh();
+    const unsub = subscribeSubjectDetectionSupport(refresh);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
   return supported;
 }

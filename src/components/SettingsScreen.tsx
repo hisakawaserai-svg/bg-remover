@@ -109,6 +109,7 @@ type AccordionKey =
 /** 設定内の背景除去方式カード。モーダルと同じ情報量で、現在の選択に枠を付ける。 */
 function EngineChoiceCard({
   selected,
+  dimmed,
   icon,
   iconColor,
   iconBg,
@@ -118,6 +119,7 @@ function EngineChoiceCard({
   onPress,
 }: {
   selected: boolean;
+  dimmed?: boolean;
   icon: string;
   iconColor: string;
   iconBg: string;
@@ -131,6 +133,7 @@ function EngineChoiceCard({
       style={({ pressed }) => [
         styles.engineCard,
         selected && styles.engineCardOn,
+        dimmed && styles.engineCardDimmed,
         pressed && styles.engineCardPressed,
       ]}
       onPress={onPress}
@@ -240,9 +243,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
   // スポイトの許容値。背景除去の tolerance とは別のツマミ（store.ts のコメント参照）。
   const [eyeTolerance, setEyeTolerance] = useState(settings.eyedropperTolerance);
 
-  // Vision(iOS17+実機)が使えるか。null=判定中。Android・iOS16以下・Simulatorはfalse。
-  // 「選ぶと壊れる選択肢」を出さないよう、使えない端末では選択肢自体を出さない。
+  // 被写体検出が使えるか。null=判定中。使えない間はカードは残し、毎回確認だけ無効化する。
   const visionSupported = useVisionSupported();
+  const subjectOk = !!visionSupported;
 
   // [仮] SVGオンボーディングの表示確認用。初回ゲート接続時にこのデバッグ導線は撤去する。
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -296,19 +299,17 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           expanded={!!openSections.transparency}
           onToggle={() => toggleSection('transparency')}
         >
-          {/* 初期背景除去の方式。モーダル(BgEngineChoiceModal)と同じ縦積みカード。
-              'vision' が使えない端末では色ベースだけ出し、説明で理由を書く。 */}
+          {/* 初期背景除去の方式。モーダルと同じ縦積みカード。
+              被写体検出が使えないOSでもカードは残し、押したら必要バージョンを案内する。
+              毎回確認の値は保存せず、使えない間だけオフ表示＋無効化する（OS更新後に既定のONが生きる）。 */}
           <View style={styles.engineBlock}>
             <View style={styles.rowLead}>
               <Icon name="auto-fix-high" size={22} color={IOS.secondary} style={styles.rowIcon} />
               <Text style={styles.rowLabel}>{t('settings.bgEngine')}</Text>
             </View>
-            {visionSupported === false && (
-              <Text style={styles.rowSub}>{t('settings.bgEngineHintUnavailable')}</Text>
-            )}
             <View style={styles.engineStack}>
               <EngineChoiceCard
-                selected={(visionSupported ? settings.bgEngine : 'flood') === 'flood'}
+                selected={(subjectOk ? settings.bgEngine : 'flood') === 'flood'}
                 icon="opacity"
                 iconColor={IOS.blue}
                 iconBg="rgba(0,122,255,0.12)"
@@ -316,37 +317,53 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 desc={t('bgEngineChoice.floodDesc')}
                 onPress={() => void updateSettings({ bgEngine: 'flood' })}
               />
-              {!!visionSupported && (
-                <EngineChoiceCard
-                  selected={settings.bgEngine === 'vision'}
-                  icon="auto-awesome"
-                  iconColor="#AF52DE"
-                  iconBg="rgba(175,82,222,0.12)"
-                  title={t('settings.bgEngineVision')}
-                  desc={t('bgEngineChoice.visionDesc')}
-                  caution={t('bgEngineChoice.visionCaution')}
-                  onPress={() => void updateSettings({ bgEngine: 'vision' })}
-                />
-              )}
-            </View>
-          </View>
-          {/* Visionが使えない端末では選ぶ余地が無いので、確認自体が無意味なため出さない。 */}
-          {!!visionSupported && (
-            <View style={styles.row}>
-              <RowLead icon="help-outline">
-                <View style={styles.rowLeft}>
-                  <Text style={styles.rowLabel}>{t('settings.confirmBgEngineEachTime')}</Text>
-                  <Text style={styles.rowSub}>{t('settings.confirmBgEngineEachTimeHint')}</Text>
-                </View>
-              </RowLead>
-              <Switch
-                value={settings.confirmBgEngineEachTime}
-                onValueChange={v => void updateSettings({ confirmBgEngineEachTime: v })}
-                trackColor={{ false: IOS.fill, true: IOS.blue }}
-                thumbColor="#FFF"
+              <EngineChoiceCard
+                selected={subjectOk && settings.bgEngine === 'vision'}
+                dimmed={!subjectOk}
+                icon="auto-awesome"
+                iconColor="#AF52DE"
+                iconBg="rgba(175,82,222,0.12)"
+                title={Platform.OS === 'android' ? t('settings.bgEngineMlkit') : t('settings.bgEngineVision')}
+                desc={t('bgEngineChoice.visionDesc')}
+                caution={
+                  subjectOk
+                    ? t('bgEngineChoice.visionCaution')
+                    : t('settings.bgEngineOsTooLowMessage')
+                }
+                onPress={() => {
+                  if (!subjectOk) {
+                    Alert.alert(
+                      t('settings.bgEngineOsTooLowTitle'),
+                      t('settings.bgEngineOsTooLowMessage'),
+                    );
+                    return;
+                  }
+                  void updateSettings({ bgEngine: 'vision' });
+                }}
               />
             </View>
-          )}
+          </View>
+          <View style={styles.row}>
+            <RowLead icon="help-outline">
+              <View style={styles.rowLeft}>
+                <Text style={[styles.rowLabel, !subjectOk && styles.rowLabelDisabled]}>
+                  {t('settings.confirmBgEngineEachTime')}
+                </Text>
+                <Text style={styles.rowSub}>
+                  {subjectOk
+                    ? t('settings.confirmBgEngineEachTimeHint')
+                    : t('settings.confirmBgEngineEachTimeDisabledHint')}
+                </Text>
+              </View>
+            </RowLead>
+            <Switch
+              value={subjectOk && settings.confirmBgEngineEachTime}
+              disabled={!subjectOk}
+              onValueChange={v => void updateSettings({ confirmBgEngineEachTime: v })}
+              trackColor={{ false: IOS.fill, true: IOS.blue }}
+              thumbColor="#FFF"
+            />
+          </View>
           <Divider />
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
@@ -1122,6 +1139,7 @@ const styles = StyleSheet.create({
   },
   // flexShrink: ラベル側を先に縮める。ボタンは縮むと文字が切れるので固定。
   rowLabel:     { fontSize: 16, color: IOS.label, flexShrink: 1, marginRight: 12 },
+  rowLabelDisabled: { color: IOS.secondary },
   dangerLabel:  { color: IOS.danger },
   rowSub:       { fontSize: 12, color: IOS.secondary, marginTop: 2 },
   rowValue:     { fontSize: 22, fontWeight: '600', color: IOS.blue, minWidth: 36, textAlign: 'right' },
@@ -1150,6 +1168,9 @@ const styles = StyleSheet.create({
   },
   engineCardPressed: {
     opacity: 0.85,
+  },
+  engineCardDimmed: {
+    opacity: 0.55,
   },
   engineCardHead: {
     flexDirection: 'row',

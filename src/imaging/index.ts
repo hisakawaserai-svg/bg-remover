@@ -11,7 +11,14 @@ import type { BBox } from './splitObjects';
 
 export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace, analyzeExistingTransparency } from './removeBackground';
 export type { TransparencyStats } from './removeBackground';
-export { removeBackgroundVision, isVisionBgRemovalSupported } from './removeBackgroundVision';
+export {
+  removeBackgroundVision,
+  isVisionBgRemovalSupported,
+  markSubjectDetectionUnavailable,
+  subscribeSubjectDetectionSupport,
+  SubjectDetectionError,
+} from './removeBackgroundVision';
+export type { SubjectDetectionReason } from './removeBackgroundVision';
 
 /**
  * 元画像の画素に編集操作を順番に掛け直して、現在の見た目を作る（破壊的）。

@@ -5,6 +5,8 @@
  * ja / en を同じ件数・同じ意味で書く。コード名は使わない。
  *
  * version は 1.2.0 のように3段。アプリが 1.2 と返しても照合で揃う。
+ * 日付はストアごとに違うので iOS / Android を別欄にする。YYYY-MM-DD。
+ * その店でまだ出していない版は空のまま（お知らせでは日付を出さない）。
  */
 export interface ReleaseCopy {
   title: string;
@@ -13,6 +15,8 @@ export interface ReleaseCopy {
 
 export interface Release {
   version: string;
+  dateIos?: string;
+  dateAndroid?: string;
   ja: ReleaseCopy;
   en: ReleaseCopy;
 }
@@ -20,11 +24,12 @@ export interface Release {
 export const RELEASES: Release[] = [
   {
     version: '1.2.0',
+    dateIos: '2026-09-05',
     ja: {
       title: '背景除去の方式と編集まわり',
       items: [
-        '背景除去にiOS Vision（被写体検出）を追加しました。複雑な背景や人物の切り抜きに強くなっています',
-        '画像を選んだ直後に、色ベース／Visionをカードで確認できます（設定でOFFにもできます）',
+        '背景除去に被写体検出を追加しました。現在は、iOS 17以降はVision、Android 7.0以降はML Kitです',
+        '被写体検出が使える端末では、画像を選んだ直後に方式をカードで確認できます（設定でOFFにもできます）',
         '復元ブラシに消しゴムを追加しました。なぞった部分を透過できます',
         '「範囲を調整」のあとも、保存後と同じく拡大して透過の残りを確認できます',
         '日本語環境でアプリ名が英語のまま表示されていた不具合を直しました',
@@ -33,8 +38,8 @@ export const RELEASES: Release[] = [
     en: {
       title: 'Background removal and editing',
       items: [
-        'Added iOS Vision (subject detection) for background removal. Better with complex backgrounds and photos of people',
-        'Right after you pick an image, you can confirm color-based vs Vision on cards (you can turn this off in Settings)',
+        'Added subject detection for background removal. Currently Vision on iOS 17 or later, ML Kit on Android 7.0 or later',
+        'On devices that support it, you can confirm the method on cards right after you pick an image (you can turn this off in Settings)',
         'Added an eraser to the restore brush. Trace to make areas transparent',
         'After Adjust range, you can zoom the preview the same way as after saving, to check leftover background',
         'Fixed the app name staying in English on Japanese devices',
@@ -43,6 +48,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: '1.1.0',
+    dateIos: '2026-08-30',
     ja: {
       title: '編集や操作まわりの使い勝手',
       items: [
@@ -66,6 +72,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: '1.0.2',
+    dateIos: '2026-08-20',
     ja: {
       title: 'ストア掲載の更新',
       items: ['アプリの動作に変わりはありません。ストアの掲載名とサブタイトルを更新しました'],
@@ -77,6 +84,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: '1.0.1',
+    dateIos: '2026-08-19',
     ja: {
       title: 'ストア掲載の更新',
       items: ['アプリの動作に変わりはありません。ストアの掲載情報を更新しました'],
@@ -88,6 +96,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: '1.0.0',
+    dateIos: '2026-08-17',
     ja: {
       title: 'スタンプ抜きを公開しました',
       items: [

@@ -11,13 +11,15 @@
  * ユーザーが困っていたのは名前ではなく、結果の予測がつかないことだった。
  */
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useT } from '../i18n';
 import type { BgEngine } from '../settings/store';
 
 interface Props {
   visible: boolean;
+  /** 被写体検出がこの端末で使えるか。false なら押しても選ばず案内だけ出す。 */
+  subjectSupported: boolean;
   onChoose: (engine: BgEngine) => void;
   onCancel: () => void;
 }
@@ -30,7 +32,7 @@ const IOS = {
   purple: '#BF5AF2',
 };
 
-export default function BgEngineChoiceModal({ visible, onChoose, onCancel }: Props) {
+export default function BgEngineChoiceModal({ visible, subjectSupported, onChoose, onCancel }: Props) {
   const { t } = useT();
 
   return (
@@ -54,15 +56,34 @@ export default function BgEngineChoiceModal({ visible, onChoose, onCancel }: Pro
             </Pressable>
 
             <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => onChoose('vision')}
+              style={({ pressed }) => [
+                styles.card,
+                !subjectSupported && styles.cardDimmed,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={() => {
+                if (!subjectSupported) {
+                  Alert.alert(
+                    t('settings.bgEngineOsTooLowTitle'),
+                    t('settings.bgEngineOsTooLowMessage'),
+                  );
+                  return;
+                }
+                onChoose('vision');
+              }}
             >
               <View style={[styles.iconWrap, { backgroundColor: 'rgba(191,90,242,0.16)' }]}>
                 <Icon name="auto-awesome" size={26} color={IOS.purple} />
               </View>
-              <Text style={styles.cardTitle}>{t('settings.bgEngineVision')}</Text>
+              <Text style={styles.cardTitle}>
+                {Platform.OS === 'android' ? t('settings.bgEngineMlkit') : t('settings.bgEngineVision')}
+              </Text>
               <Text style={styles.cardDesc}>{t('bgEngineChoice.visionDesc')}</Text>
-              <Text style={styles.cardCaution}>{t('bgEngineChoice.visionCaution')}</Text>
+              <Text style={styles.cardCaution}>
+                {subjectSupported
+                  ? t('bgEngineChoice.visionCaution')
+                  : t('settings.bgEngineOsTooLowMessage')}
+              </Text>
             </Pressable>
           </View>
 
@@ -117,6 +138,9 @@ const styles = StyleSheet.create({
   cardPressed: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderColor: 'rgba(255,255,255,0.2)',
+  },
+  cardDimmed: {
+    opacity: 0.55,
   },
   iconWrap: {
     width: 44,

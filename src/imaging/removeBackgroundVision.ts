@@ -1,6 +1,6 @@
 /**
- * removeBackgroundVision.ts — iOS Vision (VNGenerateForegroundInstanceMaskRequest) を
- * 使った背景除去。@six33/react-native-bg-removal 経由で呼ぶ。
+ * removeBackgroundVision.ts — 被写体検出による背景除去。
+ * @six33/react-native-bg-removal 経由。iOS は Vision、Android は ML Kit。
  *
  * 色ベースの removeBackground.ts とは別モジュールにしてある。あちらは「背景色」を
  * 前提にした閾値アルゴリズムで、こちらは意味的セグメンテーション（背景色の概念を
@@ -34,15 +34,88 @@ import type { RemoveBgResult } from './removeBackground';
  * newArchEnabled=true 必須なので、この関数には触れず自前でOSバージョンだけ見て
  * 判定する。
  *
- * iOS 17 未満では false。Simulator は判定できない（Platform に判別手段が無い）が、
- * ネイティブ側が options 込みの正規の呼び出しであれば Simulator でも
- * クラッシュせず 'SimulatorError' を返す実装になっている
- * （ReactNativeBackgroundRemover.swift 参照）ため、ここでは弾かない。
+ * iOS は 17 未満で false。Android は ML Kit Subject Segmentation で、
+ * 公式・ライブラリとも API 24（Android 7.0）以上。このアプリの minSdk も 24
+ * なので、インストールできる Android では原則 true。
+ * Simulator は OS バージョンだけでは判定できないが、ネイティブ側が
+ * options 込みなら 'SimulatorError' を返す（ReactNativeBackgroundRemover.swift）。
  */
+export const SUBJECT_DETECTION_MIN_IOS = 17;
+export const SUBJECT_DETECTION_MIN_ANDROID_API = 24;
+
+/** 被写体検出の失敗理由。OS不足と「方式そのものが今使えない」を分けて案内する。 */
+export type SubjectDetectionReason = 'os' | 'unavailable' | 'noSubject';
+
+export class SubjectDetectionError extends Error {
+  readonly reason: SubjectDetectionReason;
+  constructor(reason: SubjectDetectionReason, message: string) {
+    super(message);
+    this.name = 'SubjectDetectionError';
+    this.reason = reason;
+  }
+}
+
+/**
+ * この起動中だけ被写体検出を止める。SDK／Play 開発者サービス側で死んだとき用。
+ * 保存設定は触らない。アプリを立ち上げ直せば、またOS判定からやり直す。
+ */
+let sessionBlocked = false;
+const supportListeners = new Set<() => void>();
+
+export function markSubjectDetectionUnavailable(): void {
+  if (sessionBlocked) return;
+  sessionBlocked = true;
+  supportListeners.forEach(fn => fn());
+}
+
+export function subscribeSubjectDetectionSupport(listener: () => void): () => void {
+  supportListeners.add(listener);
+  return () => {
+    supportListeners.delete(listener);
+  };
+}
+
+function androidApiLevel(): number {
+  const v = Platform.Version;
+  return typeof v === 'number' ? v : parseInt(String(v), 10);
+}
+
+function osSupportsSubjectDetection(): boolean {
+  if (Platform.OS === 'ios') {
+    const major = parseInt(String(Platform.Version).split('.')[0], 10);
+    return Number.isFinite(major) && major >= SUBJECT_DETECTION_MIN_IOS;
+  }
+  if (Platform.OS === 'android') {
+    const api = androidApiLevel();
+    return Number.isFinite(api) && api >= SUBJECT_DETECTION_MIN_ANDROID_API;
+  }
+  return false;
+}
+
 export async function isVisionBgRemovalSupported(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  const major = parseInt(String(Platform.Version).split('.')[0], 10);
-  return Number.isFinite(major) && major >= 17;
+  if (sessionBlocked) return false;
+  return osSupportsSubjectDetection();
+}
+
+/** ネイティブの生エラーを「方式が死んだ」か「この画像では無理」かに分ける。 */
+function classifyNativeFailure(e: unknown): Exclude<SubjectDetectionReason, 'os'> {
+  const raw = e instanceof Error ? `${e.name} ${e.message}` : String(e);
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('requires_api_fallback') ||
+    lower.includes('simulatorerror') ||
+    lower.includes('simulator') ||
+    lower.includes('not available') ||
+    lower.includes('unavailable') ||
+    lower.includes('play services') ||
+    lower.includes('service_missing') ||
+    lower.includes('unimplemented') ||
+    lower.includes('not implemented') ||
+    lower.includes('module') && lower.includes('null')
+  ) {
+    return 'unavailable';
+  }
+  return 'noSubject';
 }
 
 const VISION_TMP_DIR = `${RNFS.CachesDirectoryPath}/vision-bg-tmp`;
@@ -62,9 +135,11 @@ const VISION_TMP_DIR = `${RNFS.CachesDirectoryPath}/vision-bg-tmp`;
  * 被写体のbboxまで縮んでしまい、同じ理由で座標が合わなくなる）。
  */
 export async function removeBackgroundVision(fileUri: string): Promise<RemoveBgResult> {
-  const supported = await isVisionBgRemovalSupported();
-  if (!supported) {
-    throw new Error(t('errors.visionUnsupported'));
+  if (sessionBlocked) {
+    throw new SubjectDetectionError('unavailable', t('errors.visionUnavailable'));
+  }
+  if (!osSupportsSubjectDetection()) {
+    throw new SubjectDetectionError('os', t('errors.visionUnsupported'));
   }
 
   const resized = await decodeAndResizeImage(fileUri);
@@ -86,13 +161,14 @@ export async function removeBackgroundVision(fileUri: string): Promise<RemoveBgR
       outUri = await removeBackgroundNative(`file://${tmpInPath}`, { trim: false });
     } catch (e) {
       // ネイティブ側は "Failed to create mask" 等、英語の生メッセージをそのまま
-      // reject してくる（被写体が検出できない画像などで起こる。Visionの
-      // インスタンスセグメンテーションは「何かしら被写体があるはず」という
-      // 前提のAPIなので、単純な模様やごく小さい絵などでは0件になり得る）。
-      // ユーザーに見せる文言としては具体的な原因より「この方式では無理だった」
-      // ことと次の行動（色ベースを試す）が分かればよいので、一律に翻訳し直す。
+      // reject してくる。被写体なしと、方式そのものが使えない（シミュレータ・
+      // Play 開発者サービス・将来のAPI廃止）を分けて、後者はこの起動中は出さない。
       console.warn('[removeBackgroundVision] native call failed:', e);
-      throw new Error(t('errors.visionFailed'));
+      const reason = classifyNativeFailure(e);
+      throw new SubjectDetectionError(
+        reason,
+        reason === 'unavailable' ? t('errors.visionUnavailable') : t('errors.visionFailed'),
+      );
     }
   } finally {
     await RNFS.unlink(tmpInPath).catch(() => {});

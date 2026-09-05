@@ -17,6 +17,12 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+      <!-- ML Kit 被写体検出モデルを Play からインストール時に取る。
+           無いと初回推論の直前ダウンロードになり、オフラインだと失敗しやすい。
+           https://developers.google.com/ml-kit/vision/subject-segmentation/android -->
+      <meta-data
+        android:name="com.google.mlkit.vision.DEPENDENCIES"
+        android:value="subject_segment" />
       <!-- AdMob の APPLICATION_ID はここに直書きしない。
            react-native-google-mobile-ads が app.json の android_app_id を読んで
            ライブラリ側マニフェストのプレースホルダに埋める（単一の出所に保つ）。 -->

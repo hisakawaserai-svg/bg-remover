@@ -179,10 +179,10 @@ export default function HowToScreen({
         {tab === 'editor' && (
           <>
             <Card style={styles.card}>
-              <Text style={styles.lead}>{t('howto.editorPremise')}</Text>
+              <Text style={styles.warn}>{t('howto.editorPremise')}</Text>
               <ToolLine icon={{ name: 'zoom-out-map' }} title={t('howto.editorPinchTitle')} body={t('howto.editorPinch')} />
               <SectionLabel text={t('howto.sectionTools')} />
-              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.modeAdd')} body={t('howto.editorAddWhere')} />
+              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.modeAdd')} body={t('howto.editorAddWhere')} warn={t('howto.editorAddWarn')} />
               <ToolLine icon={{ name: 'dashboard' }} title={t('editor.drawMethodPickTitle')} body={t('howto.editorPick')} />
               <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.drawMethodTapTitle')} body={t('editor.drawMethodTapDesc')} />
               <ToolLine icon={{ name: 'gesture' }} title={t('editor.drawMethodTraceTitle')} body={t('editor.drawMethodTraceDesc')} />

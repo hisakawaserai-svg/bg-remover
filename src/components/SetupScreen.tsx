@@ -1067,7 +1067,8 @@ const styles = StyleSheet.create({
 
   manualDesc: {
     fontSize: 14,
-    color: IOS.secondary,
+    fontWeight: '600',
+    color: '#FF3B30',
     lineHeight: 20,
     paddingHorizontal: 4,
     paddingVertical: 8,

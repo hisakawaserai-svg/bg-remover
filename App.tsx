@@ -26,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import Screen from './src/components/ui/Screen';
+import BgEngineChoiceModal from './src/components/BgEngineChoiceModal';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { consumeSharedImage, onShareSheetClosed, onAndroidSharedImageReceived } from './src/share/sharedInput';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -282,6 +283,11 @@ function AppScreens() {
    * baseRgbaRef と同じ寸法。Vision を使わないセッションでは null のまま。
    */
   const visionBaselineRgbaRef = useRef<Uint8Array | null>(null);
+
+  // 背景除去方式の選択モーダル(BgEngineChoiceModal)。chooseBgEngine が
+  // Promise を返し、ユーザーの選択/キャンセルでこの ref 経由で resolve する。
+  const [bgEngineChoiceVisible, setBgEngineChoiceVisible] = useState(false);
+  const bgEngineChoiceResolverRef = useRef<((engine: BgEngine | null) => void) | null>(null);
 
   /**
    * 操作列の先頭が Vision の autoBg かどうか。
@@ -572,23 +578,27 @@ function AppScreens() {
     if (!force && !appSettings.confirmBgEngineEachTime) return appSettings.bgEngine;
     if (!(await isVisionBgRemovalSupported())) return 'flood';
 
+    // ActionSheetIOS（テキストのみの選択肢）だと「色ベースとVisionで何が
+    // 起きるかが伝わらない」と報告されたため、アイコン＋「これを選ぶと
+    // 何が起きるか」を明記したカード形式のモーダル(BgEngineChoiceModal)に
+    // 差し替えた。呼び出し側からは戻り値がPromiseな点は変わらない。
     return new Promise<BgEngine | null>(resolve => {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: t('settings.bgEngine'),
-          message: t('settings.bgEngineHint'),
-          options: [t('settings.bgEngineFlood'), t('settings.bgEngineVision'), t('common.cancel')],
-          cancelButtonIndex: 2,
-          userInterfaceStyle: 'light',
-        },
-        index => {
-          if (index === 2 || index == null) { resolve(null); return; }
-          const chosen: BgEngine = index === 1 ? 'vision' : 'flood';
-          void updateSettings({ bgEngine: chosen });
-          resolve(chosen);
-        },
-      );
+      bgEngineChoiceResolverRef.current = resolve;
+      setBgEngineChoiceVisible(true);
     });
+  };
+
+  const handleBgEngineChoose = (engine: BgEngine) => {
+    setBgEngineChoiceVisible(false);
+    void updateSettings({ bgEngine: engine });
+    bgEngineChoiceResolverRef.current?.(engine);
+    bgEngineChoiceResolverRef.current = null;
+  };
+
+  const handleBgEngineCancel = () => {
+    setBgEngineChoiceVisible(false);
+    bgEngineChoiceResolverRef.current?.(null);
+    bgEngineChoiceResolverRef.current = null;
   };
 
   /**
@@ -1902,6 +1912,7 @@ function AppScreens() {
   // ── 行数確認画面（自動モード: removeBackground 完了後・分割前）──────────
   if (appState === 'row_confirm' && bgResult) {
     return (
+      <>
       <SetupScreen
         bgResult={bgResult}
         initialRows={confirmRows}
@@ -1937,6 +1948,12 @@ function AppScreens() {
         announceTransparent={bgToastPending}
         onAnnounced={() => setBgToastPending(false)}
       />
+      <BgEngineChoiceModal
+        visible={bgEngineChoiceVisible}
+        onChoose={handleBgEngineChoose}
+        onCancel={handleBgEngineCancel}
+      />
+      </>
     );
   }
 
@@ -2271,8 +2288,9 @@ function AppScreens() {
   );
 
   return (
-    // Screen が SafeArea・ScrollView を一括担当する。
-    // 各画面固有の SafeAreaView / paddingTop は Screen 側で吸収済み。
+    <>
+    {/* Screen が SafeArea・ScrollView を一括担当する。
+        各画面固有の SafeAreaView / paddingTop は Screen 側で吸収済み。 */}
     <Screen
       style={styles.container}
       header={appState === 'idle' ? homeHeader : undefined}
@@ -2487,6 +2505,12 @@ function AppScreens() {
         )}
 
     </Screen>
+    <BgEngineChoiceModal
+      visible={bgEngineChoiceVisible}
+      onChoose={handleBgEngineChoose}
+      onCancel={handleBgEngineCancel}
+    />
+    </>
   );
 }
 

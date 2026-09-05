@@ -266,6 +266,14 @@ const en: typeof ja = {
     dateFormat: '{m}/{d}/{y}',
   },
 
+  bgEngineChoice: {
+    title: 'Choose a background removal method',
+    subtitle: 'Which one should this image use?',
+    floodDesc: 'Removes areas that match the background color. Works best with solid or fairly uniform backgrounds.',
+    visionDesc: 'Detects the actual subject in the photo and removes everything else. Works well with complex backgrounds and photos of people.',
+    visionCaution: 'Note: text or logos judged to be "not the subject" may also be removed.',
+  },
+
   settings: {
     title: 'Settings',
     sectionTransparency: 'Transparency',

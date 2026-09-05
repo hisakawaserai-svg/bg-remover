@@ -22,6 +22,7 @@ import {
   Linking,
   NativeModules,
   Platform,
+  Pressable,
   StyleSheet,
   Switch,
   Text,
@@ -45,7 +46,6 @@ import SplashAnimationView from './SplashAnimationView';
 import Divider from './ui/Divider';
 import SelectRow from './ui/SelectRow';
 import { useVisionSupported } from '../hooks/useVisionSupported';
-import type { BgEngine } from '../settings/store';
 import LoupeMagnifySlider from './ui/LoupeMagnifySlider';
 import LoupeSizeSlider from './ui/LoupeSizeSlider';
 import RangeValueSlider from './ui/RangeValueSlider';
@@ -103,6 +103,48 @@ type AccordionKey =
  * ヘッダー自体をカードの一部として見せる（カード上部にグレー帯のタップ領域、
  * 開いた中身は白、という階層をつける）。開閉状態自体は呼び出し側の state が持つ。
  */
+/** 設定内の背景除去方式カード。モーダルと同じ情報量で、現在の選択に枠を付ける。 */
+function EngineChoiceCard({
+  selected,
+  icon,
+  iconColor,
+  iconBg,
+  title,
+  desc,
+  caution,
+  onPress,
+}: {
+  selected: boolean;
+  icon: string;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  desc: string;
+  caution?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.engineCard,
+        selected && styles.engineCardOn,
+        pressed && styles.engineCardPressed,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.engineCardHead}>
+        <View style={[styles.engineIconWrap, { backgroundColor: iconBg }]}>
+          <Icon name={icon} size={22} color={iconColor} />
+        </View>
+        <Text style={styles.engineCardTitle}>{title}</Text>
+        {selected && <Icon name="check-circle" size={20} color={IOS.blue} />}
+      </View>
+      <Text style={styles.engineCardDesc}>{desc}</Text>
+      {!!caution && <Text style={styles.engineCardCaution}>{caution}</Text>}
+    </Pressable>
+  );
+}
+
 function AccordionSection({
   title,
   expanded,
@@ -225,22 +267,37 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           expanded={!!openSections.transparency}
           onToggle={() => toggleSection('transparency')}
         >
-          {/* 初期背景除去の方式。'vision' が使えない端末（Android・iOS16以下・
-              Simulator）では選択肢自体を出さず、色ベースのみにする。 */}
-          <SelectRow<BgEngine>
-            label={t('settings.bgEngine')}
-            sub={visionSupported === false ? t('settings.bgEngineHintUnavailable') : t('settings.bgEngineHint')}
-            value={visionSupported ? settings.bgEngine : 'flood'}
-            options={
-              visionSupported
-                ? [
-                    { value: 'flood',  label: t('settings.bgEngineFlood'),  icon: 'opacity' },
-                    { value: 'vision', label: t('settings.bgEngineVision'), icon: 'auto-awesome' },
-                  ]
-                : [{ value: 'flood', label: t('settings.bgEngineFlood'), icon: 'opacity' }]
-            }
-            onChange={v => void updateSettings({ bgEngine: v })}
-          />
+          {/* 初期背景除去の方式。モーダル(BgEngineChoiceModal)と同じ縦積みカード。
+              'vision' が使えない端末では色ベースだけ出し、説明で理由を書く。 */}
+          <View style={styles.engineBlock}>
+            <Text style={styles.rowLabel}>{t('settings.bgEngine')}</Text>
+            {visionSupported === false && (
+              <Text style={styles.rowSub}>{t('settings.bgEngineHintUnavailable')}</Text>
+            )}
+            <View style={styles.engineStack}>
+              <EngineChoiceCard
+                selected={(visionSupported ? settings.bgEngine : 'flood') === 'flood'}
+                icon="opacity"
+                iconColor={IOS.blue}
+                iconBg="rgba(0,122,255,0.12)"
+                title={t('settings.bgEngineFlood')}
+                desc={t('bgEngineChoice.floodDesc')}
+                onPress={() => void updateSettings({ bgEngine: 'flood' })}
+              />
+              {!!visionSupported && (
+                <EngineChoiceCard
+                  selected={settings.bgEngine === 'vision'}
+                  icon="auto-awesome"
+                  iconColor="#AF52DE"
+                  iconBg="rgba(175,82,222,0.12)"
+                  title={t('settings.bgEngineVision')}
+                  desc={t('bgEngineChoice.visionDesc')}
+                  caution={t('bgEngineChoice.visionCaution')}
+                  onPress={() => void updateSettings({ bgEngine: 'vision' })}
+                />
+              )}
+            </View>
+          </View>
           {/* Visionが使えない端末では選ぶ余地が無いので、確認自体が無意味なため出さない。 */}
           {!!visionSupported && (
             <View style={styles.row}>
@@ -924,6 +981,60 @@ const styles = StyleSheet.create({
   rowValue:     { fontSize: 22, fontWeight: '600', color: IOS.blue, minWidth: 36, textAlign: 'right' },
   rowValueMuted:{ fontSize: 16, color: IOS.secondary },
   rowValueDefaultTag: { fontSize: 12, fontWeight: '600', color: IOS.secondary },
+
+  engineBlock: {
+    paddingHorizontal: 16,
+    paddingTop: 13,
+    paddingBottom: 13,
+  },
+  engineStack: {
+    marginTop: 10,
+    gap: 10,
+  },
+  engineCard: {
+    backgroundColor: IOS.fill,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  engineCardOn: {
+    backgroundColor: 'rgba(0,122,255,0.08)',
+    borderColor: IOS.blue,
+  },
+  engineCardPressed: {
+    opacity: 0.85,
+  },
+  engineCardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  engineIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  engineCardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: IOS.label,
+  },
+  engineCardDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: IOS.secondary,
+  },
+  engineCardCaution: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#C93400',
+    marginTop: 8,
+  },
 
   // ── 統計セクション内の小見出し（🏆 制作実績 / ⚙️ 利用状況）─────────────────
   statsGroupLabel: {

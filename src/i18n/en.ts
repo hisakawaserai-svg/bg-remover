@@ -39,6 +39,8 @@ const en: typeof ja = {
     share: 'Share',
     unknownError: 'Unknown error',
     default: 'Default',
+    help: 'Help',
+    originalImage: 'Original',
   },
 
   colors: {
@@ -158,6 +160,12 @@ const en: typeof ja = {
     noSplitButton: 'Cut out without splitting',
     toPolygonEditor: 'Go to adjust area',
     rePickImage: 'Choose a different image',
+    changeEngineFab: 'Background removal method',
+    changeEngineConfirmTitle: 'Change the background removal method?',
+    changeEngineConfirmMessage:
+      'If you change it, this work’s shapes and eyedropper taps are cleared and it starts over.',
+    changeEngineConfirmAction: 'Change',
+    moveLines: 'Move split lines',
     resetTitle: 'Reset Edits',
     resetMessage:
       'Undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
@@ -177,19 +185,24 @@ const en: typeof ja = {
     confirmTitle: 'Confirm',
     warningMessage: 'Some stickers may not have split correctly.\n\nAffected: #{targets}',
     resetMessage:
-      'Restores the split result to its original state. All merges and cutout edits will be discarded.',
+      'Returns to the result right after auto split. Merges and per-cutout edits are undone.',
   },
 
   editor: {
     title: 'Adjust Area',
     modeMove: 'Move & adjust',
-    modeMoveHint: 'Drag the rectangle or pinch a corner to fit the shape',
+    modeMoveHint: 'Drag the rectangle or pinch a corner to fit the shape. Tap an edge to add a point for finer edits',
     modeAdd: 'Add rectangle',
     modeAddHint: 'Tap on the character you want to enclose',
     drawMethodTapTitle: 'Tap to enclose',
     drawMethodTapDesc: 'Place points to shape the area',
     drawMethodTraceTitle: 'Trace to select',
     drawMethodTraceDesc: 'Draw around the shape with your finger',
+    drawMethodPickTitle: 'Pick from candidates',
+    drawMethodPickDesc: 'Tap colored frames, then enclose',
+    drawMethodPickHint: 'Tap colored frames to select, then tap Enclose. Touching shapes share one frame',
+    drawMethodPickEnclose: { one: 'Enclose {count}', other: 'Enclose {count}' },
+    candidateBusy: 'Finding candidates...',
     modeEyedropper: 'Eyedropper',
     modeEyedropperHint: 'Tap a color to make it transparent',
     modeRestore: 'Restore brush',
@@ -210,7 +223,7 @@ const en: typeof ja = {
     resetTitle: 'Reset Edits',
     resetMessage:
       'Clears the enclosed shapes and undoes every eyedropper tap, returning to the automatically background-removed image.\nThis cannot be undone.',
-    retransTitle: 'Removal strength',
+    retransTitle: 'Re-transparent',
     retransApply: 'Apply',
     retransScopeLabel: 'Target area',
     retransScopeAll: 'Whole image',
@@ -398,35 +411,70 @@ const en: typeof ja = {
 
   howto: {
     title: 'How to Use',
-    intro:
-      'This app removes the background from an illustration sheet, cuts out each character, and saves them as transparent PNGs. Try the automatic mode first, then fix only the parts that need it by hand.',
-    step1Title: 'STEP 1  Choose an image',
-    step1Body:
-      'Pick an illustration sheet from "Choose an Image" on the home screen.\nA single image with several characters laid out on it works best.',
-    step1Note:
-      'Supported formats: PNG, JPEG (JPG), HEIC\nNote: other image formats may not load correctly.',
-    step2Title: 'STEP 2  Choose a split mode',
-    step2Body:
-      'Choose a mode on the setup screen.\n\n[Auto split] Check and adjust the number of rows, then tap "Split with these rows". If a split line in the preview is off, drag it with your finger to move it.\n\n[Adjust area] Enclose each character directly by tapping. Use this when the automatic mode does not work well.',
-    step2Note: 'Try the automatic mode first. It gets most sheets right.',
-    step3Title: 'STEP 3  Review and adjust the result',
-    step3Body:
-      'Review the split result and fix any misalignment or merged pieces.\n\n• Pieces are merged → tap "Back", raise the split detail and split again\n• Want to combine with the next cutout → long-press the cutout to select it, then tap "Merge N pieces"\n• Want to fix just one → tap the cutout to adjust its area\n• Want to share only some cutouts → long-press to select them, then tap "Share N pieces"\n• Want to start the edits over → tap "Reset" to return to the first split result',
-    step3Note:
-      'It does not have to be perfect — "Save" writes transparent PNGs to the "{album}" album. Cutouts marked with an orange ⚠ may contain more than one character, and saving shows a confirmation.\nIf rows contain different numbers of characters (for example only the last row has more columns), auto split uses the same lines for every row, so some rows may come out misaligned. Fix just those cells by merging or by adjusting the area.',
+    tabAuto: 'Auto split',
+    tabEditor: 'Adjust area',
+    tabResult: 'Results',
+    tabTrouble: 'If stuck',
+    flowLead: 'Pick an image → split here → check and save. If the split fails, use Adjust area.',
+    sectionBasics: 'Basics',
+    sectionWhere: 'Where to find it',
+    sectionTools: 'How to enclose',
+    sectionFix: 'Fix-up tools',
+    sectionScreen: 'On-screen buttons',
+    autoRows: 'How many rows the sheet has. Change it with − and +.',
+    autoCols: 'How many in each row. Change it with − and +.',
+    autoLines: 'Drag the horizontal and vertical lines on the image. Move a line if it sits on a character.',
+    autoDetail:
+      'How finely the app looks at gaps when it places split lines. Finer picks up smaller gaps. The count of lines is the row/column numbers above; you can still drag the lines.',
+    autoEyedrop: 'Tap the image to remove leftover background color. You cannot drag split lines while the eyedropper is on.',
+    autoNoSplit: 'Check this to cut out a single piece without using rows and columns.',
+    autoOriginal: 'The image icon in the header. Opens the photo before transparency, zoomed.',
+    autoEngine: 'The sparkle at the bottom left. Same as Background removal method in Settings. Switches color-based and subject detection.',
+    autoEngineWarn: 'If you change it, this work’s shapes and eyedropper taps are cleared and it starts over.',
+    autoToManual: 'Scattered layouts, or when auto fails: open the Adjust area tab above.',
+    editorPremise:
+      'Only areas inside the rectangles (blocks) are saved. Anything not enclosed will not appear in preview or in the saved files.',
+    editorPinchTitle: 'Two fingers',
+    editorPinch: 'Drag with two fingers to move the image. Pinch to zoom in or out. You can also use the zoom bar at the top.',
+    editorAddWhere: 'Choose Add rectangle in the tool on the right, then pick a method on the card below.',
+    editorPick: 'Tap yellow frames to select, then Enclose. Touching shapes share one frame.',
+    editorEraseWhere: 'Choose Restore brush on the right, then switch to Eraser on the card below.',
+    editorRetrans: 'The sparkle on the right (Re-transparent). Redo an area if too much or too little was removed.',
+    editorGhost: '“Original” while the restore brush is open. Overlays the drawing to show what was removed.',
+    editorOriginal: 'The image icon in the header. Opens the photo before transparency, zoomed.',
+    editorBg: 'The backdrop button on the right. Checkerboard shows transparency, sun is white, moon is black. Switch them to spot leftovers.',
+    editorLoupe: 'The crosshair button on the right. Same as Edit operation mode in Settings. Aim with your finger, or with the on-screen crosshair.',
+    editorHideChromeTitle: 'Hide frames',
+    editorHideChrome: 'The eye icon on the right. Temporarily hides frames and buttons so you can see the edge of the drawing.',
+    editorPreview: 'Preview on the bottom bar. Cuts out only the enclosed areas so you can check them and save.',
+    resultTap: 'A short tap on one piece opens Adjust area for that piece only.',
+    resultNumbersTitle: 'Numbers',
+    resultLongPress: 'You can merge only two pieces whose edges sit flush with no gap. Long-press, tap the neighbor, then tap Merge. Pieces that are apart, or that only touch at a corner, cannot be merged.',
+    resultNumbers: 'The “1” at the right of the heading. Hide the numbers if they get in the way while checking transparency.',
+    resultBg: 'The backdrop at the right of the heading. Checkerboard shows transparency, sun is white, moon is black.',
+    resultOriginal: 'The image icon in the header or at the right of the heading. Opens the photo before transparency, zoomed.',
+    resultSave: 'The Save button at the bottom. Transparent PNGs go to the “{album}” album.',
+    resultReset: 'Reset at the bottom. Returns to the result right after auto split. Merges and per-cutout edits are undone.',
+    troubleSplitTitle: 'It won’t split cleanly',
+    troubleSplit:
+      'On the split result, long-press to merge pieces that were cut apart, then tap that piece and enclose it again in Adjust area to export it as one character. If the rows, columns, or lines are off, fix them in setup first, then do the same.',
+    troubleBgTitle: 'Background remains or too much is gone',
+    troubleBg:
+      'Leftover color: eyedropper. Speckled leftovers: eraser. Too much gone: restore brush. In Adjust area you can also use Re-transparent.',
+    troubleSaveTitle: 'It won’t save',
+    troubleSave:
+      'Set Photos access to All Photos. Selected Photos cannot save to an album (Settings → Privacy & Security → Photos).',
+    troubleFormatTitle: 'File types',
+    troubleFormat: 'You can open PNG, JPEG, and HEIC. Saves are transparent PNG only (JPEG cannot keep transparency).',
+    troubleProcessTitle: 'Don’t close while it works',
+    troubleProcess: 'If you leave during background removal or splitting, the in-progress work may not be kept. Wait until it finishes.',
+    troubleEngineTitle: 'Changing the method cleared my work',
+    troubleEngine:
+      'The sparkle at the bottom left of setup switches the method and clears this work’s shapes and eyedropper taps. It starts the same image over.',
     complexTitle: 'How to split a complex image',
     complexDescription: 'Steps for separating merged characters',
     polygonTitle: 'How to adjust areas',
     polygonDescription: 'An animated walkthrough of placing a rectangle around a character',
-    tipsTitle: 'Tips for Clean Cutouts',
-    tip1: 'Illustrations on a plain white or light gray background come out cleanest',
-    tip2: 'Start split detail at "Medium"; move to "Fine" if pieces merge together',
-    tip3: 'If the automatic mode never lines up, enclose characters directly with "Adjust area" (finer cleanup tools live there too)',
-    noticeTitle: 'Please Note',
-    notice1:
-      'Saving requires "Full Access" to Photos. With "Selected Photos" the app cannot save to an album (Settings → Privacy & Security → Photos)',
-    notice2: 'Output is transparent PNG only (JPEG cannot preserve transparency)',
-    notice3: 'Do not close the app while background removal or splitting is running',
   },
 
   polygonTutorial: {

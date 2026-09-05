@@ -48,11 +48,12 @@ interface Props {
   onSaved: () => void;
   onHome: () => void;
   onSettings: () => void;
+  onHelp?: () => void;
 }
 
 // ── コンポーネント ────────────────────────────────────────────────────────────
 
-export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, onSaved, onHome, onSettings }: Props) {
+export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, onSaved, onHome, onSettings, onHelp }: Props) {
   const { t } = useT();
   const { albumName } = useAlbumName();
   const bg = useThumbBg();
@@ -107,7 +108,7 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
   const header = (
     <AppHeader
       title={t('saveComplete.title')}
-      right={<HeaderActions showHome showSettings onHome={onHome} onSettings={onSettings} />}
+      right={<HeaderActions showHelp={!!onHelp} showSettings onHelp={onHelp} onSettings={onSettings} />}
     />
   );
 

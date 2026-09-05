@@ -23,8 +23,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
+import HeaderActions from './ui/HeaderActions';
 import CheckerboardBg from './ui/CheckerboardBg';
 import ImagePreviewModal from './ui/ImagePreviewModal';
+import ImageZoomModal from './ui/ImageZoomModal';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { clearPreviewDir, savePolygons, writePreviewPolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
@@ -46,12 +48,15 @@ interface Props {
   bgResult: RemoveBgResult;
   polygons: Polygon[];
   onBack: () => void;
+  onSettings?: () => void;
+  onHelp?: () => void;
+  originalImageUri?: string;
   /** 保存完了後に App.tsx の state を 'done' へ。paths は書き出した PNG の file:// URI。 */
   onSave: (count: number, paths: string[]) => void;
   onRequestSave: () => Promise<boolean>;
 }
 
-export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRequestSave }: Props) {
+export default function PreviewScreen({ bgResult, polygons, onBack, onSettings, onHelp, originalImageUri, onSave, onRequestSave }: Props) {
   const { t } = useT();
   const { ensureAlbumName } = useAlbumName();
   const { width: winW } = useWindowDimensions();
@@ -66,6 +71,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
   const [uris, setUris] = useState<(string | null)[] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const [zoomVisible, setZoomVisible] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +119,14 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
       title={t('preview.title')}
       onBack={isSaving ? undefined : onBack}
       backLabel={t('preview.backToEdit')}
+      right={
+        <HeaderActions
+          showHelp={!!onHelp}
+          showSettings={!!onSettings}
+          onHelp={onHelp}
+          onSettings={onSettings}
+        />
+      }
     />
   );
 
@@ -143,10 +157,20 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
           <Text style={styles.loadingTxt}>{t('loading.previewGenerating')}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.gridWrap}>
+        <View style={styles.body}>
+        <View style={styles.stickyChrome}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionLabel}>{t('preview.cutsLabel', { count: polygons.length })}</Text>
             <View style={styles.sectionHintRow}>
+              {originalImageUri ? (
+                <AnimatedPressable
+                  style={styles.bgToggleBtn}
+                  onPress={() => setZoomVisible(true)}
+                  pressedScale={0.9}
+                >
+                  <Icon name="image" size={16} color="#FFF" />
+                </AnimatedPressable>
+              ) : null}
               <AnimatedPressable
                 style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
                 onPress={() => setShowNumbers(v => !v)}
@@ -179,7 +203,8 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
               </View>
             </View>
           </View>
-
+        </View>
+        <ScrollView contentContainerStyle={styles.gridWrap}>
           <View style={styles.grid}>
             {uris.map((uri, idx) => (
               <View key={polygons[idx]?.id ?? idx} style={[styles.cell, { width: cellSize, height: cellSize }]}>
@@ -204,6 +229,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
             ))}
           </View>
         </ScrollView>
+        </View>
       )}
 
       {previewIdx !== null && previewUris.length > 0 && (
@@ -214,6 +240,9 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSave, onRe
           bg={bgMode}
         />
       )}
+      {originalImageUri ? (
+        <ImageZoomModal visible={zoomVisible} uri={originalImageUri} onClose={() => setZoomVisible(false)} />
+      ) : null}
     </Screen>
   );
 }
@@ -241,9 +270,16 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingTxt: { fontSize: 14, color: IOS.secondary },
 
-  gridWrap: {
+  body: { flex: 1 },
+  stickyChrome: {
+    zIndex: 20,
     paddingHorizontal: 16,
     paddingTop: 16,
+    backgroundColor: IOS.bg,
+  },
+  gridWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 24,
   },
   sectionRow: {

@@ -106,10 +106,17 @@ export default function WhatsNewSheet({ visible, onClose, mode, appVersion }: Pr
                   </AnimatedPressable>
                   {open && (
                     <View style={styles.accBody}>
-                      {copy.items.map(item => (
-                        <Text key={item} style={styles.item}>
-                          ・{item}
-                        </Text>
+                      {copy.sections.map((sec, si) => (
+                        <View key={`${rel.version}-${sec.heading ?? 's'}-${si}`} style={styles.section}>
+                          {sec.heading ? (
+                            <Text style={styles.sectionHead}>{sec.heading}</Text>
+                          ) : null}
+                          {sec.items.map(item => (
+                            <Text key={item} style={styles.item}>
+                              ・{item}
+                            </Text>
+                          ))}
+                        </View>
                       ))}
                     </View>
                   )}
@@ -173,6 +180,15 @@ const styles = StyleSheet.create({
   accBody: {
     paddingHorizontal: 16,
     paddingBottom: 14,
+  },
+  section: {
+    marginBottom: 10,
+  },
+  sectionHead: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 6,
   },
   item: {
     fontSize: 14,

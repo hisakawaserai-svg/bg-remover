@@ -41,6 +41,7 @@ import ToleranceSlider from './ui/ToleranceSlider';
 import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
 import { useT } from '../i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
@@ -103,6 +104,7 @@ interface Props {
   canRedoEdit?: boolean;
   bgVersion?: number;
   onSettings?: () => void;
+  onHelp?: () => void;
   /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
   originalImageUri?: string;
   /**
@@ -116,9 +118,10 @@ interface Props {
   onChangeEngine?: () => void;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHelp, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
+  const insets = useSafeAreaInsets();
   const thumbBg = useThumbBg();
   const visionSupported = useVisionSupported();
   const [rows, setRows] = useState(initialRows);
@@ -551,12 +554,12 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
       backLabel={t('common.home')}
       right={
         <HeaderActions
-          showOriginalImage={!!originalImageUri}
+          showOriginal={!!originalImageUri}
+          showHelp={!!onHelp}
           showSettings={!!onSettings}
-          showChangeEngine={!!onChangeEngine && !!visionSupported}
-          onOriginalImage={() => setZoomVisible(true)}
+          onOriginal={() => setZoomVisible(true)}
+          onHelp={onHelp}
           onSettings={onSettings}
-          onChangeEngine={onChangeEngine}
         />
       }
     />
@@ -730,7 +733,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             <View style={styles.cardAnchor}>
             <Card style={styles.card}>
               <View style={styles.rowInput}>
-                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.rows')}</Text>
+                <View style={styles.labelWithIcon}>
+                  <Icon name="view-headline" size={20} color={noSplit ? IOS.secondary : IOS.label} />
+                  <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.rows')}</Text>
+                </View>
                 {/* 行数ステッパー: noSplit 時はグレーアウト＋上に Pressable を重ねてタップを横取り */}
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
@@ -758,7 +764,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               {/* 列数ステッパー（行数と同じUI・初期値は自動推定値）: noSplit 時は無効化 */}
               <Divider />
               <View style={styles.rowInput}>
-                <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.columns')}</Text>
+                <View style={styles.labelWithIcon}>
+                  <Icon name="view-week" size={20} color={noSplit ? IOS.secondary : IOS.label} />
+                  <Text style={[styles.rowLabel, noSplit && styles.disabledTxt]}>{t('setup.columns')}</Text>
+                </View>
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
@@ -895,6 +904,26 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           <Text style={styles.toastTxt}>{toastMsg}</Text>
         </Animated.View>
       )}
+
+      {onChangeEngine && visionSupported ? (
+        <AnimatedPressable
+          style={[styles.engineFab, { bottom: Math.max(insets.bottom, 12) + 12 }]}
+          onPress={() => {
+            Alert.alert(
+              t('setup.changeEngineConfirmTitle'),
+              t('setup.changeEngineConfirmMessage'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('setup.changeEngineConfirmAction'), onPress: onChangeEngine },
+              ],
+            );
+          }}
+          pressedScale={0.94}
+          accessibilityLabel={t('settings.bgEngine')}
+        >
+          <Icon name="auto-awesome" size={24} color="#FFF" />
+        </AnimatedPressable>
+      ) : null}
     </View>
   );
 }
@@ -1191,6 +1220,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: IOS.label,
   },
+  labelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
   separator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: IOS.separator,
@@ -1252,6 +1287,22 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '500',
+  },
+  engineFab: {
+    position: 'absolute',
+    left: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: IOS.blue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    elevation: 4,
   },
 
   // ── ステッパー ─────────────────────────────────────────────────────────────

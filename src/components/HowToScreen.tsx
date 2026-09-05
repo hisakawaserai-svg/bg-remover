@@ -1,16 +1,9 @@
 /**
- * HowToScreen — 使い方ガイド画面
- *
- * アニメーション方針:
- *   - ヘッダーと上部3ステップは画面を開いた瞬間に順番登場（stagger）。
- *     FadeInView の delay を 0,80,160,240ms とずらして渡すだけで実現。
- *   - 下部のコツ・注意枠はスクロールして見えるタイミングでフェードインしたいが、
- *     現状は ScrollFadeIn を実装していないため、後の段階で追加する。
- *     暫定として少し大きめの delay（400ms〜）で stagger のみ適用し、
- *     スクロール連動は TODO コメントで残す。
+ * HowToScreen — 使い方。画面ごとのタブ。
+ * 「？」からは initialTab でその画面の説明を開く。
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -19,223 +12,239 @@ import {
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import CommunityIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import Screen    from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import Card      from './ui/Card';
-import FadeInView from './ui/FadeInView';
 import { colors, spacing, typography, radius } from './ui/theme';
 import { useT } from '../i18n';
 import type { TKey } from '../i18n';
+import { TOOL_ICONS } from './ui/ToolHint';
 
-// ── ステップデータ ──────────────────────────────────────────────────────────
-// 内容を配列で持つことで、ステップ追加時に JSX を触らなくて済む。
+export type HowToTab = 'auto' | 'editor' | 'result' | 'trouble';
 
-/**
- * ステップの中身。文言そのものではなく i18n のキーを持ち、描画時に t() で解決する。
- * モジュール定数のまま文言を埋めると、初期化時の言語で固定されてしまう。
- */
-const STEPS: { icon: string; titleKey: TKey; bodyKey: TKey; noteKey: TKey }[] = [
-  { icon: 'add-photo-alternate',  titleKey: 'howto.step1Title', bodyKey: 'howto.step1Body', noteKey: 'howto.step1Note' },
-  { icon: 'tune',                 titleKey: 'howto.step2Title', bodyKey: 'howto.step2Body', noteKey: 'howto.step2Note' },
-  { icon: 'check-circle-outline', titleKey: 'howto.step3Title', bodyKey: 'howto.step3Body', noteKey: 'howto.step3Note' },
+const TABS: { id: HowToTab; labelKey: TKey }[] = [
+  { id: 'auto',    labelKey: 'howto.tabAuto' },
+  { id: 'editor',  labelKey: 'howto.tabEditor' },
+  { id: 'result',  labelKey: 'howto.tabResult' },
+  { id: 'trouble', labelKey: 'howto.tabTrouble' },
 ];
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+type IconSpec = { name: string; family?: 'material' | 'community' };
+
+function SectionLabel({ text }: { text: string }) {
+  return <Text style={styles.section}>{text}</Text>;
+}
+
+function ToolLine({ icon, title, body, warn }: { icon?: IconSpec; title: string; body: string; warn?: string }) {
+  const Comp = icon?.family === 'community' ? CommunityIcon : Icon;
+  return (
+    <View style={styles.toolRow}>
+      {icon ? (
+        <View style={styles.iconWrap}>
+          <Comp name={icon.name} size={20} color={colors.accent} />
+        </View>
+      ) : (
+        <View style={styles.iconSpacer} />
+      )}
+      <View style={styles.toolTexts}>
+        <Text style={styles.toolTitle}>{title}</Text>
+        <Text style={styles.toolBody}>{body}</Text>
+        {warn ? <Text style={styles.warn}>{warn}</Text> : null}
+      </View>
+    </View>
+  );
+}
 
 interface Props {
   onClose: () => void;
   onPolygonTutorial?: () => void;
   onComplexTutorial?: () => void;
-  /**
-   * 'help'(既定):      設定>使い方からの閲覧。右上「完了」でいつでも閉じる。
-   * 'onboarding':      初回フロー。末尾CTA「はじめる」で前進。
-   * PolygonTutorialScreen と命名を揃える。
-   */
+  initialTab?: HowToTab;
   mode?: 'onboarding' | 'help';
-  /** onboarding 時のCTAハンドラ。フラグ保存等の副作用は呼び出し側が持つ。 */
   onStart?: () => void;
 }
 
-// ── コンポーネント ────────────────────────────────────────────────────────────
-
-export default function HowToScreen({ onClose, onPolygonTutorial, onComplexTutorial, mode = 'help', onStart }: Props) {
+export default function HowToScreen({
+  onClose,
+  onPolygonTutorial,
+  onComplexTutorial,
+  initialTab = 'auto',
+  mode = 'help',
+  onStart,
+}: Props) {
   const { t } = useT();
   const isOnboarding = mode === 'onboarding';
-
-  // stagger の起点delay。各ステップは STAGGER_INTERVAL ずつずれて登場する。
-  // FadeInView に delay を渡すだけで stagger を実現している（ループは親が担当）。
-  const STAGGER_INTERVAL = 80; // ms
+  const [tab, setTab] = useState<HowToTab>(initialTab);
+  const album = t('app.albumName');
 
   const header = (
-    <FadeInView delay={0}>
-      <AppHeader
-        title={t('howto.title')}
-        // help は「戻る」で呼び出し元へ戻る。onboarding は末尾CTAで前進するため非表示。
-        onBack={isOnboarding ? undefined : onClose}
-        backLabel={isOnboarding ? undefined : t('common.back')}
-      />
-    </FadeInView>
+    <AppHeader
+      title={t('howto.title')}
+      onBack={isOnboarding ? undefined : onClose}
+      backLabel={isOnboarding ? undefined : t('common.back')}
+    />
   );
 
   return (
-    <Screen header={header} bg={colors.bg}>
+    <Screen header={header} bg={colors.bg} scrollable={false}>
+      <View style={styles.tabRow}>
+        {TABS.map(item => {
+          const on = tab === item.id;
+          return (
+            <AnimatedPressable
+              key={item.id}
+              style={[styles.tabBtn, on && styles.tabBtnOn]}
+              onPress={() => setTab(item.id)}
+              pressedScale={0.96}
+            >
+              <Text style={[styles.tabTxt, on && styles.tabTxtOn]} numberOfLines={1}>
+                {t(item.labelKey)}
+              </Text>
+            </AnimatedPressable>
+          );
+        })}
+      </View>
 
-      {/* ── リード文 ── delay=1段目 */}
-      <FadeInView delay={STAGGER_INTERVAL * 1}>
-        <View style={styles.lead}>
-          <Text style={styles.leadTxt}>{t('howto.intro')}</Text>
-        </View>
-      </FadeInView>
-
-      {/* ── ステップカード群 ── delay を STAGGER_INTERVAL ずつずらして順番登場 */}
-      {STEPS.map((step, i) => (
-        // i=0→delay=2段目, i=1→3段目, i=2→4段目
-        <FadeInView key={step.titleKey} delay={STAGGER_INTERVAL * (i + 2)}>
-          <Card style={styles.stepCard}>
-            {/* アイコン + タイトル行 */}
-            <View style={styles.stepHeader}>
-              <View style={styles.iconWrap}>
-                <Icon name={step.icon} size={22} color={colors.accent} />
-              </View>
-              <Text style={styles.stepTitle}>{t(step.titleKey)}</Text>
-            </View>
-
-            {/* 本文 */}
-            <Text style={styles.stepBody}>{t(step.bodyKey)}</Text>
-
-            {/* 補足ノート */}
-            <View style={styles.noteRow}>
-              <Icon name="lightbulb-outline" size={13} color={colors.secondary} />
-              <Text style={styles.noteTxt}>{t(step.noteKey, { album: t('app.albumName') })}</Text>
-            </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {tab === 'auto' && (
+          <Card style={styles.card}>
+            <Text style={styles.lead}>{t('howto.flowLead')}</Text>
+            <SectionLabel text={t('howto.sectionBasics')} />
+            <ToolLine icon={{ name: 'view-headline' }} title={t('setup.rows')} body={t('howto.autoRows')} />
+            <ToolLine icon={{ name: 'view-week' }} title={t('setup.columns')} body={t('howto.autoCols')} />
+            <ToolLine icon={{ name: 'remove' }} title={t('setup.moveLines')} body={t('howto.autoLines')} />
+            <ToolLine icon={{ name: 'tune' }} title={t('granularity.label')} body={t('howto.autoDetail')} />
+            <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('howto.autoEyedrop')} />
+            <ToolLine icon={{ name: 'crop' }} title={t('setup.noSplit')} body={t('howto.autoNoSplit')} />
+            <SectionLabel text={t('howto.sectionWhere')} />
+            <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.autoOriginal')} />
+            <ToolLine
+              icon={{ name: 'auto-awesome' }}
+              title={t('settings.bgEngine')}
+              body={t('howto.autoEngine')}
+              warn={t('howto.autoEngineWarn')}
+            />
+            <Text style={styles.footNote}>{t('howto.autoToManual')}</Text>
           </Card>
-        </FadeInView>
-      ))}
+        )}
 
-      {!isOnboarding && onComplexTutorial && (
-        <AnimatedPressable
-          style={styles.tutorialRow}
-          onPress={onComplexTutorial}
-        >
-          <Icon name="grid-view" size={20} color={colors.accent}/>
-          <View style={styles.tutorialText}>
-            <Text style={styles.tutorialLabel}>
-              {t('howto.complexTitle')}
-            </Text>
-            <Text style={styles.tutorialSub}>
-              {t('howto.complexDescription')}
-            </Text>
-          </View>
-          <Icon name="chevron-right" size={20}/>
-        </AnimatedPressable>
-      )}
+        {tab === 'editor' && (
+          <>
+            <Card style={styles.card}>
+              <Text style={styles.lead}>{t('howto.editorPremise')}</Text>
+              <ToolLine icon={{ name: 'zoom-out-map' }} title={t('howto.editorPinchTitle')} body={t('howto.editorPinch')} />
+              <SectionLabel text={t('howto.sectionTools')} />
+              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.modeAdd')} body={t('howto.editorAddWhere')} />
+              <ToolLine icon={{ name: 'dashboard' }} title={t('editor.drawMethodPickTitle')} body={t('howto.editorPick')} />
+              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.drawMethodTapTitle')} body={t('editor.drawMethodTapDesc')} />
+              <ToolLine icon={{ name: 'gesture' }} title={t('editor.drawMethodTraceTitle')} body={t('editor.drawMethodTraceDesc')} />
+              <SectionLabel text={t('howto.sectionFix')} />
+              <ToolLine icon={{ name: TOOL_ICONS.move }} title={t('editor.modeMove')} body={t('editor.modeMoveHint')} />
+              <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('editor.modeEyedropperHint')} />
+              <ToolLine icon={{ name: 'healing' }} title={t('editor.modeRestore')} body={t('editor.modeRestoreHint')} />
+              <ToolLine icon={{ name: 'eraser', family: 'community' }} title={t('editor.modeErase')} body={t('howto.editorEraseWhere')} />
+              <SectionLabel text={t('howto.sectionScreen')} />
+              <ToolLine icon={{ name: 'pan-tool' }} title={t('settings.loupeMode')} body={t('howto.editorLoupe')} />
+              <ToolLine icon={{ name: 'grid-on' }} title={t('settings.thumbBg')} body={t('howto.editorBg')} />
+              <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.editorOriginal')} />
+              <ToolLine icon={{ name: 'layers' }} title={t('editor.ghost')} body={t('howto.editorGhost')} />
+              <ToolLine icon={{ name: 'auto-fix-high' }} title={t('editor.retransTitle')} body={t('howto.editorRetrans')} />
+              <ToolLine icon={{ name: 'visibility-off' }} title={t('howto.editorHideChromeTitle')} body={t('howto.editorHideChrome')} />
+              <ToolLine icon={{ name: 'preview' }} title={t('common.preview')} body={t('howto.editorPreview')} />
+            </Card>
+            {!isOnboarding && onPolygonTutorial && (
+              <AnimatedPressable style={styles.linkRow} onPress={onPolygonTutorial} pressedScale={0.98}>
+                <Icon name="gesture" size={20} color={colors.accent} />
+                <View style={styles.linkText}>
+                  <Text style={styles.linkLabel}>{t('howto.polygonTitle')}</Text>
+                  <Text style={styles.linkSub}>{t('howto.polygonDescription')}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.secondary} />
+              </AnimatedPressable>
+            )}
+          </>
+        )}
 
-      {/*
-       * ── 以下は画面下部（スクロールして見える）────────────────────────────
-       * TODO: ScrollFadeIn 実装後にスクロール連動フェードインへ移行する。
-       * 現状は stagger の続き（遅めの delay）で代替し、
-       * スクロール前から非表示・スクロール後に表示、という動きは未対応。
-       */}
+        {tab === 'result' && (
+          <>
+            <Card style={styles.card}>
+              <ToolLine icon={{ name: 'touch-app' }} title={t('editor.title')} body={t('howto.resultTap')} />
+              <ToolLine icon={{ name: 'merge-type' }} title={t('result.longPressHint')} body={t('howto.resultLongPress')} />
+              <SectionLabel text={t('howto.sectionScreen')} />
+              <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.resultOriginal')} />
+              <ToolLine icon={{ name: 'looks-one' }} title={t('howto.resultNumbersTitle')} body={t('howto.resultNumbers')} />
+              <ToolLine icon={{ name: 'grid-on' }} title={t('settings.thumbBg')} body={t('howto.resultBg')} />
+              <ToolLine icon={{ name: 'refresh' }} title={t('common.reset')} body={t('howto.resultReset')} />
+              <ToolLine icon={{ name: 'save-alt' }} title={t('common.save')} body={t('howto.resultSave', { album })} />
+            </Card>
+            {!isOnboarding && onComplexTutorial && (
+              <AnimatedPressable style={styles.linkRow} onPress={onComplexTutorial} pressedScale={0.98}>
+                <Icon name="grid-view" size={20} color={colors.accent} />
+                <View style={styles.linkText}>
+                  <Text style={styles.linkLabel}>{t('howto.complexTitle')}</Text>
+                  <Text style={styles.linkSub}>{t('howto.complexDescription')}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.secondary} />
+              </AnimatedPressable>
+            )}
+          </>
+        )}
 
-      {/* 範囲を調整チュートリアルへのリンク。
-          初回オンボ中は踏むと help 版に化けて初回フローが分断するため非表示にする。 */}
-      {!isOnboarding && onPolygonTutorial && (
-        <FadeInView delay={STAGGER_INTERVAL * 5}>
-          <AnimatedPressable
-            style={styles.tutorialRow}
-            onPress={onPolygonTutorial}
-            pressedScale={0.98}
-          >
-            <View style={styles.tutorialIcon}>
-              <Icon name="gesture" size={20} color={colors.accent} />
-            </View>
-            <View style={styles.tutorialText}>
-              <Text style={styles.tutorialLabel}>{t('howto.polygonTitle')}</Text>
-              <Text style={styles.tutorialSub}>{t('howto.polygonDescription')}</Text>
-            </View>
-            <Icon name="chevron-right" size={20} color={colors.secondary} />
-          </AnimatedPressable>
-        </FadeInView>
-      )}
+        {tab === 'trouble' && (
+          <Card style={styles.card}>
+            <ToolLine icon={{ name: 'call-split' }} title={t('howto.troubleSplitTitle')} body={t('howto.troubleSplit')} />
+            <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('howto.troubleBgTitle')} body={t('howto.troubleBg')} />
+            <ToolLine icon={{ name: 'save-alt' }} title={t('howto.troubleSaveTitle')} body={t('howto.troubleSave')} />
+            <ToolLine icon={{ name: 'photo' }} title={t('howto.troubleFormatTitle')} body={t('howto.troubleFormat')} />
+            <ToolLine icon={{ name: 'hourglass-empty' }} title={t('howto.troubleProcessTitle')} body={t('howto.troubleProcess')} />
+            <ToolLine icon={{ name: 'auto-awesome' }} title={t('howto.troubleEngineTitle')} body={t('howto.troubleEngine')} />
+          </Card>
+        )}
 
-      {/* コツ */}
-      <FadeInView delay={STAGGER_INTERVAL * 6}>
-        <Card style={styles.tipsCard}>
-          <View style={styles.tipsHeader}>
-            <Icon name="tips-and-updates" size={16} color="#FF9500" />
-            <Text style={styles.tipsTitle}>{t('howto.tipsTitle')}</Text>
-          </View>
-          <TipRow text={t('howto.tip1')} />
-          <TipRow text={t('howto.tip2')} />
-          <TipRow text={t('howto.tip3')} />
-        </Card>
-      </FadeInView>
-
-      {/* 注意事項 */}
-      <FadeInView delay={STAGGER_INTERVAL * 7}>
-        <Card style={styles.cautionCard}>
-          <View style={styles.tipsHeader}>
-            <Icon name="info-outline" size={16} color={colors.secondary} />
-            <Text style={[styles.tipsTitle, { color: colors.secondary }]}>{t('howto.noticeTitle')}</Text>
-          </View>
-          {/* 「選択した写真のみ」だとアルバムへの保存が Photos 側で拒否され、
-              書き出し時に PHPhotosErrorDomain エラーになる。実際に踏んだので明記する。 */}
-          <TipRow text={t('howto.notice1')} />
-          <TipRow text={t('howto.notice2')} />
-          <TipRow text={t('howto.notice3')} />
-        </Card>
-      </FadeInView>
-
-      {/* オンボーディング時のみ: 読み終えて前進するCTA */}
-      {isOnboarding && (
-        <FadeInView delay={STAGGER_INTERVAL * 8}>
+        {isOnboarding && (
           <AnimatedPressable style={styles.startBtn} onPress={() => onStart?.()} pressedScale={0.97}>
             <Text style={styles.startBtnTxt}>{t('common.start')}</Text>
           </AnimatedPressable>
-        </FadeInView>
-      )}
-
+        )}
+      </ScrollView>
     </Screen>
   );
 }
 
-// ── 補足リスト行（Card 内で使う小部品）────────────────────────────────────────
-
-function TipRow({ text }: { text: string }) {
-  return (
-    <View style={styles.tipRow}>
-      <Text style={styles.tipBullet}>•</Text>
-      <Text style={styles.tipTxt}>{text}</Text>
-    </View>
-  );
-}
-
-// ── スタイル ──────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  lead: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  leadTxt: {
-    ...typography.body,
-    color: colors.secondary,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-
-  stepCard: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  stepHeader: {
+  tabRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
   },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: colors.fill2,
+  },
+  tabBtnOn: { backgroundColor: colors.accentMuted },
+  tabTxt: { ...typography.caption, fontWeight: '600', color: colors.secondary, textAlign: 'center' },
+  tabTxtOn: { color: colors.accent },
+  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
+  card: { gap: spacing.md },
+  lead: { ...typography.body, color: colors.secondary, lineHeight: 22 },
+  section: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 0.4,
+    marginTop: 4,
+  },
+  toolRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   iconWrap: {
     width: 36, height: 36,
     borderRadius: radius.sm,
@@ -243,78 +252,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepTitle: { ...typography.headline, color: colors.label, flex: 1 },
-  stepBody:  { ...typography.body, color: colors.label2, lineHeight: 22 },
-  noteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-    backgroundColor: colors.fill2,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-  },
-  noteTxt: { ...typography.caption, color: colors.secondary, flex: 1, lineHeight: 18 },
-
-  tipsCard: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  cautionCard: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.xxl,
-    gap: spacing.xs,
-  },
-  tipsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  tipsTitle: { ...typography.callout, fontWeight: '600', color: '#FF9500' },
-
-  tipRow:   { flexDirection: 'row', gap: spacing.xs, alignItems: 'flex-start' },
-  tipBullet: { ...typography.body, color: colors.secondary, lineHeight: 22 },
-  tipTxt:   { ...typography.body, color: colors.label2, flex: 1, lineHeight: 22 },
-
-  // 手動チュートリアルへのリンク行
-  tutorialRow: {
+  iconSpacer: { width: 36 },
+  toolTexts: { flex: 1, gap: 2 },
+  toolTitle: { ...typography.callout, fontWeight: '600', color: colors.label },
+  toolBody: { ...typography.caption, color: colors.secondary, lineHeight: 18 },
+  warn: { ...typography.caption, color: '#FF3B30', lineHeight: 18, fontWeight: '600' },
+  footNote: { ...typography.caption, color: colors.label2, lineHeight: 18 },
+  trouble: { ...typography.body, color: colors.label2, lineHeight: 22 },
+  linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.md,
     backgroundColor: colors.card,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  tutorialIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tutorialText: { flex: 1, gap: 2 },
-  tutorialLabel: { ...typography.callout, fontWeight: '600', color: colors.label },
-  tutorialSub:   { ...typography.caption, color: colors.secondary },
-
-  // onboarding CTA（PolygonTutorialScreen の startBtn と揃える）
+  linkText: { flex: 1, gap: 2 },
+  linkLabel: { ...typography.callout, fontWeight: '600', color: colors.label },
+  linkSub: { ...typography.caption, color: colors.secondary },
   startBtn: {
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.xxl,
   },
   startBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
 });

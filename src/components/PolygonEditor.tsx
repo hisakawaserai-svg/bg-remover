@@ -97,6 +97,22 @@ const ZOOM_MAX       = 24;
 /** 倍率プリセット。スライダーの目盛りと、離した時の吸い付き先を兼ねる。 */
 const ZOOM_PRESETS   = [0.1, 1, 2, 4, 8, 16, 24] as const;
 
+type BusyKey =
+  | 'editor.eyedropBusy'
+  | 'editor.restoreBusy'
+  | 'editor.eraseBusy'
+  | 'editor.undoBusy'
+  | 'editor.redoBusy'
+  | 'editor.retransBusy'
+  | 'editor.resetBusy'
+  | 'editor.candidateBusy';
+
+/** 「候補から選ぶ」の未選択枠。保存前の赤警告とは別色。 */
+const CANDIDATE_FILL = 'rgba(255, 214, 10, 0.22)';
+const CANDIDATE_STROKE = 'rgba(255, 214, 10, 0.95)';
+const CANDIDATE_SEL_FILL = 'rgba(50, 215, 75, 0.28)';
+const CANDIDATE_SEL_STROKE = 'rgba(50, 215, 75, 1)';
+
 /**
  * 倍率 ↔ スライダー位置(0〜1) の変換。
  *
@@ -303,6 +319,8 @@ interface Props {
   bgVersion?: number;
   /** 設定画面へ遷移。省略可（ヘッダーに設定アイコンを出さない）。 */
   onSettings?: () => void;
+  /** この画面の使い方。省略可。 */
+  onHelp?: () => void;
   /** ホームへ戻る。省略可（ヘッダーにホームアイコンを出さない）。 */
   onHome?: () => void;
   /** ヘッダーの「元画像」ズーム用 URI。分割結果とヘッダーを揃える。 */
@@ -335,6 +353,17 @@ function centroid(pts: [number, number][]): [number, number] {
   const n = pts.length;
   const [sx, sy] = pts.reduce(([ax, ay], [x, y]) => [ax + x, ay + y], [0, 0]);
   return [sx / n, sy / n];
+}
+
+/**
+ * スタンプ bbox の中心が、既存の囲みのどれかの内側にあるか。
+ * 候補表示では「もう囲んだ塊」を出さないために使う。中心だけ見るので、
+ * 枠が少しずれていても、だいたいその塊の上に四角があれば候補から消える。
+ */
+function stampBBoxEnclosed(b: BBox, polys: { points: [number, number][] }[]): boolean {
+  const cx = (b.minX + b.maxX + 1) / 2;
+  const cy = (b.minY + b.maxY + 1) / 2;
+  return polys.some(p => pointInPoly(cx, cy, p.points));
 }
 
 /** レイキャスティング法 */
@@ -559,7 +588,7 @@ PolyBadge.displayName = 'PolyBadge';
 
 // ── コンポーネント ──────────────────────────────────────────────────────────
 
-export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, onErase, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri }: Props) {
+export default function PolygonEditor({ bgResult, displayW, displayH, onPreview, onBack, initialPolygons, onPolygonsChange, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, onRetransparent, onRestore, onErase, baseRgba, cellTolerance, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHelp, onHome, originalImageUri }: Props) {
   const { t } = useT();
 
   const { settings, updateSettings } = useSettings();
@@ -689,7 +718,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // 走らせてから処理へ入る（そうしないと表示が出ないまま固まる）。
   const [eyeBusy, setEyeBusy] = useState(false);
   /** 処理中オーバーレイの文言キー。処理の種類で出し分ける。 */
-  const [busyKey, setBusyKey] = useState<'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.eraseBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy'>('editor.eyedropBusy');
+  const [busyKey, setBusyKey] = useState<BusyKey>('editor.eyedropBusy');
   // 透過強度。親から初期値をもらい、以後はこの画面で持つ。
   const [cellTol, setCellTol] = useState(cellTolerance ?? settings.tolerance);
   // 透過強度パネルは既定で畳んでおく。開きっぱなしだと画像の上側を覆って
@@ -773,10 +802,12 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * draw モード（四角追加）の方式。'tap' は既存のタップ配置、'trace' は指で
    * なぞって囲む方式 — 再透過の「ブラシで選択」と全く同じなぞり／録画の
    * 仕組みを流用し、確定した形を再透過の選択範囲ではなく通常のカット用
-   * ポリゴンとして追加する。appMode を move へ切り替えて頂点調整に入っても
-   * この方式自体は保持し、draw モードへ戻れば同じ方式のまま続けられる。
+   * ポリゴンとして追加する。'pick' は未囲みの塊に色枠を出し、選んだ分だけ
+   * 四角を置く（枚数が多い時の連打置きを避ける）。appMode を move へ
+   * 切り替えて頂点調整に入ってもこの方式自体は保持し、draw モードへ戻れば
+   * 同じ方式のまま続けられる。
    */
-  const [drawMethod, setDrawMethod] = useState<'tap' | 'trace'>('tap');
+  const [drawMethod, setDrawMethod] = useState<'tap' | 'trace' | 'pick'>('tap');
   const drawMethodRef = useRef(drawMethod);
   drawMethodRef.current = drawMethod;
 
@@ -1472,7 +1503,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    * 戻し、実行経路を1本にする。1つ目でコミット、2つ目で描画が乗る。
    * 待ち時間は固定せず、処理が終わったら解除する。
    */
-  const runHeavy = useCallback((work: () => void, key?: 'editor.eyedropBusy' | 'editor.restoreBusy' | 'editor.eraseBusy' | 'editor.undoBusy' | 'editor.redoBusy' | 'editor.retransBusy' | 'editor.resetBusy') => {
+  const runHeavy = useCallback((work: () => void, key?: BusyKey) => {
     if (key) setBusyKey(key);
     eyeBusyRef.current = true;
     setEyeBusy(true);
@@ -1688,6 +1719,33 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     }
     return stampBboxesCacheRef.current;
   }, [bgResult]);
+
+  /**
+   * 「候補から選ぶ」用。getStampBboxes と同じ配列（splitConnected）。
+   * 色は見ない。不透明画素が4近傍で繋がっている塊が1候補。近い本体同士は
+   * 結合しないが、触れている／影で橋がかかっていると1枠になる。
+   * null の間は枠を出さない（方式を選んだ瞬間に初回計算する）。
+   */
+  const [stampBboxes, setStampBboxes] = useState<BBox[] | null>(null);
+  const [selectedCandidateIdxs, setSelectedCandidateIdxs] = useState<number[]>([]);
+
+  const stampCandidates = useMemo(() => {
+    if (drawMethod !== 'pick' || !stampBboxes) return [];
+    return stampBboxes
+      .map((bbox, index) => ({ index, bbox }))
+      .filter(({ bbox }) => !stampBBoxEnclosed(bbox, polygons));
+  }, [drawMethod, stampBboxes, polygons]);
+
+  const stampCandidatesRef = useRef(stampCandidates);
+  stampCandidatesRef.current = stampCandidates;
+
+  useEffect(() => {
+    const live = new Set(stampCandidates.map(c => c.index));
+    setSelectedCandidateIdxs(prev => {
+      const next = prev.filter(i => live.has(i));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [stampCandidates]);
 
   /** 次に使うポリゴン ID */
   const nextIdRef = useRef(0);
@@ -2166,6 +2224,63 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
     setDrawPanelCompact(true);
     notifyPolygonsChange(next); // 確定操作: セッションに保存
   }, [pushHistory, notifyPolygonsChange, getStampBboxes]);
+
+  /**
+   * 「候補から選ぶ」を開く。bbox 計算は addRect と同じく初回だけ重いので、
+   * 方式を選んだ時に runHeavy で一度走らせ、枠を出してから触れるようにする。
+   */
+  const activatePickMethod = useCallback(() => {
+    setDrawMethod('pick');
+    if (stampBboxesCacheRef.current) {
+      setStampBboxes(stampBboxesCacheRef.current);
+      return;
+    }
+    runHeavy(() => {
+      setStampBboxes(getStampBboxes());
+    }, 'editor.candidateBusy');
+  }, [runHeavy, getStampBboxes]);
+
+  /** 色枠の短タップ。当たった候補（重なり時は面積が小さい方）の選択を反転する。 */
+  const toggleCandidateAt = useCallback((imgX: number, imgY: number) => {
+    let hit: { index: number; bbox: BBox } | null = null;
+    for (const c of stampCandidatesRef.current) {
+      const b = c.bbox;
+      if (imgX >= b.minX && imgX <= b.maxX && imgY >= b.minY && imgY <= b.maxY) {
+        if (!hit || b.area < hit.bbox.area) hit = c;
+      }
+    }
+    if (!hit) return;
+    const idx = hit.index;
+    setSelectedCandidateIdxs(prev =>
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
+  }, []);
+
+  /**
+   * 選んだ候補だけ四角を置く。置き終わったら移動・調整へ戻す
+   * （角を直す・全体を見るのが次の操作になるため）。方式(pick)は保持する。
+   */
+  const encloseSelectedCandidates = useCallback(() => {
+    const boxes = stampBboxes;
+    if (!boxes || selectedCandidateIdxs.length === 0) return;
+    const iw = imageWRef.current;
+    const ih = imageHRef.current;
+    pushHistory();
+    let next = [...polygonsRef.current];
+    let nextId = next.reduce((m, p) => Math.max(m, p.id), -1) + 1;
+    let lastId = nextId;
+    for (const idx of selectedCandidateIdxs) {
+      const b = boxes[idx];
+      if (!b) continue;
+      const id = nextId++;
+      lastId = id;
+      next = [...next, { id, points: initialRectFromBBox(b, iw, ih) }];
+    }
+    setPolygons(next);
+    setSelectedId(lastId);
+    setSelectedCandidateIdxs([]);
+    setAppMode('move');
+    notifyPolygonsChange(next);
+  }, [stampBboxes, selectedCandidateIdxs, pushHistory, notifyPolygonsChange]);
 
   /**
    * 「範囲を指定する」→「タップで囲む」専用のタップ処理。
@@ -2749,7 +2864,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
         const { sx, sy } = imageToLocal(p.x, p.y, zoomRef.current);
         commitEyedropAt(sx, sy);
       } else if (mode === 'draw') {
-        addRect(p.x, p.y);
+        if (drawMethodRef.current === 'pick') toggleCandidateAt(p.x, p.y);
+        else addRect(p.x, p.y);
       }
       return;
     }
@@ -2759,9 +2875,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       commitEyedropAt(p.x, p.y);
     } else if (mode === 'draw') {
       const { x, y } = localToImage(p.x, p.y, zoomRef.current);
-      addRect(x, y);
+      if (drawMethodRef.current === 'pick') toggleCandidateAt(x, y);
+      else addRect(x, y);
     }
-  }, [toggleRestoreRecording, commitEyedropAt, addRect, toggleDrawRecording]);
+  }, [toggleRestoreRecording, commitEyedropAt, addRect, toggleDrawRecording, toggleCandidateAt]);
 
   /**
    * 再透過「範囲を指定してください」→「タップで囲む」用の決定ボタン。
@@ -3643,10 +3760,14 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             // ブラシはなぞり用の透明レイヤーが別途タッチを奪うので、
             // どちらのケースもここでは無視してよい。
           } else if (appModeRef.current === 'draw' && !moved) {
-            // draw モード: タップ座標に四角を追加
             const z = zoomRef.current;
             const { x, y } = localToImage(gStartLX.current, gStartLY.current, z);
-            addRect(x, y);
+            if (drawMethodRef.current === 'pick') {
+              // 候補から選ぶ: 枠の上なら選択のオンオフ。即置きしない。
+              toggleCandidateAt(x, y);
+            } else {
+              addRect(x, y);
+            }
           } else if (appModeRef.current === 'eyedropper') {
             // スポイト: 指を離した位置の色を透過させる。画像外のタップは無視する。
             // 押した位置ではなく離した位置を使うのは、指を置いてから微調整して
@@ -4059,11 +4180,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
       backLabel={t('common.back')}
       right={
         <HeaderActions
-          showOriginalImage={!!originalImageUri}
-          showHome={!!onHome}
+          showOriginal={!!originalImageUri}
+          showHelp={!!onHelp}
           showSettings={!!onSettings}
-          onOriginalImage={() => setZoomVisible(true)}
-          onHome={onHome}
+          onOriginal={() => setZoomVisible(true)}
+          onHelp={onHelp}
           onSettings={onSettings}
         />
       }
@@ -4322,6 +4443,29 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 color="rgba(255, 59, 48, 0.32)"
               />
             ))}
+
+            {/* 未囲みスタンプの候補枠。保存前の赤警告とは別色（黄＝未選択、緑＝選択）。 */}
+            {appMode === 'draw' && drawMethod === 'pick' && stampCandidates.map(c => {
+              const selected = selectedCandidateIdxs.includes(c.index);
+              const x = c.bbox.minX * ds;
+              const y = c.bbox.minY * ds;
+              const w = (c.bbox.maxX - c.bbox.minX + 1) * ds;
+              const h = (c.bbox.maxY - c.bbox.minY + 1) * ds;
+              return (
+                <React.Fragment key={`cand-${c.index}`}>
+                  <Rect
+                    x={x} y={y} width={w} height={h}
+                    color={selected ? CANDIDATE_SEL_FILL : CANDIDATE_FILL}
+                  />
+                  <Rect
+                    x={x} y={y} width={w} height={h}
+                    color={selected ? CANDIDATE_SEL_STROKE : CANDIDATE_STROKE}
+                    style="stroke"
+                    strokeWidth={2 / zoom.scale}
+                  />
+                </React.Fragment>
+              );
+            })}
 
             {/* 「範囲を指定する」→「ブラシで選択」で確定した選択範囲。
                 この Group（画像と同じ zoomSV 駆動の transform）の内側に、
@@ -4757,6 +4901,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   : t('editor.retransChooseMethodDesc'))
                 : retransApplied ? t('editor.retransResultDesc') : t('editor.retransHintDesc'))
               : appMode === 'restore' && eraseMode ? t('editor.modeEraseHint')
+              : appMode === 'draw' && drawMethod === 'pick' ? t('editor.drawMethodPickHint')
               : t(TOOL_HINTS[appMode].descKey)}
             // ズームは右端へ移したので、下端は説明とブラシ設定だけになった。
             bottom={12}
@@ -4788,9 +4933,25 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             ) : (!retransOpen && panelCompact && appMode === 'draw') ? (
               // ペンの編集方法パネルを畳んでいる間は、今選んでいる方式の
               // アイコンだけ残して展開ボタンを添える（スポイト/復元ブラシの
-              // 値＋展開ボタンと同じ考え方）。
+              // 値＋展開ボタンと同じ考え方）。候補から選ぶで既に選んでいれば
+              // 「囲む」も同じ行に残す（畳むと確定できなくなるため）。
               <View style={styles.toolHintStepperRow}>
-                <Icon name={drawMethod === 'tap' ? TOOL_ICONS.draw : 'gesture'} size={14} color="rgba(255,255,255,0.85)" />
+                <Icon
+                  name={drawMethod === 'tap' ? TOOL_ICONS.draw : drawMethod === 'trace' ? 'gesture' : 'dashboard'}
+                  size={14}
+                  color="rgba(255,255,255,0.85)"
+                />
+                {drawMethod === 'pick' && selectedCandidateIdxs.length > 0 && (
+                  <AnimatedPressable
+                    style={styles.drawMethodEncloseBtnCompact}
+                    onPress={encloseSelectedCandidates}
+                    pressedScale={0.9}
+                  >
+                    <Text style={styles.drawMethodEncloseTxtCompact}>
+                      {t('editor.drawMethodPickEnclose', { count: selectedCandidateIdxs.length })}
+                    </Text>
+                  </AnimatedPressable>
+                )}
                 <AnimatedPressable
                   style={styles.toolHintStepperBtn}
                   onPress={() => setDrawPanelCompact(false)}
@@ -5137,29 +5298,57 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               // こちらは draw モードにいる間ずっと出しておき、いつでも
               // 選び直せるトグルにする（appMode を move へ切り替えて頂点調整に
               // 入っても drawMethod 自体は保持される）。
-              <View style={styles.drawMethodRow}>
+              <View style={styles.drawMethodCol}>
+                <View style={styles.drawMethodRow}>
+                  <AnimatedPressable
+                    style={[styles.drawMethodBtn, drawMethod === 'tap' && styles.drawMethodBtnOn]}
+                    onPress={() => setDrawMethod('tap')}
+                    pressedScale={0.96}
+                  >
+                    <Icon name={TOOL_ICONS.draw} size={18} color="#FFF" />
+                    <Text style={[styles.drawMethodTitle, drawMethod === 'tap' && styles.drawMethodTitleOn]}>
+                      {t('editor.drawMethodTapTitle')}
+                    </Text>
+                    <Text style={styles.drawMethodDesc}>{t('editor.drawMethodTapDesc')}</Text>
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    style={[styles.drawMethodBtn, drawMethod === 'trace' && styles.drawMethodBtnOn]}
+                    onPress={() => setDrawMethod('trace')}
+                    pressedScale={0.96}
+                  >
+                    <Icon name="gesture" size={18} color="#FFF" />
+                    <Text style={[styles.drawMethodTitle, drawMethod === 'trace' && styles.drawMethodTitleOn]}>
+                      {t('editor.drawMethodTraceTitle')}
+                    </Text>
+                    <Text style={styles.drawMethodDesc}>{t('editor.drawMethodTraceDesc')}</Text>
+                  </AnimatedPressable>
+                </View>
                 <AnimatedPressable
-                  style={[styles.drawMethodBtn, drawMethod === 'tap' && styles.drawMethodBtnOn]}
-                  onPress={() => setDrawMethod('tap')}
+                  style={[styles.drawMethodBtn, drawMethod === 'pick' && styles.drawMethodBtnOn]}
+                  onPress={activatePickMethod}
                   pressedScale={0.96}
                 >
-                  <Icon name={TOOL_ICONS.draw} size={18} color="#FFF" />
-                  <Text style={[styles.drawMethodTitle, drawMethod === 'tap' && styles.drawMethodTitleOn]}>
-                    {t('editor.drawMethodTapTitle')}
+                  <Icon name="dashboard" size={18} color="#FFF" />
+                  <Text style={[styles.drawMethodTitle, drawMethod === 'pick' && styles.drawMethodTitleOn]}>
+                    {t('editor.drawMethodPickTitle')}
                   </Text>
-                  <Text style={styles.drawMethodDesc}>{t('editor.drawMethodTapDesc')}</Text>
+                  <Text style={styles.drawMethodDesc}>{t('editor.drawMethodPickDesc')}</Text>
                 </AnimatedPressable>
-                <AnimatedPressable
-                  style={[styles.drawMethodBtn, drawMethod === 'trace' && styles.drawMethodBtnOn]}
-                  onPress={() => setDrawMethod('trace')}
-                  pressedScale={0.96}
-                >
-                  <Icon name="gesture" size={18} color="#FFF" />
-                  <Text style={[styles.drawMethodTitle, drawMethod === 'trace' && styles.drawMethodTitleOn]}>
-                    {t('editor.drawMethodTraceTitle')}
-                  </Text>
-                  <Text style={styles.drawMethodDesc}>{t('editor.drawMethodTraceDesc')}</Text>
-                </AnimatedPressable>
+                {drawMethod === 'pick' && (
+                  <AnimatedPressable
+                    style={[
+                      styles.drawMethodEncloseBtn,
+                      selectedCandidateIdxs.length === 0 && styles.drawMethodEncloseBtnOff,
+                    ]}
+                    onPress={encloseSelectedCandidates}
+                    disabled={selectedCandidateIdxs.length === 0}
+                    pressedScale={0.96}
+                  >
+                    <Text style={styles.drawMethodEncloseTxt}>
+                      {t('editor.drawMethodPickEnclose', { count: selectedCandidateIdxs.length })}
+                    </Text>
+                  </AnimatedPressable>
+                )}
               </View>
             ) : undefined}
           </ToolHint>
@@ -5395,7 +5584,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                       setToolMenuOpen(false);
                     }}
                   >
-                    <Icon name="tune" size={22} color="#FFF" />
+                    <Icon name="auto-fix-high" size={22} color="#FFF" />
                   </AnimatedPressable>
                 )}
 
@@ -5836,6 +6025,7 @@ const styles = StyleSheet.create({
   // ── draw モードの編集方法（ポリゴン／なぞって選択）───────────────────────
   // 再透過の方式選択カード(retransScope*)と同じ2択レイアウトだが、こちらは
   // アイコン＋タイトル＋説明の3段構成で、選択後も出したままにするトグル。
+  drawMethodCol: { gap: 6 },
   drawMethodRow: { flexDirection: 'row', gap: 6 },
   drawMethodBtn: {
     flex: 1,
@@ -5852,6 +6042,23 @@ const styles = StyleSheet.create({
   drawMethodTitle: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 2 },
   drawMethodTitleOn: { color: '#FFF' },
   drawMethodDesc: { color: 'rgba(255,255,255,0.55)', fontSize: 10, textAlign: 'center' },
+  drawMethodEncloseBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(50,215,75,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(50,215,75,0.9)',
+  },
+  drawMethodEncloseBtnOff: { opacity: 0.45 },
+  drawMethodEncloseTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  drawMethodEncloseBtnCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(50,215,75,0.28)',
+  },
+  drawMethodEncloseTxtCompact: { color: '#FFF', fontSize: 11, fontWeight: '700' },
 
   // ── 復元ブラシ ────────────────────────────────────────────────────────────
   // ブラシサイズ調整中に中央へ出す実寸の円。

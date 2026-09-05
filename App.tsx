@@ -138,6 +138,7 @@ import { useThumbBg } from './src/hooks/useThumbBg';
 import SettingsScreen from './src/components/SettingsScreen';
 import SavedScreen    from './src/components/SavedScreen';
 import HowToScreen   from './src/components/HowToScreen';
+import type { HowToTab } from './src/components/HowToScreen';
 import OnboardingScreen from './src/components/OnboardingScreen';
 import SplashAnimationView from './src/components/SplashAnimationView';
 import type { SplashAnimationType } from './src/components/splash/types';
@@ -250,6 +251,7 @@ function AppScreens() {
   // prevStateRef が 'settings' のまま固定され、設定の「完了」が自分自身へ戻って
   // 閉じなくなるため、howto は専用 ref で戻り先を管理する。
   const howtoReturnRef = useRef<AppState>('idle');
+  const howtoTabRef = useRef<HowToTab>('auto');
 
   // 自動分割モード用
   const [rows,        setRows]        = useState(DEFAULT_ROWS);
@@ -1807,6 +1809,15 @@ function AppScreens() {
     setAppState('settings');
   }, [appState]);
 
+  /** 使い方。作業画面から開いたときはその画面へ戻す。設定からなら設定へ。 */
+  const goToHowTo = useCallback((tab: HowToTab) => {
+    howtoTabRef.current = tab;
+    if (appState !== 'howto') {
+      howtoReturnRef.current = appState === 'settings' ? 'settings' : appState;
+    }
+    setAppState('howto');
+  }, [appState]);
+
   // 保存先画面も同様に prevStateRef を使い、どの画面からでも元に戻れるようにする。
   const goToSaved = useCallback(() => {
     prevStateRef.current = appState;
@@ -1851,12 +1862,7 @@ function AppScreens() {
       <SettingsScreen
         onClose={() => backToPrev(prevStateRef.current)}
         onDeleteAllData={handleDeleteAllSessions}
-        onHowTo={() => {
-          // 設定→使い方→戻るで設定に戻れるよう、howto 専用 ref に戻り先を保存。
-          // prevStateRef は設定自身の戻り先なので上書きしない。
-          howtoReturnRef.current = 'settings';
-          setAppState('howto');
-        }}
+        onHowTo={() => goToHowTo('auto')}
       />
     );
   }
@@ -1882,6 +1888,7 @@ function AppScreens() {
   if (appState === 'howto') {
     return (
       <HowToScreen
+        initialTab={howtoTabRef.current}
         onClose={() => backToPrev(howtoReturnRef.current)}
         onPolygonTutorial={() => setAppState('polygon_tutorial_help')}
         onComplexTutorial={() => setAppState('complex_tutorial_help')}
@@ -1965,6 +1972,7 @@ function AppScreens() {
         // （✨方式変更ボタン追加でヘッダーが手狭になったための整理）。
         onBack={reset}
         onSettings={goToSettings}
+        onHelp={() => goToHowTo('auto')}
         originalImageUri={currentImageUri}
         announceTransparent={bgToastPending}
         onAnnounced={() => setBgToastPending(false)}
@@ -1991,6 +1999,7 @@ function AppScreens() {
         onBack={() => bgResult ? setAppState('row_confirm') : reset()}
         onHome={reset}
         onSettings={() => goToSettings()}
+        onHelp={() => goToHowTo('result')}
         onSave={doAutoExport}
         // リセット: 確定時の行数・列数・境界線で分割し直し、合体やカット編集を破棄して初期状態へ戻す
         onReSplit={() => doSplit(rows, false, cols, confirmBounds ?? undefined)}
@@ -2044,6 +2053,7 @@ function AppScreens() {
             initialPolygons={initialPolys}
             onBack={() => setPendingCellExit(true)}
             onSettings={() => goToSettings()}
+            onHelp={() => goToHowTo('editor')}
             // スポイトはセルの切り出し座標で来るので、元画像の座標へ戻して積む。
             // 操作列は常に元画像1枚に対するものなので、bbox の分だけずらさないと
             // 別の場所の色が抜ける。
@@ -2217,6 +2227,7 @@ function AppScreens() {
             setAppState(bgResult ? 'row_confirm' : 'idle');
           }}
           onSettings={() => goToSettings()}
+          onHelp={() => goToHowTo('editor')}
         />
       </>
     );
@@ -2232,6 +2243,9 @@ function AppScreens() {
           bgResult={bgResult}
           polygons={polygons}
           onBack={() => goToEditor('editing')}
+          onSettings={goToSettings}
+          onHelp={() => goToHowTo('result')}
+          originalImageUri={currentImageUri}
           onRequestSave={requestSave}
           onSave={async (count: number, paths: string[]) => {
             // 書き出し成功 → 統計を加算。「作成したスタンプ」は書き出しが成功した個数で数える
@@ -2285,6 +2299,7 @@ function AppScreens() {
           onSaved={goToSaved}
           onHome={reset}
           onSettings={goToSettings}
+          onHelp={() => goToHowTo('trouble')}
         />
       </>
     );

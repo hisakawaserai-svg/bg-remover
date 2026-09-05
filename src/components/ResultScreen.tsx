@@ -184,6 +184,7 @@ interface Props {
   onBack: () => void;
   onHome: () => void;
   onSettings: () => void;
+  onHelp?: () => void;
   onSave: () => Promise<void> | void;
   onReSplit: () => void;
   onManualSplit: () => void;
@@ -201,6 +202,7 @@ export default function ResultScreen({
   onBack,
   onHome,
   onSettings,
+  onHelp,
   onSave,
   onReSplit,
   onManualSplit,
@@ -447,11 +449,9 @@ export default function ResultScreen({
       backLabel={t('common.back')}
       right={
         <HeaderActions
-          showOriginalImage
-          showHome
+          showHelp={!!onHelp}
           showSettings
-          onOriginalImage={() => setZoomVisible(true)}
-          onHome={onHome}
+          onHelp={onHelp}
           onSettings={onSettings}
         />
       }
@@ -462,6 +462,55 @@ export default function ResultScreen({
 
   return (
     <Screen header={header} scrollable={false} style={{ paddingBottom: 0 }}>
+      <View style={styles.stickyChrome}>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
+          <View style={styles.sectionHintRow}>
+            <Text style={styles.sectionHint}>
+              {selectingMode
+                ? t('result.selectedCount', { count: selectedIndices.size })
+                : t('result.longPressHint')}
+            </Text>
+            <AnimatedPressable
+              style={styles.bgToggleBtn}
+              onPress={() => setZoomVisible(true)}
+              pressedScale={0.9}
+            >
+              <Icon name="image" size={16} color="#FFF" />
+            </AnimatedPressable>
+            <AnimatedPressable
+              style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
+              onPress={() => setShowNumbers(v => !v)}
+              pressedScale={0.9}
+            >
+              <Icon name="looks-one" size={16} color="#FFF" />
+            </AnimatedPressable>
+            <View style={styles.bgToggleWrap}>
+              <AnimatedPressable
+                style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
+                onPress={() => setBgPickerOpen(o => !o)}
+                pressedScale={0.9}
+              >
+                <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
+              </AnimatedPressable>
+              {bgPickerOpen && (
+                <View style={styles.bgToggleColumn}>
+                  {(['checker', 'white', 'black'] as const).map(mode => (
+                    <AnimatedPressable
+                      key={mode}
+                      style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
+                      onPress={() => setBgMode(mode)}
+                      pressedScale={0.9}
+                    >
+                      <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
+                    </AnimatedPressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
       <Animated.ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
@@ -472,54 +521,6 @@ export default function ResultScreen({
 
         {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
         <View style={styles.cutSection}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
-            <View style={styles.sectionHintRow}>
-              <Text style={styles.sectionHint}>
-                {selectingMode
-                  ? t('result.selectedCount', { count: selectedIndices.size })
-                  : t('result.longPressHint')}
-              </Text>
-              {/* 番号バッジの表示/非表示。合体対象を選ぶ時は必要だが、
-                  透過確認中は数字が邪魔になるので一時的に消せるようにする。 */}
-              <AnimatedPressable
-                style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
-                onPress={() => setShowNumbers(v => !v)}
-                pressedScale={0.9}
-              >
-                <Icon name="looks-one" size={16} color="#FFF" />
-              </AnimatedPressable>
-              {/* 下地の切替。透過し忘れ・変な模様が残っていないかを、背景色を
-                  変えて見比べながら確認するためのもの。連続して何枚も見比べ
-                  られるよう、選んでもパネルは閉じない（閉じるのはアイコンの
-                  再タップ）。ポップアップはこの行の下に重ねて出し、下のグリッド
-                  を押し下げない。 */}
-              <View style={styles.bgToggleWrap}>
-                <AnimatedPressable
-                  style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
-                  onPress={() => setBgPickerOpen(o => !o)}
-                  pressedScale={0.9}
-                >
-                  <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
-                </AnimatedPressable>
-                {bgPickerOpen && (
-                  <View style={styles.bgToggleColumn}>
-                    {(['checker', 'white', 'black'] as const).map(mode => (
-                      <AnimatedPressable
-                        key={mode}
-                        style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
-                        onPress={() => setBgMode(mode)}
-                        pressedScale={0.9}
-                      >
-                        <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
-                      </AnimatedPressable>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
           {/* 位置ベースレイアウト: auto セルを元画像内の矩形比率で絶対配置 */}
           <View style={[styles.posLayout, { width: layoutW, height: layoutH }]}>
             {cells.map((cell, i) => {
@@ -648,6 +649,7 @@ export default function ResultScreen({
                   disabled={saving}
                   pressedScale={0.97}
                 >
+                  <Icon name="save-alt" size={20} color="#FFF" style={{ marginRight: spacing.xs }} />
                   <Text style={styles.saveBtnTxt}>{saving ? t('common.saving') : t('common.save')}</Text>
                 </AnimatedPressable>
               </View>
@@ -686,7 +688,14 @@ const styles = StyleSheet.create({
   // ── スクロール ───────────────────────────────────────────────────────────
   scrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  stickyChrome: {
+    zIndex: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
   },
 
   // ── 下地の切替（長押しヒントの横、ポップアップはその下に重ねて出す）───────

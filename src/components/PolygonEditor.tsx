@@ -51,6 +51,7 @@ import TouchLoupe, { LOUPE_MAGNIFY } from './ui/TouchLoupe';
 import type { DockLevel } from './ui/TouchLoupe';
 import { LOUPE_MEDIUM_RATIO, LOUPE_MINI_RATIO, LOUPE_MINI_MIN } from './ui/LoupeSizeSlider';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import CommunityIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   Canvas,
   Image as SkiaImage,
@@ -4738,10 +4739,16 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             「今は再透過中」だと伝わらないため、内容を差し替える。 */}
         {!chromeHidden && (
           <ToolHint
-            icon={retransOpen ? 'auto-fix-high' : TOOL_HINTS[appMode].icon}
+            // restoreモードは「戻す」「消しゴム」でアイコン・見出し・説明を
+            // 丸ごと差し替える（同じブラシの2つの効果を混同させないため）。
+            icon={retransOpen ? 'auto-fix-high'
+              : appMode === 'restore' && eraseMode ? 'eraser'
+              : TOOL_HINTS[appMode].icon}
+            iconFamily={!retransOpen && appMode === 'restore' && eraseMode ? 'community' : 'material'}
             title={retransOpen
               ? (retransPicking ? t('editor.retransPickHint')
                 : retransApplied ? t('editor.retransResultTitle') : t('editor.retransTitle'))
+              : appMode === 'restore' && eraseMode ? t('editor.modeErase')
               : t(TOOL_HINTS[appMode].titleKey)}
             desc={retransOpen
               ? (retransPicking
@@ -4749,6 +4756,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   : retransMethod === 'polygon' ? t('editor.retransPickDesc')
                   : t('editor.retransChooseMethodDesc'))
                 : retransApplied ? t('editor.retransResultDesc') : t('editor.retransHintDesc'))
+              : appMode === 'restore' && eraseMode ? t('editor.modeEraseHint')
               : t(TOOL_HINTS[appMode].descKey)}
             // ズームは右端へ移したので、下端は説明とブラシ設定だけになった。
             bottom={12}
@@ -5065,7 +5073,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                     onPress={() => { discardStroke(); setEraseMode(true); }}
                     pressedScale={0.96}
                   >
-                    <Icon name="backspace" size={16} color={eraseMode ? '#FFF' : 'rgba(255,255,255,0.6)'} />
+                    <CommunityIcon name="eraser" size={16} color={eraseMode ? '#FFF' : 'rgba(255,255,255,0.6)'} />
                     <Text style={[styles.brushModeTxt, eraseMode && styles.brushModeTxtOn]}>{t('editor.brushModeErase')}</Text>
                   </AnimatedPressable>
                 </View>
@@ -5254,7 +5262,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               disabled={eyeBusy}
               onPress={() => setToolMenuOpen(o => !o)}
             >
-              <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
+              {appMode === 'restore' && eraseMode ? (
+                <CommunityIcon name="eraser" size={22} color="#FFF" />
+              ) : (
+                <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
+              )}
               <Icon
                 name={toolMenuOpen ? 'arrow-drop-up' : 'arrow-drop-down'}
                 size={14}

@@ -11,6 +11,7 @@
 import React from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import CommunityIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 /**
  * 画面をまたいで共通のアイコン。
@@ -27,6 +28,8 @@ export const TOOL_ICONS = {
 
 interface Props {
   icon: string;
+  /** 'material'(既定) は MaterialIcons、'community' は MaterialCommunityIcons。 */
+  iconFamily?: 'material' | 'community';
   title: string;
   desc: string;
   /**
@@ -78,8 +81,9 @@ interface Props {
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-export default function ToolHint({ icon, title, desc, bottom = 12, children, onClose, onBack, onCollapse, titleExtra, onLayout }: Props) {
+export default function ToolHint({ icon, iconFamily = 'material', title, desc, bottom = 12, children, onClose, onBack, onCollapse, titleExtra, onLayout }: Props) {
   const interactive = children != null || titleExtra != null || onClose != null || onBack != null || onCollapse != null;
+  const IconComp = iconFamily === 'community' ? CommunityIcon : Icon;
   return (
     <View
       style={[styles.wrap, children != null && styles.wrapExpanded, { bottom }]}
@@ -92,7 +96,7 @@ export default function ToolHint({ icon, title, desc, bottom = 12, children, onC
             <Icon name="arrow-back" size={16} color="rgba(255,255,255,0.8)" />
           </Pressable>
         )}
-        <Icon name={icon} size={15} color="#FFF" />
+        <IconComp name={icon} size={15} color="#FFF" />
         {/* OS側の文字サイズ設定(Dynamic Type/Androidのフォントサイズ)には
             追従させつつ、極端に拡大されてこの細い帯が際限なく伸びないよう
             上限だけ設ける（完全にオフにするとアクセシビリティを損なうため、

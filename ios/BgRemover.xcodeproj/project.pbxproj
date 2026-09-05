@@ -21,6 +21,8 @@
 		AA02DFB8301E409200C4A0A6 /* ReviewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = AA04DFB7301E409200C4A0A6 /* ReviewManager.m */; };
 		AA05DF56301E388600C4A0A6 /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA06DF54301E384500C4A0A6 /* AppInfo.swift */; };
 		AA07DFB8301E409200C4A0A6 /* AppInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = AA08DFB7301E409200C4A0A6 /* AppInfo.m */; };
+		8EC70DE3E691476590239E5F /* MaterialCommunityIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C454EFDC5E2847F693EB21A4 /* MaterialCommunityIcons.ttf */; };
+		0EC8C3DFA51C43F78977B544 /* MaterialCommunityIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C454EFDC5E2847F693EB21A4 /* MaterialCommunityIcons.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +73,7 @@
 		AA08DFB7301E409200C4A0A6 /* AppInfo.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppInfo.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F8E51C6E5DA49547B91DE4F8 /* Pods-BgRemover.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BgRemover.debug.xcconfig"; path = "Target Support Files/Pods-BgRemover/Pods-BgRemover.debug.xcconfig"; sourceTree = "<group>"; };
+		C454EFDC5E2847F693EB21A4 /* MaterialCommunityIcons.ttf */ = {isa = PBXFileReference; name = "MaterialCommunityIcons.ttf"; path = "../node_modules/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -121,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				54066D566D76461D84F84C85 /* MaterialIcons.ttf */,
+				C454EFDC5E2847F693EB21A4 /* MaterialCommunityIcons.ttf */,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -289,6 +293,7 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				26C754B6E0E39416559B1BA3 /* PrivacyInfo.xcprivacy in Resources */,
 				3332AC56EB734B6EB84BC558 /* MaterialIcons.ttf in Resources */,
+				8EC70DE3E691476590239E5F /* MaterialCommunityIcons.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -296,6 +301,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0EC8C3DFA51C43F78977B544 /* MaterialCommunityIcons.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

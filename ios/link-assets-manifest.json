@@ -2,6 +2,10 @@
   "migIndex": 1,
   "data": [
     {
+      "path": "node_modules/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf",
+      "sha1": "4c2a838b00dbb5e8bb1b368fce0de534e8eb241c"
+    },
+    {
       "path": "node_modules/react-native-vector-icons/Fonts/MaterialIcons.ttf",
       "sha1": "7e02c3f005532ff4d24148567c84089756a7848a"
     }

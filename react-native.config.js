@@ -9,6 +9,10 @@ module.exports = {
       platforms: { ios: null },
     },
   },
-  assets: ['./node_modules/react-native-vector-icons/Fonts/MaterialIcons.ttf'],
-  // ↑ MaterialIcons だけ同梱。他フォントは使っていないので含めない
+  assets: [
+    './node_modules/react-native-vector-icons/Fonts/MaterialIcons.ttf',
+    // 消しゴムアイコン(eraser)専用。MaterialIconsには存在しないため追加。
+    './node_modules/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf',
+  ],
+  // ↑ 使っているフォントだけ同梱。他フォントは含めない
 };

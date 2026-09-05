@@ -28,6 +28,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import CommunityIcon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 
 import Screen from './ui/Screen';
@@ -858,6 +859,12 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 title={t('editor.modeRestore')}
                 desc={t('editor.modeRestoreHint')}
               />
+              <ToolRow
+                icon="eraser"
+                iconFamily="community"
+                title={t('editor.modeErase')}
+                desc={t('editor.modeEraseHint')}
+              />
             </View>
           </Card>
         )}
@@ -892,12 +899,17 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   );
 }
 
-/** 「範囲を調整」タブで出すツールの一覧行。次の画面で使う道具の予告。 */
-function ToolRow({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+/**
+ * 「範囲を調整」タブで出すツールの一覧行。次の画面で使う道具の予告。
+ * iconFamily: 'material'(既定) は MaterialIcons、'community' は
+ * MaterialCommunityIcons（消しゴム等、MaterialIconsに無いアイコン用）。
+ */
+function ToolRow({ icon, title, desc, iconFamily = 'material' }: { icon: string; title: string; desc: string; iconFamily?: 'material' | 'community' }) {
+  const IconComp = iconFamily === 'community' ? CommunityIcon : Icon;
   return (
     <View style={styles.toolRow}>
       <View style={styles.toolIcon}>
-        <Icon name={icon} size={18} color={IOS.blue} />
+        <IconComp name={icon} size={18} color={IOS.blue} />
       </View>
       <View style={styles.toolTexts}>
         <Text style={styles.toolTitle}>{title}</Text>

@@ -23,6 +23,7 @@ const en: typeof ja = {
 
   common: {
     back: 'Back',
+    home: 'Home',
     cancel: 'Cancel',
     close: 'Close',
     done: 'Done',

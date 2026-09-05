@@ -5303,7 +5303,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                       <AnimatedPressable
                         key={mode}
                         style={[styles.bgDot, bgMode === mode && styles.bgDotOn]}
-                        onPress={() => { setBgMode(mode); setBgPickerOpen(false); }}
+                        // 連続で見比べたいので選んでも閉じない。閉じるのはアイコンの再タップで行う。
+                        onPress={() => setBgMode(mode)}
                         pressedScale={0.9}
                       >
                         <Icon name={BG_ICONS[mode]} size={16} color="#FFF" />

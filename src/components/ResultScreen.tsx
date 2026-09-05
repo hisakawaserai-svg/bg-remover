@@ -32,6 +32,7 @@ import HeaderActions from './ui/HeaderActions';
 import { colors, spacing, radius, shadow, typography } from './ui/theme';
 import CheckerboardBg from './ui/CheckerboardBg';
 import { useThumbBg } from '../hooks/useThumbBg';
+import type { ThumbBg } from '../settings/store';
 import type { Cell } from '../cellTypes';
 import type { BBox } from '../imaging';
 import { useT } from '../i18n';
@@ -87,6 +88,14 @@ function noUnselectedInUnion(cells: Cell[], indices: number[]): boolean {
 /** poly セル用フォールバックサイズ */
 const POLY_CELL_SIZE = 100;
 
+/** 下地ごとのアイコン。PolygonEditor の下地切替と同じ見た目に揃える。 */
+const BG_ICONS: Record<ThumbBg, string> = {
+  checker: 'grid-on',
+  white: 'wb-sunny',
+  black: 'brightness-2',
+  gray: 'grid-on',
+};
+
 // ── CellItem ────────────────────────────────────────────────────────────────
 
 interface CellItemProps {
@@ -97,19 +106,22 @@ interface CellItemProps {
   posStyle?: object;
   selected: boolean;
   selectingMode: boolean;
+  /** 画面全体で揃える下地。個々のセルでは持たず親から受け取る（一括で切り替えるため）。 */
+  bgMode: ThumbBg;
+  /** 番号バッジを表示するか。透過確認の邪魔になる時に一時的に消せる。 */
+  showNumbers: boolean;
   onPress: () => void;
   onLongPress: () => void;
 }
 
 function CellItem({
-  cell, index, width, height, posStyle, selected, selectingMode, onPress, onLongPress,
+  cell, index, width, height, posStyle, selected, selectingMode, bgMode, showNumbers, onPress, onLongPress,
 }: CellItemProps) {
   const isMissing = cell.thumbUri === 'MISSING';
   const imgSource = useMemo(
     () => isMissing ? null : { uri: cell.thumbUri },
     [cell.thumbUri, isMissing],
   );
-  const thumbBg = useThumbBg();
 
   return (
     <TouchableOpacity
@@ -119,7 +131,7 @@ function CellItem({
       delayLongPress={400}
       style={[styles.cellWrap, { width, height }, posStyle]}
     >
-      <CheckerboardBg mode={thumbBg} tile={40} width={width} height={height} />
+      <CheckerboardBg mode={bgMode} tile={40} width={width} height={height} />
       {isMissing ? (
         // ファイル欠損: グレー背景 + アイコンでフォールバック表示
         <View style={[StyleSheet.absoluteFill, styles.missingOverlay]}>
@@ -138,10 +150,13 @@ function CellItem({
       )}
       {/* 選択ハイライト: Image の上に border overlay（borderWidth を wrapper に当てると白化するため）*/}
       {selected && <View style={styles.cellSelectedOverlay} pointerEvents="none" />}
-      {/* 番号バッジ */}
-      <View style={styles.numBadge}>
-        <Text style={styles.numBadgeTxt}>{index + 1}</Text>
-      </View>
+      {/* 番号バッジ。合体時に選ぶ対象を示すため必要だが、透過確認の邪魔になる
+          ことがあるので showNumbers で一時的に消せるようにしてある。 */}
+      {showNumbers && (
+        <View style={styles.numBadge}>
+          <Text style={styles.numBadgeTxt}>{index + 1}</Text>
+        </View>
+      )}
       {/* 複数入り警告アイコン（右下）*/}
       {cell.kind === 'auto' && cell.multipleObjects && (
         <View style={styles.multipleBadge} pointerEvents="none">
@@ -198,6 +213,14 @@ export default function ResultScreen({
 
   const [saving,         setSaving]         = useState(false);
   const [zoomVisible,    setZoomVisible]    = useState(false);
+  // 下地（背景色）。設定の既定値から始まり、画面内のトグルで一時的に上書きできる
+  // （PolygonEditorのbgModeと同じ考え方。永続化はしない）。
+  const defaultBgMode = useThumbBg();
+  const [bgMode, setBgMode] = useState<ThumbBg>(defaultBgMode);
+  const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  // 番号バッジ。合体対象を選ぶ時は必要だが、透過確認中は邪魔になるので
+  // 一時的に消せるようにする（永続化はしない）。
+  const [showNumbers, setShowNumbers] = useState(true);
   // 選択 state — 画像ソースとは完全に独立したオブジェクト
   const [selectingMode,  setSelectingMode]  = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -451,11 +474,50 @@ export default function ResultScreen({
         <View style={styles.cutSection}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
-            <Text style={styles.sectionHint}>
-              {selectingMode
-                ? t('result.selectedCount', { count: selectedIndices.size })
-                : t('result.longPressHint')}
-            </Text>
+            <View style={styles.sectionHintRow}>
+              <Text style={styles.sectionHint}>
+                {selectingMode
+                  ? t('result.selectedCount', { count: selectedIndices.size })
+                  : t('result.longPressHint')}
+              </Text>
+              {/* 番号バッジの表示/非表示。合体対象を選ぶ時は必要だが、
+                  透過確認中は数字が邪魔になるので一時的に消せるようにする。 */}
+              <AnimatedPressable
+                style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
+                onPress={() => setShowNumbers(v => !v)}
+                pressedScale={0.9}
+              >
+                <Icon name="looks-one" size={16} color="#FFF" />
+              </AnimatedPressable>
+              {/* 下地の切替。透過し忘れ・変な模様が残っていないかを、背景色を
+                  変えて見比べながら確認するためのもの。連続して何枚も見比べ
+                  られるよう、選んでもパネルは閉じない（閉じるのはアイコンの
+                  再タップ）。ポップアップはこの行の下に重ねて出し、下のグリッド
+                  を押し下げない。 */}
+              <View style={styles.bgToggleWrap}>
+                <AnimatedPressable
+                  style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
+                  onPress={() => setBgPickerOpen(o => !o)}
+                  pressedScale={0.9}
+                >
+                  <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
+                </AnimatedPressable>
+                {bgPickerOpen && (
+                  <View style={styles.bgToggleColumn}>
+                    {(['checker', 'white', 'black'] as const).map(mode => (
+                      <AnimatedPressable
+                        key={mode}
+                        style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
+                        onPress={() => setBgMode(mode)}
+                        pressedScale={0.9}
+                      >
+                        <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
 
           {/* 位置ベースレイアウト: auto セルを元画像内の矩形比率で絶対配置 */}
@@ -473,6 +535,8 @@ export default function ResultScreen({
                   posStyle={{ position: 'absolute', left: layout.left, top: layout.top }}
                   selected={selectedIndices.has(i)}
                   selectingMode={selectingMode}
+                  bgMode={bgMode}
+                  showNumbers={showNumbers}
                   onPress={() => handleCellPress(i)}
                   onLongPress={() => handleCellLongPress(i)}
                 />
@@ -498,6 +562,8 @@ export default function ResultScreen({
                       height={POLY_CELL_SIZE}
                       selected={selectedIndices.has(i)}
                       selectingMode={selectingMode}
+                      bgMode={bgMode}
+                      showNumbers={showNumbers}
                       onPress={() => handleCellPress(i)}
                       onLongPress={() => handleCellLongPress(i)}
                     />
@@ -622,6 +688,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
   },
+
+  // ── 下地の切替（長押しヒントの横、ポップアップはその下に重ねて出す）───────
+  sectionHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bgToggleWrap: {
+    // 起点。ポップアップ(bgToggleColumn)はこれを基準に絶対配置するので、
+    // 下のグリッドを押し下げずに上へ重ねて出せる。
+    position: 'relative',
+  },
+  bgToggleBtn: {
+    width: 26, height: 26,
+    borderRadius: 8,
+    backgroundColor: 'rgba(30,30,30,0.80)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  bgToggleBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  bgToggleColumn: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 6,
+    padding: 4,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+    ...shadow.md,
+  },
+  bgToggleDot: {
+    width: 30, height: 26,
+    borderRadius: 7,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  bgToggleDotOn: { backgroundColor: colors.accent },
 
   // ── カットセクション（top / bottom border 付き）────────────────────────────
   cutSection: {

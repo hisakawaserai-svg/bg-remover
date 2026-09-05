@@ -102,7 +102,6 @@ interface Props {
   canRedoEdit?: boolean;
   bgVersion?: number;
   onSettings?: () => void;
-  onHome?: () => void;
   /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
   originalImageUri?: string;
   /**
@@ -116,7 +115,7 @@ interface Props {
   onChangeEngine?: () => void;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHome, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
   const { settings, updateSettings } = useSettings();
   const { t } = useT();
   const thumbBg = useThumbBg();
@@ -544,16 +543,17 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const header = (
     <AppHeader
       title={t('setup.title')}
+      // この画面では onBack と onHome が実質同じ動作（App.tsx側でどちらも reset）
+      // なので、アイコンを2つ並べず「戻る」を「ホーム」ラベルに変えて1つに統合する。
+      // ✨(方式変更)ボタンを追加してヘッダーが手狭になったための整理。
       onBack={onBack}
-      backLabel={t('common.back')}
+      backLabel={t('common.home')}
       right={
         <HeaderActions
           showOriginalImage={!!originalImageUri}
-          showHome={!!onHome}
           showSettings={!!onSettings}
           showChangeEngine={!!onChangeEngine && !!visionSupported}
           onOriginalImage={() => setZoomVisible(true)}
-          onHome={onHome}
           onSettings={onSettings}
           onChangeEngine={onChangeEngine}
         />

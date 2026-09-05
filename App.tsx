@@ -560,16 +560,19 @@ function AppScreens() {
    * Visionが使える端末のときだけ出す（使えない端末で1択のシートを出しても
    * 邪魔なだけなので、その場合は何も聞かずに 'flood' を返す）。
    * 選んだ内容は次回以降の既定値としても保存する（設定画面の値と一本化）。
-   * シートをキャンセルした場合は画像選択自体は中断せず、現在の既定値のまま進める。
+   *
+   * 戻り値が null なのは「本当にキャンセルした」場合だけ（呼び出し側は
+   * 処理そのものを中断すること）。以前は「キャンセル」を押しても既定値で
+   * 処理が進んでしまい、ボタンの意味が無いと報告された不具合の修正。
    *
    * force=true は「分割画面の✨ボタン」用。設定「毎回確認する」がOFFでも
    * 明示的にやり直す操作なので、この場合だけは無条件でシートを出す。
    */
-  const chooseBgEngine = async (force = false): Promise<BgEngine> => {
+  const chooseBgEngine = async (force = false): Promise<BgEngine | null> => {
     if (!force && !appSettings.confirmBgEngineEachTime) return appSettings.bgEngine;
     if (!(await isVisionBgRemovalSupported())) return 'flood';
 
-    return new Promise<BgEngine>(resolve => {
+    return new Promise<BgEngine | null>(resolve => {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: t('settings.bgEngine'),
@@ -579,7 +582,7 @@ function AppScreens() {
           userInterfaceStyle: 'light',
         },
         index => {
-          if (index === 2 || index == null) { resolve(appSettings.bgEngine); return; }
+          if (index === 2 || index == null) { resolve(null); return; }
           const chosen: BgEngine = index === 1 ? 'vision' : 'flood';
           void updateSettings({ bgEngine: chosen });
           resolve(chosen);
@@ -598,6 +601,7 @@ function AppScreens() {
   const restartWithDifferentEngine = async () => {
     if (!currentImageUri) return;
     const engine = await chooseBgEngine(true);
+    if (engine == null) return; // 本当にキャンセル。分割画面はそのまま何も変わらない。
     editsRef.current = []; redoStepsRef.current = [];
     await processImage(currentImageUri, splitMode, undefined, undefined, engine);
   };
@@ -624,6 +628,13 @@ function AppScreens() {
     recordImageEdited();
 
     const engine = await chooseBgEngine();
+    if (engine == null) {
+      // 本当にキャンセル。画像はセッションとして残る（ホーム一覧から後で
+      // 再開すればそのとき既定値でそのまま処理される）が、ここでは
+      // 背景除去を実行しない。
+      setAppState('idle');
+      return;
+    }
 
     setSplitMode('auto'); // 新規画像は常に自動モードからスタート
     editsRef.current = []; redoStepsRef.current = []; // 前の画像の編集を持ち越さない
@@ -1917,9 +1928,11 @@ function AppScreens() {
         // ホームへ戻る際は reset() を使う。setAppState('idle') 直行だと
         // sessions 一覧が再読込されず、手動編集で mode:'custom' に変えても
         // カードのラベルが「透過済み（自動）」のまま残る（在庫の stale 表示）。
+        // この画面では「戻る」も実質ホームへ戻る動作なので、ヘッダーの
+        // ホームアイコンは省略し「戻る」ラベルを「ホーム」にして1つに統合した
+        // （✨方式変更ボタン追加でヘッダーが手狭になったための整理）。
         onBack={reset}
         onSettings={goToSettings}
-        onHome={reset}
         originalImageUri={currentImageUri}
         announceTransparent={bgToastPending}
         onAnnounced={() => setBgToastPending(false)}

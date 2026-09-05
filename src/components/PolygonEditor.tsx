@@ -1229,11 +1229,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   const effectiveLoupeSize = loupeDockLevel === 1 ? loupeMedium
     : loupeDockLevel === 2 ? loupeMini
     : loupeSize;
-  // ルーペの設定（loupeMode）自体が変わったら、そのモードの既定段階に戻す
-  // （'fixed'⇄'adjust' を切り替えた時、前のモードの収納状態を引きずらない）。
-  useEffect(() => {
-    setLoupeDockLevel(loupeIsAdjust ? 0 : 1);
-  }, [loupeIsAdjust]);
+  // 編集操作モードを切り替えても、今のルーペの大／中／小は変えない。
+  // 以前は 'adjust' で大・それ以外で中に戻していたが、微調整レティクルに
+  // した瞬間にサイズが跳ねて、狙っていた拡大のまま使えなかった。
   /**
    * ルーペの倍率（TouchLoupe の magnify prop）。設定の loupeZoomMode に応じて
    * キャンバスの現在のズーム(zoom.scale)と連動させる。

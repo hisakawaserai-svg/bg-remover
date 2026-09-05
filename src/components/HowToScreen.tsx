@@ -21,6 +21,7 @@ import { colors, spacing, typography, radius } from './ui/theme';
 import { useT } from '../i18n';
 import type { TKey } from '../i18n';
 import { TOOL_ICONS } from './ui/ToolHint';
+import { LOUPE_MODE_ICONS } from '../settings/store';
 
 export type HowToTab = 'flow' | 'auto' | 'editor' | 'result' | 'trouble';
 
@@ -49,6 +50,37 @@ function StepLine({ n, text }: { n: number; text: string }) {
   );
 }
 
+function AxisGuide({
+  leftIcon,
+  leftLabel,
+  rightIcon,
+  rightLabel,
+  body,
+}: {
+  leftIcon: string;
+  leftLabel: string;
+  rightIcon: string;
+  rightLabel: string;
+  body: string;
+}) {
+  return (
+    <View style={styles.axisWrap}>
+      <View style={styles.axisRow}>
+        <View style={styles.axisEnd}>
+          <Icon name={leftIcon} size={20} color={colors.accent} />
+          <Text style={styles.axisLbl}>{leftLabel}</Text>
+        </View>
+        <Text style={styles.axisArrow}>→</Text>
+        <View style={[styles.axisEnd, styles.axisEndRight]}>
+          <Icon name={rightIcon} size={20} color={colors.accent} />
+          <Text style={styles.axisLbl}>{rightLabel}</Text>
+        </View>
+      </View>
+      <Text style={styles.toolBody}>{body}</Text>
+    </View>
+  );
+}
+
 function ToolLine({ icon, title, body, warn }: { icon?: IconSpec; title: string; body: string; warn?: string }) {
   const Comp = icon?.family === 'community' ? CommunityIcon : Icon;
   return (
@@ -65,6 +97,27 @@ function ToolLine({ icon, title, body, warn }: { icon?: IconSpec; title: string;
         <Text style={styles.toolBody}>{body}</Text>
         {warn ? <Text style={styles.warn}>{warn}</Text> : null}
       </View>
+    </View>
+  );
+}
+
+function ToolGroup({
+  icon,
+  title,
+  body,
+  warn,
+  children,
+}: {
+  icon: IconSpec;
+  title: string;
+  body: string;
+  warn?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.toolGroup}>
+      <ToolLine icon={icon} title={title} body={body} warn={warn} />
+      {children ? <View style={styles.toolKids}>{children}</View> : null}
     </View>
   );
 }
@@ -162,7 +215,15 @@ export default function HowToScreen({
             <ToolLine icon={{ name: 'view-week' }} title={t('setup.columns')} body={t('howto.autoCols')} />
             <ToolLine icon={{ name: 'remove' }} title={t('setup.moveLines')} body={t('howto.autoLines')} />
             <ToolLine icon={{ name: 'tune' }} title={t('granularity.label')} body={t('howto.autoDetail')} />
-            <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('howto.autoEyedrop')} />
+            <ToolGroup icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('howto.autoEyedrop')}>
+              <AxisGuide
+                leftIcon="center-focus-strong"
+                leftLabel={t('granularity.narrowRange')}
+                rightIcon="blur-on"
+                rightLabel={t('granularity.wideRange')}
+                body={t('howto.editorEyedropSlider')}
+              />
+            </ToolGroup>
             <ToolLine icon={{ name: 'crop' }} title={t('setup.noSplit')} body={t('howto.autoNoSplit')} />
             <SectionLabel text={t('howto.sectionWhere')} />
             <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.autoOriginal')} />
@@ -181,23 +242,58 @@ export default function HowToScreen({
             <Card style={styles.card}>
               <Text style={styles.warn}>{t('howto.editorPremise')}</Text>
               <ToolLine icon={{ name: 'zoom-out-map' }} title={t('howto.editorPinchTitle')} body={t('howto.editorPinch')} />
-              <SectionLabel text={t('howto.sectionTools')} />
-              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.modeAdd')} body={t('howto.editorAddWhere')} warn={t('howto.editorAddWarn')} />
-              <ToolLine icon={{ name: 'dashboard' }} title={t('editor.drawMethodPickTitle')} body={t('howto.editorPick')} />
-              <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.drawMethodTapTitle')} body={t('editor.drawMethodTapDesc')} />
-              <ToolLine icon={{ name: 'gesture' }} title={t('editor.drawMethodTraceTitle')} body={t('editor.drawMethodTraceDesc')} />
-              <SectionLabel text={t('howto.sectionFix')} />
-              <ToolLine icon={{ name: TOOL_ICONS.move }} title={t('editor.modeMove')} body={t('editor.modeMoveHint')} />
-              <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('editor.modeEyedropperHint')} />
-              <ToolLine icon={{ name: 'healing' }} title={t('editor.modeRestore')} body={t('editor.modeRestoreHint')} />
-              <ToolLine icon={{ name: 'eraser', family: 'community' }} title={t('editor.modeErase')} body={t('howto.editorEraseWhere')} />
-              <SectionLabel text={t('howto.sectionScreen')} />
-              <ToolLine icon={{ name: 'pan-tool' }} title={t('settings.loupeMode')} body={t('howto.editorLoupe')} />
-              <ToolLine icon={{ name: 'grid-on' }} title={t('settings.thumbBg')} body={t('howto.editorBg')} />
+            </Card>
+            <Card style={styles.card}>
+              <SectionLabel text={t('howto.sectionToolbar')} />
+              <Text style={styles.lead}>{t('howto.sectionToolbarLead')}</Text>
+              <ToolGroup
+                icon={{ name: TOOL_ICONS.draw }}
+                title={t('editor.modeAdd')}
+                body={t('howto.editorAddWhere')}
+                warn={t('howto.editorAddWarn')}
+              >
+                <ToolLine icon={{ name: 'dashboard' }} title={t('editor.drawMethodPickTitle')} body={t('howto.editorPick')} />
+                <ToolLine icon={{ name: TOOL_ICONS.draw }} title={t('editor.drawMethodTapTitle')} body={t('editor.drawMethodTapDesc')} />
+                <ToolLine icon={{ name: 'gesture' }} title={t('editor.drawMethodTraceTitle')} body={t('editor.drawMethodTraceDesc')} />
+              </ToolGroup>
+              <ToolGroup icon={{ name: TOOL_ICONS.move }} title={t('editor.modeMove')} body={t('editor.modeMoveHint')} />
+              <ToolGroup icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('editor.modeEyedropperHint')}>
+                <AxisGuide
+                  leftIcon="center-focus-strong"
+                  leftLabel={t('granularity.narrowRange')}
+                  rightIcon="blur-on"
+                  rightLabel={t('granularity.wideRange')}
+                  body={t('howto.editorEyedropSlider')}
+                />
+              </ToolGroup>
+              <ToolGroup icon={{ name: 'healing' }} title={t('editor.modeRestore')} body={t('editor.modeRestoreHint')}>
+                <ToolLine icon={{ name: 'layers' }} title={t('editor.ghost')} body={t('howto.editorGhost')} />
+              </ToolGroup>
+              <ToolGroup
+                icon={{ name: 'eraser', family: 'community' }}
+                title={t('editor.modeErase')}
+                body={t('howto.editorEraseWhere')}
+              />
+              <ToolGroup icon={{ name: 'grid-on' }} title={t('settings.thumbBg')} body={t('howto.editorBg')} />
+              <ToolGroup icon={{ name: LOUPE_MODE_ICONS.fixed }} title={t('settings.loupeMode')} body={t('howto.editorLoupe')}>
+                <ToolLine icon={{ name: LOUPE_MODE_ICONS.fixed }} title={t('settings.loupeModeFixed')} body={t('howto.editorLoupeFixed')} />
+                <ToolLine icon={{ name: LOUPE_MODE_ICONS.adjust }} title={t('settings.loupeModeAdjust')} body={t('howto.editorLoupeAdjust')} />
+              </ToolGroup>
+              <ToolGroup icon={{ name: 'auto-fix-high' }} title={t('editor.retransTitle')} body={t('howto.editorRetrans')}>
+                <AxisGuide
+                  leftIcon="person"
+                  leftLabel={t('granularity.personPriority')}
+                  rightIcon="image"
+                  rightLabel={t('granularity.backgroundPriority')}
+                  body={t('howto.editorRetransSlider')}
+                />
+              </ToolGroup>
+              <ToolGroup icon={{ name: 'visibility-off' }} title={t('howto.editorHideChromeTitle')} body={t('howto.editorHideChrome')} />
+            </Card>
+            <Card style={styles.card}>
+              <SectionLabel text={t('howto.sectionBar')} />
+              <ToolLine icon={{ name: 'zoom-in' }} title={t('howto.editorLoupeTitle')} body={t('howto.editorLoupeSize')} />
               <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.editorOriginal')} />
-              <ToolLine icon={{ name: 'layers' }} title={t('editor.ghost')} body={t('howto.editorGhost')} />
-              <ToolLine icon={{ name: 'auto-fix-high' }} title={t('editor.retransTitle')} body={t('howto.editorRetrans')} />
-              <ToolLine icon={{ name: 'visibility-off' }} title={t('howto.editorHideChromeTitle')} body={t('howto.editorHideChrome')} />
               <ToolLine icon={{ name: 'save-alt' }} title={t('editor.goToSaveLabel')} body={t('howto.editorPreview')} />
             </Card>
             {!isOnboarding && onPolygonTutorial && (
@@ -315,6 +411,38 @@ const styles = StyleSheet.create({
   toolTitle: { ...typography.callout, fontWeight: '600', color: colors.label },
   toolBody: { ...typography.caption, color: colors.secondary, lineHeight: 18 },
   warn: { ...typography.caption, color: '#FF3B30', lineHeight: 18, fontWeight: '600' },
+  toolGroup: {
+    gap: 10,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+  },
+  toolKids: {
+    gap: 10,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accentMuted,
+    marginLeft: 16,
+  },
+  axisWrap: {
+    gap: 6,
+    paddingBottom: 4,
+  },
+  axisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  axisEnd: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  axisEndRight: { justifyContent: 'flex-end' },
+  axisLbl: { ...typography.caption, fontWeight: '600', color: colors.label, flexShrink: 1 },
+  axisArrow: { ...typography.caption, color: colors.secondary },
   footNote: { ...typography.caption, color: colors.label2, lineHeight: 18 },
   trouble: { ...typography.body, color: colors.label2, lineHeight: 22 },
   linkRow: {

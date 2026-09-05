@@ -47,9 +47,9 @@ export const RELEASES: Release[] = [
         {
           heading: '改善',
           items: [
-            '使い方を画面ごとのタブにし、ヘッダーの「？」からその画面の説明を開けるようにしました',
+            '使い方に「流れ」を足し、範囲を調整は右の道具ごとに説明するようにしました',
             '「範囲を調整」のあとも、保存後と同じく拡大して透過の残りを確認できます',
-            '分割結果とプレビューで、番号・背景・元画像のボタンがスクロールしても残るようにしました',
+            '保存後の全画面広告はやめて、完了画面の下に長方形の広告を置くようにしました',
             '画面下の広告を画面幅いっぱいに表示するようにしました',
           ],
         },
@@ -58,6 +58,7 @@ export const RELEASES: Release[] = [
           items: [
             '日本語環境でアプリ名が英語のまま表示されていた不具合を直しました',
             '拡大したまま次の画像へ送ると、前の画像が重なって残る不具合を直しました',
+            '微調整レティクルにしても、ルーペの大きさが勝手に変わらないようにしました',
           ],
         },
       ],
@@ -77,9 +78,9 @@ export const RELEASES: Release[] = [
         {
           heading: 'Improvements',
           items: [
-            'How to use is now split into tabs. The ? in the header opens help for that screen',
+            'How to use now has a Flow tab. Adjust range help is grouped by each tool on the right',
             'After Adjust range, you can zoom the preview the same way as after saving, to check leftover background',
-            'On Results and Preview, the number, backdrop, and original-image buttons stay put while you scroll',
+            'Fullscreen ads after saving are gone. A rectangle ad sits at the bottom of the done screen',
             'The banner ad now spans the width of the screen',
           ],
         },
@@ -88,6 +89,7 @@ export const RELEASES: Release[] = [
           items: [
             'Fixed the app name staying in English on Japanese devices',
             'Fixed the previous image lingering when you move to the next while zoomed in',
+            'Switching to the nudgeable crosshair no longer changes the loupe size',
           ],
         },
       ],

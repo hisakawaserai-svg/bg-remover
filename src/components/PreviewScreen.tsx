@@ -138,6 +138,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSettings, 
         onPress={handleSave}
         pressedScale={0.97}
       >
+        <Icon name="save-alt" size={20} color="#FFF" style={{ marginRight: 8 }} />
         <Text style={styles.saveBtnTxt}>
           {isSaving ? t('common.saving') : t('preview.saveCount', { count: polygons.length })}
         </Text>
@@ -204,18 +205,18 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSettings, 
             </View>
           </View>
         </View>
-        <ScrollView contentContainerStyle={styles.gridWrap}>
+        <ScrollView style={styles.gridScroll} contentContainerStyle={styles.gridWrap}>
           <View style={styles.grid}>
             {uris.map((uri, idx) => (
               <View key={polygons[idx]?.id ?? idx} style={[styles.cell, { width: cellSize, height: cellSize }]}>
                 <CheckerboardBg mode={bgMode} tile={14} width={cellSize} height={cellSize} />
                 {uri ? (
                   <AnimatedPressable
-                    style={{ width: cellSize, height: cellSize }}
+                    style={StyleSheet.absoluteFill}
                     onPress={() => openPreview(uri)}
                     pressedScale={0.96}
                   >
-                    <Image source={{ uri }} style={{ width: cellSize, height: cellSize }} resizeMode="contain" />
+                    <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
                   </AnimatedPressable>
                 ) : (
                   <Text style={styles.errorTxt}>×</Text>
@@ -263,6 +264,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
   },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
@@ -271,6 +273,7 @@ const styles = StyleSheet.create({
   loadingTxt: { fontSize: 14, color: IOS.secondary },
 
   body: { flex: 1 },
+  gridScroll: { flex: 1 },
   stickyChrome: {
     zIndex: 20,
     paddingHorizontal: 16,
@@ -343,7 +346,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   cell: {
     borderRadius: 12,

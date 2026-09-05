@@ -149,7 +149,8 @@ export interface AppSettings {
    */
   bgEngine: BgEngine;
   /**
-   * 画像を選ぶたびに背景除去の方式をアクションシートで確認するか。既定 true。
+   * 画像を選ぶたびに背景除去の方式を確認するか。既定 false。
+   * 初めての人は色ベースのまま進める。方式を毎回選びたい人だけ設定でON。
    * falseにすると確認せず bgEngine をそのまま使う（Visionが使えない場合は
    * 呼び出し側が自動でflood-fillへフォールバックする）。
    */
@@ -251,10 +252,15 @@ export interface AppSettings {
    */
   brushDefaultPx: number;
   /**
-   * 編集開始時に元画像の透かし（ゴースト表示）をONにしておくか。既定 true。
+   * 編集開始時に元画像の透かし（ゴースト表示）をONにしておくか。既定 false。
    * セッション中はツールバーからいつでも切り替えられる。この設定はその初期値のみを決める。
    */
   ghostDefaultOn: boolean;
+  /**
+   * 1.2 の「毎回確認・ゴーストON」を、既存ユーザーも含めて一度だけOFFへ寄せたか。
+   * 無い／false の保存値は loadSettings で寄せてから true にする。
+   */
+  quietFirstRunDefaultsApplied: boolean;
 }
 
 // 設定のデフォルト値（キーが無い or 未設定項目のフォールバック）。
@@ -269,7 +275,7 @@ export const DEFAULTS: AppSettings = {
   // 既定 OFF。誤除去を増やさないことを優先する（上級者が明示的に ON にする想定）。
   fillTextHoles:  false,
   bgEngine:       'flood',
-  confirmBgEngineEachTime: true,
+  confirmBgEngineEachTime: false,
   gridColumns:    3,
   thumbBg:        'checker',
   splitLineColor: '#007AFF',
@@ -290,7 +296,8 @@ export const DEFAULTS: AppSettings = {
   loupeBaseMagnify: 24,
   loupeBaseSize: 160,
   brushDefaultPx: 30,
-  ghostDefaultOn: true,
+  ghostDefaultOn: false,
+  quietFirstRunDefaultsApplied: false,
 };
 
 /**
@@ -328,6 +335,14 @@ export async function loadSettings(): Promise<AppSettings> {
     // 旧バージョンの時間帯連動('auto')は廃止。保存済みなら Day に寄せる。
     if (merged.appIcon !== 'day' && merged.appIcon !== 'night' && merged.appIcon !== 'sleep') {
       merged.appIcon = DEFAULTS.appIcon;
+    }
+    // 既存ユーザーも「毎回確認」「ゴースト初期ON」をやめる。一度寄せたら
+    // フラグを立てるので、その後に設定でONに戻した人は上書きしない。
+    if (!merged.quietFirstRunDefaultsApplied) {
+      merged.confirmBgEngineEachTime = false;
+      merged.ghostDefaultOn = false;
+      merged.quietFirstRunDefaultsApplied = true;
+      void saveSettings(merged);
     }
     return merged;
   } catch (e) {

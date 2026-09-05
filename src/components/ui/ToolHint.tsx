@@ -53,6 +53,8 @@ interface Props {
    * ないため、閉じるボタンだけ出しても押せない）。
    */
   onClose?: () => void;
+  /** ×の横に出す短いラベル（「閉じる」）。無いときはアイコンだけ。 */
+  closeLabel?: string;
   /**
    * 渡すと見出し行の左端（アイコンより前）に戻るボタンを出す。
    * 「戻る」は下のカード本体に埋もれていると気づかれにくい／押しにくい
@@ -81,12 +83,12 @@ interface Props {
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-export default function ToolHint({ icon, iconFamily = 'material', title, desc, bottom = 12, children, onClose, onBack, onCollapse, titleExtra, onLayout }: Props) {
+export default function ToolHint({ icon, iconFamily = 'material', title, desc, bottom = 12, children, onClose, closeLabel, onBack, onCollapse, titleExtra, onLayout }: Props) {
   const interactive = children != null || titleExtra != null || onClose != null || onBack != null || onCollapse != null;
   const IconComp = iconFamily === 'community' ? CommunityIcon : Icon;
   return (
     <View
-      style={[styles.wrap, children != null && styles.wrapExpanded, { bottom }]}
+      style={[styles.wrap, interactive && styles.wrapExpanded, { bottom }]}
       pointerEvents={interactive ? 'box-none' : 'none'}
       onLayout={onLayout}
     >
@@ -97,18 +99,18 @@ export default function ToolHint({ icon, iconFamily = 'material', title, desc, b
           </Pressable>
         )}
         <IconComp name={icon} size={15} color="#FFF" />
-        {/* OS側の文字サイズ設定(Dynamic Type/Androidのフォントサイズ)には
-            追従させつつ、極端に拡大されてこの細い帯が際限なく伸びないよう
-            上限だけ設ける（完全にオフにするとアクセシビリティを損なうため、
-            maxFontSizeMultiplier で「伸びすぎ」だけ防ぐ）。 */}
-        <Text style={styles.title} maxFontSizeMultiplier={1.3}>{title}</Text>
-        {titleExtra}
-        <View style={styles.sep} />
-        <Text style={styles.desc} maxFontSizeMultiplier={1.3}>{desc}</Text>
+        {/* タイトルと説明を縦に積む。「閉じる」を足したあと1行に詰めると、
+            Android で説明の幅が0になって文字が消える。 */}
+        <View style={[styles.headCopy, interactive && styles.headCopyFill]}>
+          <View style={styles.titleLine}>
+            <Text style={styles.title} maxFontSizeMultiplier={1.3}>{title}</Text>
+            {titleExtra}
+          </View>
+          {!!desc && (
+            <Text style={styles.desc} maxFontSizeMultiplier={1.3}>{desc}</Text>
+          )}
+        </View>
         {(onCollapse != null || onClose != null) && (
-          // 畳む(unfold-less)と閉じる(×)は常にセットで右端へ。片方だけ marginLeft:
-          // 'auto' を持たせても、間に自然な余白ができるだけで右端に揃わない
-          // ため、2つを1つの行にまとめてその行ごと右へ寄せる。
           <View style={styles.headActions}>
             {onCollapse != null && (
               <Pressable onPress={onCollapse} hitSlop={8}>
@@ -116,7 +118,8 @@ export default function ToolHint({ icon, iconFamily = 'material', title, desc, b
               </Pressable>
             )}
             {onClose != null && (
-              <Pressable onPress={onClose} hitSlop={8}>
+              <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
+                {closeLabel ? <Text style={styles.closeLabel}>{closeLabel}</Text> : null}
                 <Icon name="close" size={16} color="rgba(255,255,255,0.8)" />
               </Pressable>
             )}
@@ -160,15 +163,19 @@ const styles = StyleSheet.create({
     // 文字が読みやすいよう、通常のピルよりほんの少しだけ濃くする。
     backgroundColor: 'rgba(0,0,0,0.74)',
   },
-  headRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  backBtn: { flexShrink: 0 },
-  headActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 },
+  headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  headCopy: { flexShrink: 1, minWidth: 0, gap: 2 },
+  headCopyFill: { flex: 1 },
+  titleLine: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  backBtn: { flexShrink: 0, marginTop: 1 },
+  headActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0, marginTop: 1 },
+  closeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  closeLabel: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.2)',
     marginVertical: 8,
   },
   title: { fontSize: 13, fontWeight: '700', color: '#FFF', letterSpacing: 0.2 },
-  sep: { width: StyleSheet.hairlineWidth, height: 12, backgroundColor: 'rgba(255,255,255,0.45)' },
-  desc: { fontSize: 12, color: 'rgba(255,255,255,0.85)', flexShrink: 1 },
+  desc: { fontSize: 12, lineHeight: 17, color: 'rgba(255,255,255,0.85)' },
 });

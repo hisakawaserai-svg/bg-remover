@@ -53,6 +53,23 @@ export const BANNER_UNIT_ID =
     ? TEST_BANNER_UNIT_IDS[TEST_BANNER_KIND]
     : PROD_BANNER_UNIT_ID;
 
+const PROD_MREC_UNIT_ID = Platform.select({
+  android: 'ca-app-pub-3194046005390900/6622101247',
+  ios: 'ca-app-pub-3194046005390900/2411393492',
+  default: '',
+}) as string;
+
+/**
+ * MREC（300×250）用。開発は固定バナーのテストID（表示サイズと揃える）。
+ * 本番IDが空のリリースでは出さない。
+ */
+export const MREC_UNIT_ID = __DEV__ || !PROD_MREC_UNIT_ID
+  ? TEST_BANNER_UNIT_IDS.fixed
+  : PROD_MREC_UNIT_ID;
+
+export const MREC_WIDTH = 300;
+export const MREC_HEIGHT = 250;
+
 const PROD_INTERSTITIAL_UNIT_ID = Platform.select({
   android: 'ca-app-pub-3194046005390900/9714334291',
   ios: 'ca-app-pub-3194046005390900/3340497637',

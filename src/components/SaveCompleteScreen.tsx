@@ -25,7 +25,7 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import { useT } from '../i18n';
 import { useAlbumName } from '../settings/useAlbumName';
-import AdBanner from '../ads/AdBanner';
+import AdMrec from '../ads/AdMrec';
 
 // グリッドの最大表示枚数
 const MAX_GRID = 9;
@@ -112,8 +112,39 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
     />
   );
 
+  const footer = (
+    <View>
+      <View style={styles.dock}>
+        <AnimatedPressable style={styles.primaryBtn} onPress={onNewImage} pressedScale={0.97}>
+          <Text style={styles.primaryBtnTxt}>{t('saveComplete.another')}</Text>
+        </AnimatedPressable>
+        <View style={styles.dockRow}>
+          <AnimatedPressable style={styles.dockBtn} onPress={onSaved} pressedScale={0.96}>
+            <Icon name="photo-album" size={18} color={IOS.blue} />
+            <Text style={styles.dockBtnTxt}>{t('saveComplete.dockDest')}</Text>
+          </AnimatedPressable>
+          {previewUris.length > 0 && (
+            <AnimatedPressable
+              style={styles.dockBtn}
+              onPress={() => void shareImages(previewUris)}
+              pressedScale={0.96}
+            >
+              <Icon name="ios-share" size={18} color={IOS.blue} />
+              <Text style={styles.dockBtnTxt}>{t('saveComplete.dockShare')}</Text>
+            </AnimatedPressable>
+          )}
+          <AnimatedPressable style={styles.dockBtn} onPress={onHome} pressedScale={0.96}>
+            <Icon name="home" size={18} color={IOS.blue} />
+            <Text style={styles.dockBtnTxt}>{t('saveComplete.dockHome')}</Text>
+          </AnimatedPressable>
+        </View>
+      </View>
+      <AdMrec />
+    </View>
+  );
+
   return (
-    <Screen header={header} bg={IOS.bg} footer={<AdBanner />}>
+    <Screen header={header} bg={IOS.bg} footer={footer}>
 
       {/* ── 完了サマリ ────────────────────────────────────────────────── */}
       <View style={styles.summary}>
@@ -154,7 +185,6 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
               </AnimatedPressable>
             );
           })}
-          {/* 欠損時プレースホルダー */}
           {!loading && thumbUris.length === 0 && (
             <View style={styles.empty}>
               <Icon name="photo-library" size={32} color={IOS.secondary} />
@@ -163,49 +193,6 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
         </View>
       )}
 
-      {/* ── アクション ────────────────────────────────────────────────── */}
-      <View style={styles.actions}>
-
-        {/* 主ボタン: 別の画像を処理する → image picker を直接起動 */}
-        <AnimatedPressable style={styles.primaryBtn} onPress={onNewImage} pressedScale={0.97}>
-          <Text style={styles.primaryBtnTxt}>{t('saveComplete.another')}</Text>
-        </AnimatedPressable>
-
-        {/* 保存先。アイコンはホームのヘッダーにある保存先ボタンと同じ photo-album。
-            同じ画面へ行く導線なので、別の絵にすると同じ場所だと分からなくなる。 */}
-        <AnimatedPressable style={styles.subBtn} onPress={onSaved} pressedScale={0.97}>
-          <Icon name="photo-album" size={16} color={IOS.blue} />
-          <Text style={styles.subBtnTxt}>{t('saveComplete.checkDestination')}</Text>
-        </AnimatedPressable>
-
-        {/* 共有。LINE スタンプ Maker を開くボタンはここに置いていたが、
-            共有シートの中に LINE スタンプ Maker が出るので導線が重複していた。
-            共有のほうが行き先を選べるぶん上位互換なので、こちらへ入れ替えた。
-            表示できる画像が取れなかった場合は押しても意味がないので隠す。 */}
-        {previewUris.length > 0 && (
-          <AnimatedPressable
-            style={styles.shareBtn}
-            onPress={() => void shareImages(previewUris)}
-            pressedScale={0.97}
-          >
-            <Text style={styles.shareBtnTxt}>
-              {t('result.shareCount', { count: previewUris.length })}
-            </Text>
-            <Icon name="ios-share" size={16} color="#FFF" />
-          </AnimatedPressable>
-        )}
-
-        {/* ヘッダー右上のホームアイコンだけだと「終わったらどうすればいいか」に
-            気づきにくい（実機ユーザーから、次に何をすればいいか分からなかった
-            との報告あり）。ここに文字付きのボタンとして「終わる」導線を明示する。 */}
-        <AnimatedPressable style={styles.homeBtn} onPress={onHome} pressedScale={0.97}>
-          <Icon name="home" size={16} color={IOS.secondary} />
-          <Text style={styles.homeBtnTxt}>{t('saveComplete.backToHome')}</Text>
-        </AnimatedPressable>
-
-      </View>
-
-      {/* 拡大プレビュー */}
       {previewIdx !== null && (
         <ImagePreviewModal
           uris={previewUris}
@@ -270,6 +257,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginHorizontal: 16,
     marginTop: 20,
+    marginBottom: 20,
     justifyContent: 'center',
   },
   gridLoading: {
@@ -295,50 +283,36 @@ const styles = StyleSheet.create({
   overflowTxt: { fontSize: 20, fontWeight: '700', color: '#FFF' },
   empty: { width: CELL_SIZE, height: CELL_SIZE, alignItems: 'center', justifyContent: 'center' },
 
-  // ── アクション ──────────────────────────────────────────────────────────────
-  actions: {
-    marginHorizontal: 16,
-    marginTop: 28,
-    gap: 10,
+  dock: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: IOS.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: IOS.separator,
+    gap: 8,
   },
   primaryBtn: {
     backgroundColor: IOS.blue,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryBtnTxt: { fontSize: 16, fontWeight: '700', color: '#FFF' },
-
-  subBtn: {
+  dockRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dockBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: IOS.fill,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 10,
   },
-  subBtnTxt: { fontSize: 15, fontWeight: '600', color: IOS.blue },
-
-  shareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    backgroundColor: '#3D3D3D',
-    borderRadius: 14,
-    paddingVertical: 16,
-  },
-  shareBtnTxt: { fontSize: 15, fontWeight: '700', color: '#FFF' },
-
-  // 「終わる」導線。他のアクションより目立たせない（主役はもう一枚処理する方）。
-  homeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-  },
-  homeBtnTxt: { fontSize: 15, fontWeight: '600', color: IOS.secondary },
+  dockBtnTxt: { fontSize: 13, fontWeight: '600', color: IOS.blue },
 });

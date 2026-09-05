@@ -644,8 +644,8 @@ export default function PolygonTutorialScreen({ onStart, onBack, mode = 'onboard
           <AnimatedFigure phase={phase} />
           {/* プレビューボタン: 実エディタの下部バー右端ボタンを縮小再現 */}
           <Animated.View style={[s.previewBtn, previewBtnStyle]}>
-            <Icon name="preview" size={16} color="#FFF" />
-            <Text style={s.previewBtnTxt}>{t('common.preview')}</Text>
+            <Icon name="save-alt" size={16} color="#FFF" />
+            <Text style={s.previewBtnTxt}>{t('editor.goToSaveLabel')}</Text>
           </Animated.View>
         </View>
 

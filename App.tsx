@@ -145,7 +145,6 @@ import type { SplashAnimationType } from './src/components/splash/types';
 import { applyAppIcon, resolveAppIcon } from './src/appIcon';
 // 広告の同意フロー(UMP+ATT)。オンボーディング完了後に一度だけ呼ぶ（下の effect 参照）。
 import { gatherAdsConsentAndInit } from './src/ads/consent';
-import { showInterstitialIfReady } from './src/ads/interstitial';
 import SetupScreen   from './src/components/SetupScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
@@ -251,7 +250,7 @@ function AppScreens() {
   // prevStateRef が 'settings' のまま固定され、設定の「完了」が自分自身へ戻って
   // 閉じなくなるため、howto は専用 ref で戻り先を管理する。
   const howtoReturnRef = useRef<AppState>('idle');
-  const howtoTabRef = useRef<HowToTab>('auto');
+  const howtoTabRef = useRef<HowToTab>('flow');
 
   // 自動分割モード用
   const [rows,        setRows]        = useState(DEFAULT_ROWS);
@@ -1410,8 +1409,6 @@ function AppScreens() {
       // autoDeleteOnExport で消えることもない。
       setSavedLocalUris(paths);
       setAppState('done');
-      // 保存完了の上に全画面広告。未準備なら出さない。再開で done に戻る経路では呼ばない。
-      showInterstitialIfReady();
     } catch (e: unknown) {
       // 写真の権限が原因のことが多いので、日本語の対処手順に変換して出す。
       Alert.alert(t('errors.exportTitle'), describeSaveError(e));
@@ -1862,7 +1859,7 @@ function AppScreens() {
       <SettingsScreen
         onClose={() => backToPrev(prevStateRef.current)}
         onDeleteAllData={handleDeleteAllSessions}
-        onHowTo={() => goToHowTo('auto')}
+        onHowTo={() => goToHowTo('flow')}
       />
     );
   }
@@ -2280,7 +2277,6 @@ function AppScreens() {
             setSavedCount(count);
             setSavedLocalUris(paths);
             setAppState('done');
-            showInterstitialIfReady();
           }}
         />
       </>

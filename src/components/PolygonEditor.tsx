@@ -215,6 +215,8 @@ const MR_TH = 4;
 
 /** eyedropper = スポイト: タップした色を透過させる（ポリゴンは操作しない） */
 type AppMode = 'draw' | 'move' | 'eyedropper' | 'restore';
+/** 道具バー用。消しゴムは restore + eraseMode だが、入口は一段にする。 */
+type ToolKind = AppMode | 'erase';
 
 /**
  * undo/redo の履歴エントリ。
@@ -867,6 +869,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
   // ポリゴンの塗り・輪郭・連番バッジも同じ理由で一緒に隠す
   // （画像を素の状態で確認したい、という目的が周辺パネルと共通のため）。
   const [chromeHidden, setChromeHidden] = useState(false);
+  const [toolHintVisible, setToolHintVisible] = useState(true);
   // 復元ブラシの太さ（BRUSH_SIZES の添字）と、なぞっている最中の軌跡（表示座標）。
   const [brushPx, setBrushPx] = useState(settings.brushDefaultPx);
   // スポイトの許容値。設定画面まで行かずに、その場で強弱を変えられるようにする。
@@ -1583,6 +1586,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
    */
   const [eraseMode, setEraseMode] = useState(false);
   const eraseModeRef = useRef(eraseMode); eraseModeRef.current = eraseMode;
+  const currentTool: ToolKind = appMode === 'restore' && eraseMode ? 'erase' : appMode;
   /**
    * ref と同じ値を持つ共有値。UIスレッドの useAnimatedReaction から
    * 「録画中かどうか」を読むためのもの（ref は JS スレッド専用で
@@ -4881,7 +4885,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             画面が寂しかったので、3モードとも「名前＋やること」を1行で示す。
             再透過カードが開いている間は、素の appMode の説明のままだと
             「今は再透過中」だと伝わらないため、内容を差し替える。 */}
-        {!chromeHidden && (
+        {!chromeHidden && !toolHintVisible && (
+          <AnimatedPressable
+            style={styles.toolHintReopen}
+            onPress={() => setToolHintVisible(true)}
+            pressedScale={0.96}
+          >
+            <Icon name="help-outline" size={16} color="#FFF" />
+            <Text style={styles.toolHintReopenTxt}>{t('editor.showToolHint')}</Text>
+          </AnimatedPressable>
+        )}
+        {!chromeHidden && toolHintVisible && (
           <ToolHint
             // restoreモードは「戻す」「消しゴム」でアイコン・見出し・説明を
             // 丸ごと差し替える（同じブラシの2つの効果を混同させないため）。
@@ -4919,9 +4933,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             // 境界を確認したくなるので、状態を問わず同じ場所に固定で出す。
             titleExtra={(!retransOpen && panelCompact && (appMode === 'eyedropper' || appMode === 'restore')) ? (
               <View style={styles.toolHintStepperRow}>
-                <Text style={styles.zoomCompactTxt}>
-                  {appMode === 'restore' ? `${Math.round(brushPx)}px` : Math.round(eyeTol)}
-                </Text>
+                {appMode === 'restore' ? (
+                  <Text style={styles.zoomCompactTxt}>{`${Math.round(brushPx)}px`}</Text>
+                ) : (
+                  <Icon name="center-focus-strong" size={14} color="rgba(255,255,255,0.85)" />
+                )}
                 <AnimatedPressable
                   style={styles.toolHintStepperBtn}
                   onPress={() => (appMode === 'restore' ? setRestorePanelCompact(false) : setEyedropperPanelCompact(false))}
@@ -4970,28 +4986,34 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             // 再透過カード本体をここに差し込む（説明行の下に divider 付きで
             // 積む）。以前は別のフローティングカードだったが、「同じ場所に
             // まとまっている方が分かりやすい」という要望で統合した。
-            onClose={onRetransparent && retransOpen ? () => {
-              if (retransPicking) {
-                // ピッキング中のクローズ（方式選択前後どちらでも）: 選びかけの
-                // 状態を残さずカードごと閉じる。
-                clearRetransTempPoly();
-                setRetransPicking(false);
-                setRetransOpen(false);
-                setRetransMethod(null);
-              } else {
-                // フォーム段階のクローズ。「これでどうですか？」の結果確認中
-                // （retransApplied）なら、確定せずに閉じる＝この結果は要らない
-                // ということなので、適用済みの再透過をここで取り消してから
-                // 閉じる。確定したい時は必ず「確定」ボタンを押させ、×は常に
-                // 「今の結果を捨てる」で統一する。
-                if (retransApplied) handleUndo();
-                clearRetransTempPoly();
-                setRetransOpen(false);
-                setRetransMethod(null);
-                setRetransMaskPoints(null);
-                setRetransApplied(false);
+            closeLabel={t('common.close')}
+            onClose={() => {
+              if (onRetransparent && retransOpen) {
+                if (retransPicking) {
+                  // ピッキング中のクローズ（方式選択前後どちらでも）: 選びかけの
+                  // 状態を残さずカードごと閉じる。
+                  clearRetransTempPoly();
+                  setRetransPicking(false);
+                  setRetransOpen(false);
+                  setRetransMethod(null);
+                } else {
+                  // フォーム段階のクローズ。「これでどうですか？」の結果確認中
+                  // （retransApplied）なら、確定せずに閉じる＝この結果は要らない
+                  // ということなので、適用済みの再透過をここで取り消してから
+                  // 閉じる。確定したい時は必ず「確定」ボタンを押させ、×は常に
+                  // 「今の結果を捨てる」で統一する。
+                  if (retransApplied) handleUndo();
+                  clearRetransTempPoly();
+                  setRetransOpen(false);
+                  setRetransMethod(null);
+                  setRetransMaskPoints(null);
+                  setRetransApplied(false);
+                }
+                return;
               }
-            } : undefined}
+              setToolHintVisible(false);
+              setToolHintHeight(44);
+            }}
           >
             {onRetransparent && retransOpen ? (
               retransPicking && panelCompact ? (
@@ -5196,22 +5218,25 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               <>
                 <View style={styles.brushHead}>
                   <Text style={styles.brushLabel}>{t('settings.eyedropperTolerance')}</Text>
-                  <View style={styles.brushHeadRight}>
-                    <Text style={styles.brushValue}>{Math.round(eyeTol)}</Text>
-                  </View>
                 </View>
-                <Slider
-                  style={styles.brushSlider}
-                  minimumValue={0}
-                  maximumValue={100}
-                  value={eyeTol}
-                  onSlidingStart={() => { uiInteractingRef.current = true; }}
-                  onValueChange={setEyeTol}
-                  onSlidingComplete={() => { uiInteractingRef.current = false; }}
-                  minimumTrackTintColor={IOS.blue}
-                  maximumTrackTintColor="rgba(255,255,255,0.28)"
-                  thumbTintColor="#FFF"
-                />
+                <View style={styles.retransRow}>
+                  <Icon name="center-focus-strong" size={16} color="rgba(255,255,255,0.6)"
+                    accessibilityLabel={t('granularity.narrowRange')} />
+                  <Slider
+                    style={styles.retransSlider}
+                    minimumValue={0}
+                    maximumValue={100}
+                    value={eyeTol}
+                    onSlidingStart={() => { uiInteractingRef.current = true; }}
+                    onValueChange={setEyeTol}
+                    onSlidingComplete={() => { uiInteractingRef.current = false; }}
+                    minimumTrackTintColor={IOS.blue}
+                    maximumTrackTintColor="rgba(255,255,255,0.28)"
+                    thumbTintColor="#FFF"
+                  />
+                  <Icon name="blur-on" size={16} color="rgba(255,255,255,0.6)"
+                    accessibilityLabel={t('granularity.wideRange')} />
+                </View>
               </>
             ) : appMode === 'restore' && !panelCompact ? (
               // 復元ブラシの太さ。透過強度が開いている間は出さない（同じ場所を
@@ -5459,10 +5484,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               disabled={eyeBusy}
               onPress={() => setToolMenuOpen(o => !o)}
             >
-              {appMode === 'restore' && !eraseMode && !settings.hasSeenEraserTool && (
-                <View style={styles.brushModeNewDot} />
-              )}
-              {appMode === 'restore' && eraseMode ? (
+              {currentTool === 'erase' ? (
                 <CommunityIcon name="eraser" size={22} color="#FFF" />
               ) : (
                 <Icon name={TOOL_HINTS[appMode].icon} size={22} color="#FFF" />
@@ -5481,25 +5503,36 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 exiting={FadeOut.duration(120)}
                 style={styles.toolDropdownExpanded}
               >
-                {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore'] as const : [])] as AppMode[])
-                  .filter(m => m !== appMode)
+                {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore', 'erase'] as const : [])] as ToolKind[])
+                  .filter(m => m !== currentTool)
                   .map(m => (
                     <AnimatedPressable
                       key={m}
                       style={styles.floatBtn}
                       disabled={eyeBusy}
                       onPress={() => {
-                        setAppMode(m);
+                        if (m === 'erase') {
+                          setAppMode('restore');
+                          setEraseMode(true);
+                          if (!settings.hasSeenEraserTool) void updateSettings({ hasSeenEraserTool: true });
+                        } else if (m === 'restore') {
+                          setAppMode('restore');
+                          setEraseMode(false);
+                        } else {
+                          setAppMode(m);
+                        }
                         setRetransOpen(false);
                         setToolMenuOpen(false);
                       }}
                     >
-                      {/* 復元ブラシの中に消しゴムが隠れていて気づかれにくいため、
-                          ツール自体を開く前の入口にもバッジを出す。 */}
-                      {m === 'restore' && !settings.hasSeenEraserTool && (
+                      {m === 'erase' && !settings.hasSeenEraserTool && (
                         <View style={styles.brushModeNewDot} />
                       )}
-                      <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
+                      {m === 'erase' ? (
+                        <CommunityIcon name="eraser" size={22} color="#FFF" />
+                      ) : (
+                        <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
+                      )}
                     </AnimatedPressable>
                   ))}
 
@@ -5645,8 +5678,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           onPress={handlePreview}
           pressedScale={0.96}
         >
-          <Icon name="preview" size={20} color="#FFF" />
-          <Text style={styles.exportBtnTxt}>{t('common.preview')}</Text>
+          <Icon name="save-alt" size={20} color="#FFF" />
+          <Text style={styles.exportBtnTxt}>{t('editor.goToSave', { count: polygons.length })}</Text>
           {polygons.length > 0 && (
             <View style={styles.exportBadge}>
               <Text style={styles.exportBadgeTxt}>{polygons.length}</Text>
@@ -6119,6 +6152,20 @@ const styles = StyleSheet.create({
   },
   ghostBtnOn: { backgroundColor: IOS.blue },
   ghostBtnTxt: { color: '#FFF', fontSize: 11 },
+  toolHintReopen: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  toolHintReopenTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   brushLabel: { color: '#FFF', fontSize: 12 },
   brushValue: { color: '#FFF', fontSize: 13, fontVariant: ['tabular-nums'] },
   brushSlider: { width: '100%', height: 30 },

@@ -22,9 +22,10 @@ import { useT } from '../i18n';
 import type { TKey } from '../i18n';
 import { TOOL_ICONS } from './ui/ToolHint';
 
-export type HowToTab = 'auto' | 'editor' | 'result' | 'trouble';
+export type HowToTab = 'flow' | 'auto' | 'editor' | 'result' | 'trouble';
 
 const TABS: { id: HowToTab; labelKey: TKey }[] = [
+  { id: 'flow',    labelKey: 'howto.tabFlow' },
   { id: 'auto',    labelKey: 'howto.tabAuto' },
   { id: 'editor',  labelKey: 'howto.tabEditor' },
   { id: 'result',  labelKey: 'howto.tabResult' },
@@ -35,6 +36,17 @@ type IconSpec = { name: string; family?: 'material' | 'community' };
 
 function SectionLabel({ text }: { text: string }) {
   return <Text style={styles.section}>{text}</Text>;
+}
+
+function StepLine({ n, text }: { n: number; text: string }) {
+  return (
+    <View style={styles.toolRow}>
+      <View style={styles.stepNum}>
+        <Text style={styles.stepNumTxt}>{n}</Text>
+      </View>
+      <Text style={[styles.toolBody, styles.stepTxt]}>{text}</Text>
+    </View>
+  );
 }
 
 function ToolLine({ icon, title, body, warn }: { icon?: IconSpec; title: string; body: string; warn?: string }) {
@@ -70,7 +82,7 @@ export default function HowToScreen({
   onClose,
   onPolygonTutorial,
   onComplexTutorial,
-  initialTab = 'auto',
+  initialTab = 'flow',
   mode = 'help',
   onStart,
 }: Props) {
@@ -108,9 +120,43 @@ export default function HowToScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
+        {tab === 'flow' && (
+          <>
+            <Card style={styles.card}>
+              <Text style={styles.lead}>{t('howto.flowLead')}</Text>
+              <SectionLabel text={t('howto.flowAutoTitle')} />
+              <StepLine n={1} text={t('howto.flowAuto1')} />
+              <StepLine n={2} text={t('howto.flowAuto2')} />
+              <StepLine n={3} text={t('howto.flowAuto3')} />
+              <StepLine n={4} text={t('howto.flowAuto4')} />
+              <Text style={styles.footNote}>{t('howto.flowAutoNote')}</Text>
+            </Card>
+            <Card style={styles.card}>
+              <SectionLabel text={t('howto.flowManualTitle')} />
+              <Text style={styles.warn}>{t('howto.flowManualWarn')}</Text>
+              <StepLine n={1} text={t('howto.flowManual1')} />
+              <StepLine n={2} text={t('howto.flowManual2')} />
+              <StepLine n={3} text={t('howto.flowManual3')} />
+              <StepLine n={4} text={t('howto.flowManual4')} />
+              <StepLine n={5} text={t('howto.flowManual5')} />
+              <StepLine n={6} text={t('howto.flowManual6')} />
+            </Card>
+            {!isOnboarding && onPolygonTutorial && (
+              <AnimatedPressable style={styles.linkRow} onPress={onPolygonTutorial} pressedScale={0.98}>
+                <Icon name="gesture" size={20} color={colors.accent} />
+                <View style={styles.linkText}>
+                  <Text style={styles.linkLabel}>{t('howto.polygonTitle')}</Text>
+                  <Text style={styles.linkSub}>{t('howto.polygonDescription')}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.secondary} />
+              </AnimatedPressable>
+            )}
+          </>
+        )}
+
         {tab === 'auto' && (
           <Card style={styles.card}>
-            <Text style={styles.lead}>{t('howto.flowLead')}</Text>
+            <Text style={styles.lead}>{t('howto.autoLead')}</Text>
             <SectionLabel text={t('howto.sectionBasics')} />
             <ToolLine icon={{ name: 'view-headline' }} title={t('setup.rows')} body={t('howto.autoRows')} />
             <ToolLine icon={{ name: 'view-week' }} title={t('setup.columns')} body={t('howto.autoCols')} />
@@ -152,7 +198,7 @@ export default function HowToScreen({
               <ToolLine icon={{ name: 'layers' }} title={t('editor.ghost')} body={t('howto.editorGhost')} />
               <ToolLine icon={{ name: 'auto-fix-high' }} title={t('editor.retransTitle')} body={t('howto.editorRetrans')} />
               <ToolLine icon={{ name: 'visibility-off' }} title={t('howto.editorHideChromeTitle')} body={t('howto.editorHideChrome')} />
-              <ToolLine icon={{ name: 'preview' }} title={t('common.preview')} body={t('howto.editorPreview')} />
+              <ToolLine icon={{ name: 'save-alt' }} title={t('editor.goToSaveLabel')} body={t('howto.editorPreview')} />
             </Card>
             {!isOnboarding && onPolygonTutorial && (
               <AnimatedPressable style={styles.linkRow} onPress={onPolygonTutorial} pressedScale={0.98}>
@@ -216,6 +262,7 @@ export default function HowToScreen({
 const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -224,7 +271,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   tabBtn: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 64,
     paddingVertical: 8,
     paddingHorizontal: 4,
     borderRadius: 8,
@@ -253,6 +301,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconSpacer: { width: 36 },
+  stepNum: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumTxt: { ...typography.callout, fontWeight: '700', color: colors.accent },
+  stepTxt: { flex: 1, ...typography.callout, color: colors.label, lineHeight: 22 },
   toolTexts: { flex: 1, gap: 2 },
   toolTitle: { ...typography.callout, fontWeight: '600', color: colors.label },
   toolBody: { ...typography.caption, color: colors.secondary, lineHeight: 18 },

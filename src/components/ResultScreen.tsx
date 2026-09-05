@@ -23,7 +23,6 @@ import {
   View,
 } from 'react-native';
 import { AnimatedPressable } from './ui/AnimatedPressable';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import Screen from './ui/Screen';
@@ -210,7 +209,6 @@ export default function ResultScreen({
   onMerge,
 }: Props) {
   const { t } = useT();
-  const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
 
   const [saving,         setSaving]         = useState(false);
@@ -460,123 +458,8 @@ export default function ResultScreen({
 
   // ── レンダー ──────────────────────────────────────────────────────────────
 
-  return (
-    <Screen header={header} scrollable={false} style={{ paddingBottom: 0 }}>
-      <View style={styles.stickyChrome}>
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
-          <View style={styles.sectionHintRow}>
-            <Text style={styles.sectionHint}>
-              {selectingMode
-                ? t('result.selectedCount', { count: selectedIndices.size })
-                : t('result.longPressHint')}
-            </Text>
-            <AnimatedPressable
-              style={styles.bgToggleBtn}
-              onPress={() => setZoomVisible(true)}
-              pressedScale={0.9}
-            >
-              <Icon name="image" size={16} color="#FFF" />
-            </AnimatedPressable>
-            <AnimatedPressable
-              style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
-              onPress={() => setShowNumbers(v => !v)}
-              pressedScale={0.9}
-            >
-              <Icon name="looks-one" size={16} color="#FFF" />
-            </AnimatedPressable>
-            <View style={styles.bgToggleWrap}>
-              <AnimatedPressable
-                style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
-                onPress={() => setBgPickerOpen(o => !o)}
-                pressedScale={0.9}
-              >
-                <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
-              </AnimatedPressable>
-              {bgPickerOpen && (
-                <View style={styles.bgToggleColumn}>
-                  {(['checker', 'white', 'black'] as const).map(mode => (
-                    <AnimatedPressable
-                      key={mode}
-                      style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
-                      onPress={() => setBgMode(mode)}
-                      pressedScale={0.9}
-                    >
-                      <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
-                    </AnimatedPressable>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-      </View>
-      <Animated.ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xxl },
-        ]}
-      >
-
-        {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
-        <View style={styles.cutSection}>
-          {/* 位置ベースレイアウト: auto セルを元画像内の矩形比率で絶対配置 */}
-          <View style={[styles.posLayout, { width: layoutW, height: layoutH }]}>
-            {cells.map((cell, i) => {
-              const layout = cellLayouts[i];
-              if (!layout) return null; // poly セルはここでは描画しない
-              return (
-                <CellItem
-                  key={i}
-                  cell={cell}
-                  index={i}
-                  width={layout.width}
-                  height={layout.height}
-                  posStyle={{ position: 'absolute', left: layout.left, top: layout.top }}
-                  selected={selectedIndices.has(i)}
-                  selectingMode={selectingMode}
-                  bgMode={bgMode}
-                  showNumbers={showNumbers}
-                  onPress={() => handleCellPress(i)}
-                  onLongPress={() => handleCellLongPress(i)}
-                />
-              );
-            })}
-          </View>
-
-          {/* poly セル（bbox なし）は別セクションに表示 */}
-          {cells.some(c => c.kind === 'poly') && (
-            <>
-              <Text style={[styles.sectionLabel, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-                {t('result.manualSplit')}
-              </Text>
-              <View style={styles.grid}>
-                {cells.map((cell, i) => {
-                  if (cell.kind !== 'poly') return null;
-                  return (
-                    <CellItem
-                      key={i}
-                      cell={cell}
-                      index={i}
-                      width={POLY_CELL_SIZE}
-                      height={POLY_CELL_SIZE}
-                      selected={selectedIndices.has(i)}
-                      selectingMode={selectingMode}
-                      bgMode={bgMode}
-                      showNumbers={showNumbers}
-                      onPress={() => handleCellPress(i)}
-                      onLongPress={() => handleCellLongPress(i)}
-                    />
-                  );
-                })}
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* ── フッター ─────────────────────────────────────────────────── */}
-        <View style={styles.footer}>
+  const footer = (
+    <View style={styles.footer}>
           {selectingMode ? (
             /* ── 選択モード: キャンセル + 合体 ── */
             <>
@@ -655,8 +538,121 @@ export default function ResultScreen({
               </View>
             </>
           )}
-        </View>
+    </View>
+  );
 
+  return (
+    <Screen header={header} footer={footer} scrollable={false} style={{ paddingBottom: 0 }}>
+      <View style={styles.stickyChrome}>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>{t('result.cutsLabel', { count: cells.length })}</Text>
+          <View style={styles.sectionHintRow}>
+            <Text style={styles.sectionHint}>
+              {selectingMode
+                ? t('result.selectedCount', { count: selectedIndices.size })
+                : t('result.longPressHint')}
+            </Text>
+            <AnimatedPressable
+              style={styles.bgToggleBtn}
+              onPress={() => setZoomVisible(true)}
+              pressedScale={0.9}
+            >
+              <Icon name="image" size={16} color="#FFF" />
+            </AnimatedPressable>
+            <AnimatedPressable
+              style={[styles.bgToggleBtn, showNumbers && styles.bgToggleBtnActive]}
+              onPress={() => setShowNumbers(v => !v)}
+              pressedScale={0.9}
+            >
+              <Icon name="looks-one" size={16} color="#FFF" />
+            </AnimatedPressable>
+            <View style={styles.bgToggleWrap}>
+              <AnimatedPressable
+                style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnActive]}
+                onPress={() => setBgPickerOpen(o => !o)}
+                pressedScale={0.9}
+              >
+                <Icon name={BG_ICONS[bgMode]} size={16} color="#FFF" />
+              </AnimatedPressable>
+              {bgPickerOpen && (
+                <View style={styles.bgToggleColumn}>
+                  {(['checker', 'white', 'black'] as const).map(mode => (
+                    <AnimatedPressable
+                      key={mode}
+                      style={[styles.bgToggleDot, bgMode === mode && styles.bgToggleDotOn]}
+                      onPress={() => setBgMode(mode)}
+                      pressedScale={0.9}
+                    >
+                      <Icon name={BG_ICONS[mode]} size={14} color="#FFF" />
+                    </AnimatedPressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
+      <Animated.ScrollView
+        style={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+      >
+
+        {/* ── カット後（位置ベースレイアウト）─────────────────────────── */}
+        <View style={styles.cutSection}>
+          {/* 位置ベースレイアウト: auto セルを元画像内の矩形比率で絶対配置 */}
+          <View style={[styles.posLayout, { width: layoutW, height: layoutH }]}>
+            {cells.map((cell, i) => {
+              const layout = cellLayouts[i];
+              if (!layout) return null; // poly セルはここでは描画しない
+              return (
+                <CellItem
+                  key={i}
+                  cell={cell}
+                  index={i}
+                  width={layout.width}
+                  height={layout.height}
+                  posStyle={{ position: 'absolute', left: layout.left, top: layout.top }}
+                  selected={selectedIndices.has(i)}
+                  selectingMode={selectingMode}
+                  bgMode={bgMode}
+                  showNumbers={showNumbers}
+                  onPress={() => handleCellPress(i)}
+                  onLongPress={() => handleCellLongPress(i)}
+                />
+              );
+            })}
+          </View>
+
+          {/* poly セル（bbox なし）は別セクションに表示 */}
+          {cells.some(c => c.kind === 'poly') && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+                {t('result.manualSplit')}
+              </Text>
+              <View style={styles.grid}>
+                {cells.map((cell, i) => {
+                  if (cell.kind !== 'poly') return null;
+                  return (
+                    <CellItem
+                      key={i}
+                      cell={cell}
+                      index={i}
+                      width={POLY_CELL_SIZE}
+                      height={POLY_CELL_SIZE}
+                      selected={selectedIndices.has(i)}
+                      selectingMode={selectingMode}
+                      bgMode={bgMode}
+                      showNumbers={showNumbers}
+                      onPress={() => handleCellPress(i)}
+                      onLongPress={() => handleCellLongPress(i)}
+                    />
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
       </Animated.ScrollView>
 
       {/* 元画像ズームモーダル（ヘッダーの画像アイコンから呼び出し）*/}
@@ -686,9 +682,11 @@ export default function ResultScreen({
 
 const styles = StyleSheet.create({
   // ── スクロール ───────────────────────────────────────────────────────────
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   stickyChrome: {
     zIndex: 20,
@@ -865,8 +863,10 @@ const styles = StyleSheet.create({
 
   // ── フッター ─────────────────────────────────────────────────────────────
   footer: {
-    marginTop: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     gap: spacing.md,
+    backgroundColor: colors.bg,
   },
   // ── アクションボタン行 ───────────────────────────────────────────────────
   actionRow: {

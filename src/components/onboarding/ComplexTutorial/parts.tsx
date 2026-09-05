@@ -118,7 +118,8 @@ export function EditorMock({
         <View style={ui.editorTool}><Icon name="redo" size={16} color="#8E8E93" /></View>
         <View style={ui.editorTool}><Icon name="delete" size={16} color="#8E8E93" /></View>
         <View style={ui.editorPreviewBtn}>
-          <Text style={ui.editorPreviewTxt}>{t('common.preview')}</Text>
+          <Icon name="save-alt" size={14} color="#FFF" />
+          <Text style={ui.editorPreviewTxt}>{t('editor.goToSaveLabel')}</Text>
           {progress && previewTap && (
             <TouchIndicator progress={progress} window={previewTap} />
           )}
@@ -305,8 +306,10 @@ export const ui = StyleSheet.create({
     height: 34,
     borderRadius: 10,
     backgroundColor: '#007AFF',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   editorPreviewTxt: { color: '#FFF', fontSize: 13, fontWeight: '600' },
 });

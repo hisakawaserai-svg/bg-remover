@@ -39,8 +39,8 @@ export const RELEASES: Release[] = [
           heading: '新機能',
           items: [
             '背景除去に被写体検出を追加しました。現在は、iOS 17以降はVision、Android 7.0以降はML Kitです',
-            '被写体検出が使える端末では、画像を選んだ直後に方式をカードで確認できます（設定でOFFにもできます）',
-            '復元ブラシに消しゴムを追加しました。なぞった部分を透過できます',
+            '背景除去は色ベースで始まります。被写体検出は設定、または分割画面のきらきらから切り替えられます',
+            '「範囲を調整」の道具に消しゴムを追加しました。なぞった部分を透過できます',
             '「範囲を調整」で、未囲みの塊を色枠から選んでまとめて囲めるようにしました',
           ],
         },
@@ -69,8 +69,8 @@ export const RELEASES: Release[] = [
           heading: 'New',
           items: [
             'Added subject detection for background removal. Currently Vision on iOS 17 or later, ML Kit on Android 7.0 or later',
-            'On devices that support it, you can confirm the method on cards right after you pick an image (you can turn this off in Settings)',
-            'Added an eraser to the restore brush. Trace to make areas transparent',
+            'Background removal starts with the color-based method. Switch to subject detection in Settings or with the sparkle on the split screen',
+            'Added Eraser to the Adjust range tools. Trace to make areas transparent',
             'In Adjust range, you can pick leftover shapes from colored frames and enclose them together',
           ],
         },

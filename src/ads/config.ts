@@ -43,9 +43,9 @@ export const TEST_BANNER_UNIT_IDS = {
  * 実際 'adaptive' のまま表示側だけ固定320x50にしていた期間があり、
  * 端末幅前提のテスト広告が320ptに押し込まれて右端が切れていた。
  *
- * 現在の表示側: BannerAdSize.BANNER（固定320x50）→ 'fixed'
+ * 現在の表示側: BannerAdSize.ANCHORED_ADAPTIVE_BANNER（ウィンドウ幅）→ 'adaptive'
  */
-const TEST_BANNER_KIND: keyof typeof TEST_BANNER_UNIT_IDS = 'fixed';
+const TEST_BANNER_KIND: keyof typeof TEST_BANNER_UNIT_IDS = 'adaptive';
 
 /** バナー用ユニットID。__DEV__ か本番ID未設定なら Google のテストIDになる。 */
 export const BANNER_UNIT_ID =
@@ -84,14 +84,9 @@ export const AD_MODE: 'live' | 'placeholder' = 'live';
 export const KEEP_EMPTY_SLOT_VISIBLE = false;
 
 /**
- * バナー枠の高さ（固定）。
+ * バナー枠の初期高さ（ラベル＋余白＋典型バナー 50）。
  *
- * BannerAdSize.BANNER = 320×50 の固定サイズを使うので、実寸は必ず 50。
- * それに「広告」ラベル行と上下の余白を足した値がこの定数。
- *   paddingTop 8 + ラベル 14 + 間 2 + バナー 50 = 74
- *
- * アダプティブバナーをやめて固定サイズにしたのは、アダプティブだと SDK が
- * 端末幅から高さを決めるため実寸が読めず、確保した枠と食い違って
- * 読み込み時にガクッと伸び縮みし、直上のボタンが動いて誤タップを招くため。
+ * 実寸は AdBanner が onAdLoaded で上書きする。ここは「まだ実寸が無い間」と
+ * プレースホルダー確認用。paddingTop 8 + ラベル 14 + 間 2 + バナー 50 = 74。
  */
 export const AD_PLACEHOLDER_HEIGHT = 74;

@@ -164,6 +164,11 @@ export interface AppSettings {
   /** 全体オンボーディングを表示済みか（false = 未表示 = 初回） */
   hasSeenOnboarding: boolean;
   /**
+   * 復元ブラシ内の「消しゴム」トグルに一度でも触れたか。既定 false。
+   * 復元ブラシの中に隠れている新機能なので、触るまでバッジで気づかせる。
+   */
+  hasSeenEraserTool: boolean;
+  /**
    * 写真アルバムの名前。**初回保存時に決まり、以後変わらない。**
    *
    * null = まだ一度も保存していない（＝アルバム未作成）。
@@ -266,6 +271,7 @@ export const DEFAULTS: AppSettings = {
   autoDeleteOnExport: true,
   skipPolygonTutorial: false,
   hasSeenOnboarding: false,
+  hasSeenEraserTool: false,
   albumName: null,
   albumNameHistory: [],
   language: 'auto',

@@ -5070,9 +5070,17 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   </AnimatedPressable>
                   <AnimatedPressable
                     style={[styles.brushModeBtn, eraseMode && styles.brushModeBtnOn]}
-                    onPress={() => { discardStroke(); setEraseMode(true); }}
+                    onPress={() => {
+                      discardStroke();
+                      setEraseMode(true);
+                      // 復元ブラシの中に隠れた新機能なので、一度触ったらバッジは消す。
+                      if (!settings.hasSeenEraserTool) void updateSettings({ hasSeenEraserTool: true });
+                    }}
                     pressedScale={0.96}
                   >
+                    {/* 復元ブラシの中に隠れていて気づかれにくいため、未使用の間は
+                        NEWバッジを出す。一度押せば二度と出ない。 */}
+                    {!settings.hasSeenEraserTool && <View style={styles.brushModeNewDot} />}
                     <CommunityIcon name="eraser" size={16} color={eraseMode ? '#FFF' : 'rgba(255,255,255,0.6)'} />
                     <Text style={[styles.brushModeTxt, eraseMode && styles.brushModeTxtOn]}>{t('editor.brushModeErase')}</Text>
                   </AnimatedPressable>
@@ -5262,6 +5270,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               disabled={eyeBusy}
               onPress={() => setToolMenuOpen(o => !o)}
             >
+              {appMode === 'restore' && !eraseMode && !settings.hasSeenEraserTool && (
+                <View style={styles.brushModeNewDot} />
+              )}
               {appMode === 'restore' && eraseMode ? (
                 <CommunityIcon name="eraser" size={22} color="#FFF" />
               ) : (
@@ -5294,6 +5305,11 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                         setToolMenuOpen(false);
                       }}
                     >
+                      {/* 復元ブラシの中に消しゴムが隠れていて気づかれにくいため、
+                          ツール自体を開く前の入口にもバッジを出す。 */}
+                      {m === 'restore' && !settings.hasSeenEraserTool && (
+                        <View style={styles.brushModeNewDot} />
+                      )}
                       <Icon name={TOOL_HINTS[m].icon} size={22} color="#FFF" />
                     </AnimatedPressable>
                   ))}
@@ -5649,6 +5665,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,30,30,0.72)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
+    position: 'relative', // brushModeNewDot の絶対配置の基準
   },
   // 現在のツールの下に出す小さな矢印。「押すと他のツールが出る」ことを示す。
   // トグル(floatBtn)を押して展開される選択肢の入れ物。上のツール本体ボタン
@@ -5868,10 +5885,23 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.08)',
+    position: 'relative', // brushModeNewDot の絶対配置の基準
   },
   brushModeBtnOn: { backgroundColor: IOS.blue },
   brushModeTxt: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
   brushModeTxtOn: { color: '#FFF', fontWeight: '600' },
+  // 消しゴムが復元ブラシの中に隠れていて気づかれにくいための「未確認」バッジ。
+  // 一度押せば hasSeenEraserTool が立って二度と出ない。
+  brushModeNewDot: {
+    position: 'absolute',
+    top: -2, right: -2,
+    width: 8, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1,
+    borderColor: 'rgba(30,30,30,0.9)',
+    zIndex: 1,
+  },
   brushHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   brushHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   ghostBtn: {

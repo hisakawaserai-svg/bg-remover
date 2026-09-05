@@ -23,9 +23,10 @@ interface Props {
   onChange: (v: number) => void;
   label?: string;
   sub?: string;
+  leadingIcon?: string;
 }
 
-export default function LoupeMagnifySlider({ value, onChange, label, sub }: Props) {
+export default function LoupeMagnifySlider({ value, onChange, label, sub, leadingIcon }: Props) {
   return (
     <RangeValueSlider
       value={value}
@@ -36,6 +37,7 @@ export default function LoupeMagnifySlider({ value, onChange, label, sub }: Prop
       formatValue={v => `×${v}`}
       label={label}
       sub={sub}
+      leadingIcon={leadingIcon}
     />
   );
 }

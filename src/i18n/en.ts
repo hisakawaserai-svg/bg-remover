@@ -340,7 +340,7 @@ const en: typeof ja = {
     // ── Display & Appearance (app icon / launch animation / destination display) ──
     sectionAppearance: 'Display & Appearance',
     appIcon: 'App icon',
-    appIconHint: 'The home screen icon changes with the time of day',
+    appIconHint: 'Choose the icon shown on the home screen',
     splashAnimation: 'Launch animation',
     splashPattern: 'Pattern',
     splashPatternAuto: 'Match the time of day',
@@ -364,6 +364,8 @@ const en: typeof ja = {
     replayTutorial: 'Watch the tutorial again',
     licenses: 'Open source licenses',
     rateApp: 'Rate this app',
+    support: 'Contact',
+    supportHint: 'Opens the support page',
     privacyPolicy: 'Privacy policy',
     adsPrivacyOptions: 'Ads privacy settings',
     adsPrivacyOptionsHint: 'Change your consent choices for ads',

@@ -1,12 +1,8 @@
 /**
- * appIcon/index.ts — ホーム画面のアプリアイコンの決定と適用
+ * appIcon/index.ts — ホーム画面のアプリアイコンの適用
  *
- * 決め方(優先順位):
- *   1. ユーザー設定が 'auto' 以外 → その配色で固定
- *   2. 'auto' → 時間帯スケジュール(スプラッシュと同じ scheduleFor を使う)
- *
- * 時間帯の境目をスプラッシュと共有しているので、「夜は月のアイコン・
- * 起動演出も夜」のように世界観がずれない。
+ * 設定で選んだ Day / Night / Sleep をそのまま出す。
+ * 時間帯連動は Android で activity-alias が無く切り替えられないため廃止した。
  *
  * ネイティブ側:
  *   iOS は ios/AppIconManager.swift(setAlternateIconName)を使う。
@@ -14,7 +10,6 @@
  *   applyAppIcon は何もせず false を返す(設定値の保存と表示は正しく動く)。
  */
 import { NativeModules } from 'react-native';
-import { scheduleFor } from '../components/splash/patterns';
 import type { AppIconSetting } from '../settings/store';
 
 /** 実際に適用するアイコンの種類。BirdMascot の variant と同じ区分。 */

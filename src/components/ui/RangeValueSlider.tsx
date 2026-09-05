@@ -9,6 +9,7 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useT } from '../../i18n';
 import { colors, spacing, typography } from './theme';
 
@@ -25,6 +26,8 @@ interface Props {
   formatValue?: (v: number) => string;
   label?: string;
   sub?: string;
+  /** 行先頭の MaterialIcons 名。設定画面の他の行と揃える。 */
+  leadingIcon?: string;
   /** 既定値。指定するとトラック上にマーカーを表示し、値と一致する時は現在値の隣に明示する。 */
   defaultValue?: number;
 }
@@ -37,6 +40,7 @@ export default function RangeValueSlider({
   formatValue = String,
   label,
   sub,
+  leadingIcon,
   defaultValue,
 }: Props) {
   const { t } = useT();
@@ -48,9 +52,14 @@ export default function RangeValueSlider({
   return (
     <View style={styles.wrap}>
       <View style={styles.titleRow}>
-        <View style={styles.titleLeft}>
-          {!!label && <Text style={styles.label}>{label}</Text>}
-          {!!sub && <Text style={styles.hint}>{sub}</Text>}
+        <View style={styles.titleLead}>
+          {!!leadingIcon && (
+            <Icon name={leadingIcon} size={22} color={colors.secondary} style={styles.leadingIcon} />
+          )}
+          <View style={styles.titleLeft}>
+            {!!label && <Text style={styles.label}>{label}</Text>}
+            {!!sub && <Text style={styles.hint}>{sub}</Text>}
+          </View>
         </View>
         <Text style={styles.currentValue}>
           {formatValue(clamped)}
@@ -96,7 +105,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginBottom: spacing.xs,
   },
-  titleLeft: { flex: 1, paddingRight: spacing.sm },
+  titleLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  leadingIcon: { marginRight: 10 },
+  titleLeft: { flex: 1 },
   label: { fontSize: 16, color: colors.label },
   hint: { fontSize: 12, color: colors.secondary, marginTop: 2 },
   currentValue: {

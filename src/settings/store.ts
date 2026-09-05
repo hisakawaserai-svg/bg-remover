@@ -33,8 +33,8 @@ export type BgEngine = 'flood' | 'vision';
 export type SplitLineColor = '#007AFF' | '#FF9500' | '#FF3B30';
 
 /**
- * アプリアイコン。'auto' は時間帯に合わせて切り替える。
- * それ以外を選んだ場合は自動判定を使わず固定する。
+ * アプリアイコン。利用者が選んだ配色をそのまま使う。
+ * 時間帯連動の 'auto' は Android で切り替えられないため廃止した。
  */
 export type AppIconSetting = 'day' | 'night' | 'sleep';
 
@@ -202,7 +202,7 @@ export interface AppSettings {
    * 無くても（下の loadSettings のマージで）端末の言語で表示される。
    */
   language: LanguageSetting;
-  /** ホーム画面のアプリアイコン。既定は時間帯連動。 */
+  /** ホーム画面のアプリアイコン。既定は Day。 */
   appIcon: AppIconSetting;
   /**
    * 起動アニメーションを出すか。既定 true。
@@ -324,6 +324,10 @@ export async function loadSettings(): Promise<AppSettings> {
     // 読み込み時点で 'adjust' へフォールバックしておく。
     if (merged.loupeMode === 'drag') {
       merged.loupeMode = 'adjust';
+    }
+    // 旧バージョンの時間帯連動('auto')は廃止。保存済みなら Day に寄せる。
+    if (merged.appIcon !== 'day' && merged.appIcon !== 'night' && merged.appIcon !== 'sleep') {
+      merged.appIcon = DEFAULTS.appIcon;
     }
     return merged;
   } catch (e) {

@@ -44,6 +44,8 @@ interface Props<T extends string> {
   label: string;
   /** 補足説明（任意）。 */
   sub?: string;
+  /** 行先頭の MaterialIcons 名。設定画面の他の行と揃える。 */
+  leadingIcon?: string;
   value: T;
   options: readonly SelectOption<T>[];
   onChange: (value: T) => void;
@@ -52,6 +54,7 @@ interface Props<T extends string> {
 export default function SelectRow<T extends string>({
   label,
   sub,
+  leadingIcon,
   value,
   options,
   onChange,
@@ -86,9 +89,14 @@ export default function SelectRow<T extends string>({
   return (
     <>
       <AnimatedPressable style={styles.row} onPress={open} pressedScale={0.98}>
-        <View style={styles.rowLeft}>
-          <Text style={styles.rowLabel}>{label}</Text>
-          {!!sub && <Text style={styles.rowSub}>{sub}</Text>}
+        <View style={styles.rowLead}>
+          {!!leadingIcon && (
+            <Icon name={leadingIcon} size={22} color={IOS.secondary} style={styles.leadingIcon} />
+          )}
+          <View style={styles.rowLeft}>
+            <Text style={styles.rowLabel}>{label}</Text>
+            {!!sub && <Text style={styles.rowSub}>{sub}</Text>}
+          </View>
         </View>
         <View style={styles.rowRight}>
           {!!current?.icon && (
@@ -157,7 +165,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     minHeight: 48,
+    flexWrap: 'wrap',
+    rowGap: 8,
   },
+  rowLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 160,
+  },
+  leadingIcon: { marginRight: 10 },
   rowLeft: { flex: 1, paddingRight: 12 },
   rowLabel: { fontSize: 16, color: IOS.label },
   rowSub: { fontSize: 12, color: IOS.secondary, marginTop: 2 },

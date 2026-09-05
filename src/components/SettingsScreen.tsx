@@ -83,8 +83,9 @@ function getNativeAppInfo(): AppInfoModule | undefined {
 const PACKAGE_JSON_VERSION: string = (require('../../package.json') as { version: string }).version;
 const APP_VERSION: string = getNativeAppInfo()?.version || PACKAGE_JSON_VERSION;
 
-/** プライバシーポリシー（GitHub Pages）。外部ブラウザで開く。 */
+/** プライバシーポリシー / サポート（GitHub Pages）。外部ブラウザで開く。 */
 const PRIVACY_POLICY_URL = 'https://hisakawaserai-svg.github.io/bg-remover/privacy.html';
+const SUPPORT_URL = 'https://hisakawaserai-svg.github.io/bg-remover/support.html';
 
 // Android(旧アーキテクチャ)では明示的に有効化しないと LayoutAnimation が効かない。
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -149,11 +150,13 @@ function EngineChoiceCard({
 
 function AccordionSection({
   title,
+  icon,
   expanded,
   onToggle,
   children,
 }: {
   title: string;
+  icon: string;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -165,11 +168,32 @@ function AccordionSection({
         onPress={onToggle}
         pressedScale={0.99}
       >
-        <Text style={styles.accordionTitle}>{title}</Text>
+        <View style={styles.accordionTitleRow}>
+          <Icon name={icon} size={22} color={IOS.secondary} style={styles.rowIcon} />
+          <Text style={styles.accordionTitle}>{title}</Text>
+        </View>
         <Icon name={expanded ? 'expand-more' : 'chevron-right'} size={24} color={IOS.secondary} />
       </AnimatedPressable>
       {expanded && <View style={styles.accordionBody}>{children}</View>}
     </Card>
+  );
+}
+
+/** 設定行の先頭アイコン + ラベル。長い文言は折り返して2行にしてよい。 */
+function RowLead({
+  icon,
+  iconColor = IOS.secondary,
+  children,
+}: {
+  icon: string;
+  iconColor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.rowLead}>
+      <Icon name={icon} size={22} color={iconColor} style={styles.rowIcon} />
+      {children}
+    </View>
   );
 }
 
@@ -268,13 +292,17 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionTransparency')}
+          icon="opacity"
           expanded={!!openSections.transparency}
           onToggle={() => toggleSection('transparency')}
         >
           {/* 初期背景除去の方式。モーダル(BgEngineChoiceModal)と同じ縦積みカード。
               'vision' が使えない端末では色ベースだけ出し、説明で理由を書く。 */}
           <View style={styles.engineBlock}>
-            <Text style={styles.rowLabel}>{t('settings.bgEngine')}</Text>
+            <View style={styles.rowLead}>
+              <Icon name="auto-fix-high" size={22} color={IOS.secondary} style={styles.rowIcon} />
+              <Text style={styles.rowLabel}>{t('settings.bgEngine')}</Text>
+            </View>
             {visionSupported === false && (
               <Text style={styles.rowSub}>{t('settings.bgEngineHintUnavailable')}</Text>
             )}
@@ -305,10 +333,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* Visionが使えない端末では選ぶ余地が無いので、確認自体が無意味なため出さない。 */}
           {!!visionSupported && (
             <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <Text style={styles.rowLabel}>{t('settings.confirmBgEngineEachTime')}</Text>
-                <Text style={styles.rowSub}>{t('settings.confirmBgEngineEachTimeHint')}</Text>
-              </View>
+              <RowLead icon="help-outline">
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowLabel}>{t('settings.confirmBgEngineEachTime')}</Text>
+                  <Text style={styles.rowSub}>{t('settings.confirmBgEngineEachTimeHint')}</Text>
+                </View>
+              </RowLead>
               <Switch
                 value={settings.confirmBgEngineEachTime}
                 onValueChange={v => void updateSettings({ confirmBgEngineEachTime: v })}
@@ -320,10 +350,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <Divider />
           {/* tolerance 行: ラベル左・値+スライダー右 */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.autoTolerance')}</Text>
-              <Text style={styles.rowSub}>{t('settings.autoToleranceHint')}</Text>
-            </View>
+            <RowLead icon="tune">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.autoTolerance')}</Text>
+                <Text style={styles.rowSub}>{t('settings.autoToleranceHint')}</Text>
+              </View>
+            </RowLead>
             {/* 現在値を数値でリアルタイム表示。既定値と一致する時だけ明示する。 */}
             <Text style={styles.rowValue}>
               {Math.round(tolerance)}
@@ -347,10 +379,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* 文字の穴を透過する（上級者向け・既定OFF）。
             背景と同じ色の絵柄を消し得るので、注意書きを添えて既定は切ってある。 */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.fillTextHoles')}</Text>
-              <Text style={styles.rowSub}>{t('settings.fillTextHolesHint')}</Text>
-            </View>
+            <RowLead icon="text-fields">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.fillTextHoles')}</Text>
+                <Text style={styles.rowSub}>{t('settings.fillTextHolesHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={settings.fillTextHoles}
               onValueChange={v => void updateSettings({ fillTextHoles: v })}
@@ -361,10 +395,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <Divider />
           {/* スポイトの許容値。上の「許容値」とは独立して調整する。 */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.eyedropperTolerance')}</Text>
-              <Text style={styles.rowSub}>{t('settings.eyedropperToleranceHint')}</Text>
-            </View>
+            <RowLead icon="colorize">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.eyedropperTolerance')}</Text>
+                <Text style={styles.rowSub}>{t('settings.eyedropperToleranceHint')}</Text>
+              </View>
+            </RowLead>
             <Text style={styles.rowValue}>
               {Math.round(eyeTolerance)}
               {Math.round(eyeTolerance) === DEFAULTS.eyedropperTolerance && (
@@ -385,10 +421,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
 
           {/* 輪郭のフェザリング */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.feather')}</Text>
-              <Text style={styles.rowSub}>{t('settings.featherHint')}</Text>
-            </View>
+            <RowLead icon="blur-on">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.feather')}</Text>
+                <Text style={styles.rowSub}>{t('settings.featherHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={settings.featherEdges}
               onValueChange={v => void updateSettings({ featherEdges: v })}
@@ -403,12 +441,14 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionEditOperation')}
+          icon="edit"
           expanded={!!openSections.editOperation}
           onToggle={() => toggleSection('editOperation')}
         >
           <SelectRow<LoupeMode>
             label={t('settings.loupeMode')}
             sub={t('settings.loupeModeHint')}
+            leadingIcon="control-camera"
             value={settings.loupeMode}
             // 'drag'（ドラッグ調整）は選択肢から外す。実装自体は残っている
             // （PolygonEditor.tsx の drag_reticle/drag_vertex_free/drag_poly_free
@@ -424,6 +464,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <RangeValueSlider
             label={t('settings.brushDefaultPx')}
             sub={t('settings.brushDefaultPxHint')}
+            leadingIcon="brush"
             value={settings.brushDefaultPx}
             min={BRUSH_MIN_PX}
             max={BRUSH_MAX_PX}
@@ -433,10 +474,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           />
           <Divider />
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.ghostDefaultOn')}</Text>
-              <Text style={styles.rowSub}>{t('settings.ghostDefaultOnHint')}</Text>
-            </View>
+            <RowLead icon="visibility">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.ghostDefaultOn')}</Text>
+                <Text style={styles.rowSub}>{t('settings.ghostDefaultOnHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={settings.ghostDefaultOn}
               onValueChange={v => void updateSettings({ ghostDefaultOn: v })}
@@ -451,13 +494,16 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionExport')}
+          icon="file-download"
           expanded={!!openSections.export}
           onToggle={() => toggleSection('export')}
         >
           {/* 保存先の案内なので翻訳した表示名を出す。
               写真アプリ上の実体名は下の「アルバム名（内部）」で確認できる。 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.album')}</Text>
+            <RowLead icon="photo-album">
+              <Text style={styles.rowLabel}>{t('settings.album')}</Text>
+            </RowLead>
             <View style={styles.rowRight}>
               <Text style={styles.rowValueMuted}>{albumName}</Text>
               <Icon name="lock" size={14} color={IOS.secondary} style={{ marginLeft: 4 }} />
@@ -465,10 +511,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           </View>
           <Divider />
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.autoDelete')}</Text>
-              <Text style={styles.rowSub}>{t('settings.autoDeleteHint')}</Text>
-            </View>
+            <RowLead icon="delete-sweep">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.autoDelete')}</Text>
+                <Text style={styles.rowSub}>{t('settings.autoDeleteHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={settings.autoDeleteOnExport}
               onValueChange={v => void updateSettings({ autoDeleteOnExport: v })}
@@ -496,10 +544,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                   );
                 }}
               >
-                <View style={styles.rowLeft}>
-                  <Text style={[styles.rowLabel, styles.dangerLabel]}>{t('settings.deleteAllData')}</Text>
-                  <Text style={styles.rowSub}>{t('settings.deleteAllDataHint')}</Text>
-                </View>
+                <RowLead icon="delete-outline" iconColor={IOS.danger}>
+                  <View style={styles.rowLeft}>
+                    <Text style={[styles.rowLabel, styles.dangerLabel]}>{t('settings.deleteAllData')}</Text>
+                    <Text style={styles.rowSub}>{t('settings.deleteAllDataHint')}</Text>
+                  </View>
+                </RowLead>
                 <Icon name="delete-outline" size={20} color={IOS.danger} />
               </AnimatedPressable>
             </>
@@ -516,6 +566,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionAppearance')}
+          icon="palette"
           expanded={!!openSections.appearance}
           onToggle={() => toggleSection('appearance')}
         >
@@ -526,6 +577,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               <SelectRow<AppIconSetting>
                 label={t('settings.appIcon')}
                 sub={t('settings.appIconHint')}
+                leadingIcon="apps"
                 value={settings.appIcon}
                 options={[
                   { value: 'day',   label: t('settings.iconDay') },
@@ -533,7 +585,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                   { value: 'sleep', label: t('settings.iconSleep') },
                 ]}
                 // 実際の切り替えは App.tsx の useEffect が appIcon の変化を見て
-                // applyAppIcon() を呼ぶ('auto' の時間帯判定もそちらに集約)。
+                // applyAppIcon() を呼ぶ。
                 onChange={v => {
                   void updateSettings({ appIcon: v });
                 }}
@@ -544,10 +596,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           {/* ON/OFF。パターン選択とは分けてあるので、OFF にしても選んだ
               パターンは残る(store の splashEnabled 参照)。 */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.splashAnimation')}</Text>
-              <Text style={styles.rowSub}>{t('settings.splashAnimationHint')}</Text>
-            </View>
+            <RowLead icon="movie">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.splashAnimation')}</Text>
+                <Text style={styles.rowSub}>{t('settings.splashAnimationHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={splashOn}
               onValueChange={v =>
@@ -571,6 +625,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               <SelectRow<SplashAnimationSetting>
                 label={t('settings.splashPattern')}
                 sub={t('settings.splashAutoHint')}
+                leadingIcon="theaters"
                 value={
                   settings.splashAnimation === 'off'
                     ? 'auto'
@@ -598,7 +653,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <Divider />
           {/* グリッドの列数 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.columns')}</Text>
+            <RowLead icon="view-module">
+              <Text style={styles.rowLabel}>{t('settings.columns')}</Text>
+            </RowLead>
             <View style={styles.presets}>
               {([2, 3, 4] as const).map(v => (
                 <AnimatedPressable
@@ -616,7 +673,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <Divider />
           {/* サムネの下地色: 透過PNGの見た目確認用。画像自体は加工しない。 */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.thumbBg')}</Text>
+            <RowLead icon="grid-on">
+              <Text style={styles.rowLabel}>{t('settings.thumbBg')}</Text>
+            </RowLead>
             <View style={styles.presets}>
               {/* 'gray' は選択肢から外した（白と市松があれば足りるため）。
                   ThumbBg 型自体には残してあるので、PolygonEditor の作業用背景
@@ -644,7 +703,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               切り替えると i18n のモジュール状態が更新され、useT() を使っている
               画面がその場で描き直される（アプリの再起動は不要）。*/}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.language')}</Text>
+            <RowLead icon="language">
+              <Text style={styles.rowLabel}>{t('settings.language')}</Text>
+            </RowLead>
             <View style={styles.presets}>
               {([
                 { val: 'auto', label: t('settings.languageAuto') },
@@ -673,12 +734,14 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionLoupe')}
+          icon="zoom-in"
           expanded={!!openSections.loupe}
           onToggle={() => toggleSection('loupe')}
         >
           <SelectRow<LoupeZoomMode>
             label={t('settings.loupeZoomMode')}
             sub={t('settings.loupeZoomModeHint')}
+            leadingIcon="zoom-out-map"
             value={settings.loupeZoomMode}
             options={[
               { value: 'fixed',     label: t('settings.loupeZoomModeFixed') },
@@ -694,6 +757,7 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <LoupeMagnifySlider
             label={t('settings.loupeBaseMagnify')}
             sub={t('settings.loupeBaseMagnifyHint')}
+            leadingIcon="search"
             value={settings.loupeBaseMagnify}
             onChange={v => void updateSettings({ loupeBaseMagnify: v })}
           />
@@ -701,16 +765,19 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
           <LoupeSizeSlider
             label={t('settings.loupeBaseSize')}
             sub={t('settings.loupeBaseSizeHint')}
+            leadingIcon="photo-size-select-large"
             value={settings.loupeBaseSize}
             onChange={v => void updateSettings({ loupeBaseSize: v })}
           />
           <Divider />
           {/* 倍率モードとは別設定（十分拡大した時だけ自動で出る）。 */}
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.loupeDotGrid')}</Text>
-              <Text style={styles.rowSub}>{t('settings.loupeDotGridHint')}</Text>
-            </View>
+            <RowLead icon="grain">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.loupeDotGrid')}</Text>
+                <Text style={styles.rowSub}>{t('settings.loupeDotGridHint')}</Text>
+              </View>
+            </RowLead>
             <Switch
               value={settings.loupeDotGrid}
               onValueChange={v => void updateSettings({ loupeDotGrid: v })}
@@ -725,36 +792,47 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         ════════════════════════════════════════ */}
         <AccordionSection
           title={t('settings.sectionStats')}
+          icon="bar-chart"
           expanded={!!openSections.stats}
           onToggle={() => toggleSection('stats')}
         >
           <Text style={styles.statsGroupLabel}>{t('settings.statsAchievementTitle')}</Text>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.statsStampsCreated')}</Text>
+            <RowLead icon="style">
+              <Text style={styles.rowLabel}>{t('settings.statsStampsCreated')}</Text>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{t('settings.statsCountUnit', { count: stats.stampsCreated })}</Text>
           </View>
           <Divider />
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.statsExportsCompleted')}</Text>
+            <RowLead icon="save-alt">
+              <Text style={styles.rowLabel}>{t('settings.statsExportsCompleted')}</Text>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{t('settings.statsTimesUnit', { count: stats.exportsCompleted })}</Text>
           </View>
           <Divider />
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.statsImagesEdited')}</Text>
+            <RowLead icon="image">
+              <Text style={styles.rowLabel}>{t('settings.statsImagesEdited')}</Text>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{t('settings.statsImagesUnit', { count: stats.imagesEdited })}</Text>
           </View>
           <Divider />
           <Text style={styles.statsGroupLabel}>{t('settings.statsUsageTitle')}</Text>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('settings.statsTransparencyOps')}</Text>
+            <RowLead icon="invert-colors">
+              <Text style={styles.rowLabel}>{t('settings.statsTransparencyOps')}</Text>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{t('settings.statsTimesUnit', { count: stats.transparencyOps })}</Text>
           </View>
           <Divider />
           <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.statsWorkTime')}</Text>
-              <Text style={styles.rowSub}>{t('settings.statsWorkTimeHint')}</Text>
-            </View>
+            <RowLead icon="schedule">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.statsWorkTime')}</Text>
+                <Text style={styles.rowSub}>{t('settings.statsWorkTimeHint')}</Text>
+              </View>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{formatWorkTime(stats.workTimeMs, t)}</Text>
           </View>
         </AccordionSection>
@@ -765,10 +843,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
         <Text style={styles.sectionTitle}>{t('settings.sectionAbout')}</Text>
         <Card style={styles.card} padding={0}>
           <AnimatedPressable style={styles.row} onPress={() => setWhatsNewOpen(true)} pressedScale={0.98}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.rowLabel}>{t('settings.version')}</Text>
-              <Text style={styles.rowSub}>{t('settings.versionHint')}</Text>
-            </View>
+            <RowLead icon="new-releases">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.version')}</Text>
+                <Text style={styles.rowSub}>{t('settings.versionHint')}</Text>
+              </View>
+            </RowLead>
             <Text style={styles.rowValueMuted}>{APP_VERSION}</Text>
           </AnimatedPressable>
           <Divider />
@@ -778,19 +858,25 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
               常に一致する。同じ値を2行に出す意味がなくなった。 */}
           {/* 使い方: ホームから移動。既存の row スタイルをそのまま流用 */}
           <AnimatedPressable style={styles.row} onPress={onHowTo} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>{t('settings.howTo')}</Text>
+            <RowLead icon="menu-book">
+              <Text style={styles.rowLabel}>{t('settings.howTo')}</Text>
+            </RowLead>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
           <Divider />
           {/* [仮] SVGオンボーディング表示確認用。初回ゲート接続時に撤去する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowOnboarding(true)} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>{t('settings.replayTutorial')}</Text>
+            <RowLead icon="school">
+              <Text style={styles.rowLabel}>{t('settings.replayTutorial')}</Text>
+            </RowLead>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
           <Divider />
           {/* OSSライセンス表記（ストア申請要件）。バンドル済みJSONを表示する。 */}
           <AnimatedPressable style={styles.row} onPress={() => setShowLicenses(true)} pressedScale={0.98}>
-            <Text style={styles.rowLabel}>{t('settings.licenses')}</Text>
+            <RowLead icon="gavel">
+              <Text style={styles.rowLabel}>{t('settings.licenses')}</Text>
+            </RowLead>
             <Icon name="chevron-right" size={20} color={IOS.secondary} />
           </AnimatedPressable>
           <Divider />
@@ -804,7 +890,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             }}
             pressedScale={0.98}
           >
-            <Text style={styles.rowLabel}>{t('settings.rateApp')}</Text>
+            <RowLead icon="star-border">
+              <Text style={styles.rowLabel}>{t('settings.rateApp')}</Text>
+            </RowLead>
             <Icon name="open-in-new" size={18} color={IOS.secondary} />
           </AnimatedPressable>
           {/* 開発用: レビュー要求の動作確認。__DEV__ のときだけ表示され、
@@ -819,7 +907,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 }}
                 pressedScale={0.98}
               >
-                <Text style={styles.rowLabel}>[DEV] レビュー要求を今すぐ出す</Text>
+                <RowLead icon="rate-review">
+                  <Text style={styles.rowLabel}>[DEV] レビュー要求を今すぐ出す</Text>
+                </RowLead>
                 <Icon name="rate-review" size={18} color={IOS.secondary} />
               </AnimatedPressable>
               <Divider />
@@ -830,11 +920,32 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 }}
                 pressedScale={0.98}
               >
-                <Text style={styles.rowLabel}>[DEV] レビューゲートをリセット</Text>
+                <RowLead icon="restart-alt">
+                  <Text style={styles.rowLabel}>[DEV] レビューゲートをリセット</Text>
+                </RowLead>
                 <Icon name="restart-alt" size={18} color={IOS.secondary} />
               </AnimatedPressable>
             </>
           )}
+          <Divider />
+          {/* お問い合わせ: サポートページを外部ブラウザで開く。 */}
+          <AnimatedPressable
+            style={styles.row}
+            onPress={() => {
+              Linking.openURL(SUPPORT_URL).catch(e => {
+                console.warn('openURL(support) failed:', e);
+              });
+            }}
+            pressedScale={0.98}
+          >
+            <RowLead icon="contact-support">
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowLabel}>{t('settings.support')}</Text>
+                <Text style={styles.rowSub}>{t('settings.supportHint')}</Text>
+              </View>
+            </RowLead>
+            <Icon name="open-in-new" size={18} color={IOS.secondary} />
+          </AnimatedPressable>
           <Divider />
           {/* プライバシーポリシー: 外部ブラウザで開く。アプリ内WebViewは持たない。 */}
           <AnimatedPressable
@@ -846,7 +957,9 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             }}
             pressedScale={0.98}
           >
-            <Text style={styles.rowLabel}>{t('settings.privacyPolicy')}</Text>
+            <RowLead icon="policy">
+              <Text style={styles.rowLabel}>{t('settings.privacyPolicy')}</Text>
+            </RowLead>
             <Icon name="open-in-new" size={18} color={IOS.secondary} />
           </AnimatedPressable>
           {/* 広告のプライバシー設定（UMP同意の撤回・変更）。
@@ -864,10 +977,12 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
                 }}
                 pressedScale={0.98}
               >
-                <View style={styles.rowLeft}>
-                  <Text style={styles.rowLabel}>{t('settings.adsPrivacyOptions')}</Text>
-                  <Text style={styles.rowSub}>{t('settings.adsPrivacyOptionsHint')}</Text>
-                </View>
+                <RowLead icon="campaign">
+                  <View style={styles.rowLeft}>
+                    <Text style={styles.rowLabel}>{t('settings.adsPrivacyOptions')}</Text>
+                    <Text style={styles.rowSub}>{t('settings.adsPrivacyOptionsHint')}</Text>
+                  </View>
+                </RowLead>
                 <Icon name="chevron-right" size={20} color={IOS.secondary} />
               </AnimatedPressable>
             </>
@@ -943,12 +1058,20 @@ const styles = StyleSheet.create({
     minHeight: 54,
     backgroundColor: IOS.card,
   },
+  accordionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 8,
+  },
   // 開いている間だけ、中身との境目に薄い区切り線を足す。
   accordionHeaderOpen: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: IOS.separator,
   },
   accordionTitle: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '600',
     color: IOS.label,
@@ -978,6 +1101,16 @@ const styles = StyleSheet.create({
     // 折り返しを許可して、入らない場合はコントロールを次の行へ落とす。
     flexWrap: 'wrap',
     rowGap: 8,
+  },
+  rowLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 180,
+  },
+  rowIcon: {
+    marginRight: 10,
   },
   rowLeft: {
     flex: 1,

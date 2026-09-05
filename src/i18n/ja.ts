@@ -387,7 +387,7 @@ const ja = {
     // ── 表示・見た目(アプリアイコン / 起動アニメーション / 保存先の表示) ──
     sectionAppearance: '表示・見た目',
     appIcon: 'アプリアイコン',
-    appIconHint: '時間帯に合わせてホーム画面のアイコンが変わります',
+    appIconHint: 'ホーム画面に出すアイコンを選べます',
     splashAnimation: '起動アニメーション',
     splashPattern: 'パターン',
     splashPatternAuto: '時間帯に合わせる',
@@ -411,6 +411,8 @@ const ja = {
     replayTutorial: 'チュートリアルをもう一度見る',
     licenses: 'オープンソースライセンス',
     rateApp: 'アプリを評価する',
+    support: 'お問い合わせ',
+    supportHint: 'サポートページを開きます',
     privacyPolicy: 'プライバシーポリシー',
     adsPrivacyOptions: '広告のプライバシー設定',
     adsPrivacyOptionsHint: '広告に関する同意の内容を変更できます',

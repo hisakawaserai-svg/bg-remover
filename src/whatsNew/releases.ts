@@ -38,8 +38,8 @@ export const RELEASES: Release[] = [
         {
           heading: '新機能',
           items: [
-            '背景除去に被写体検出を追加しました。現在は、iOS 17以降はVision、Android 7.0以降はML Kitです',
-            '背景除去は色ベースで始まります。被写体検出は設定、または分割画面のきらきらから切り替えられます',
+            '背景除去に被写体検出を追加しました。複雑な背景や人物の切り抜きに強くなりました',
+            '背景除去は色ベース（推奨）で始まります。被写体検出は設定、または分割画面のきらきらから切り替えられます',
             '「範囲を調整」の道具に消しゴムを追加しました。なぞった部分を透過できます',
             '「範囲を調整」で、未囲みの塊を色枠から選んでまとめて囲めるようにしました',
           ],
@@ -47,18 +47,15 @@ export const RELEASES: Release[] = [
         {
           heading: '改善',
           items: [
-            '使い方に「流れ」を足し、範囲を調整は右の道具ごとに説明するようにしました',
-            '保存できたときは、下の広告を隠さずに「保存できました」を大きく出します',
-            '保存後の全画面広告はやめて、完了画面の下に長方形の広告を置くようにしました',
-            '背景除去は色ベース（推奨）から始めます。画面は縦向きのみです',
+            '「範囲を調整」のあとも、保存後と同じく拡大して透過の残りを確認できます',
+            '各画面に使い方を追加しました',
           ],
         },
         {
           heading: '修正',
           items: [
             '日本語環境でアプリ名が英語のまま表示されていた不具合を直しました',
-            '微調整レティクルにしても、ルーペの大きさが勝手に変わらないようにしました',
-            '分割結果で、長押ししたあとの合体ボタンが出ない不具合を直しました',
+            'プレビュー画面で、拡大したまま次の画像へ送ると前の画像が重なって残る不具合を直しました',
           ],
         },
       ],
@@ -69,8 +66,8 @@ export const RELEASES: Release[] = [
         {
           heading: 'New',
           items: [
-            'Added subject detection for background removal. Currently Vision on iOS 17 or later, ML Kit on Android 7.0 or later',
-            'Background removal starts with the color-based method. Switch to subject detection in Settings or with the sparkle on the split screen',
+            'Added subject detection for background removal. Better for complex backgrounds and cutting out people',
+            'Background removal starts with the color-based method (recommended). Switch to subject detection in Settings or with the sparkle on the split screen',
             'Added Eraser to the Adjust range tools. Trace to make areas transparent',
             'In Adjust range, you can pick leftover shapes from colored frames and enclose them together',
           ],
@@ -78,18 +75,15 @@ export const RELEASES: Release[] = [
         {
           heading: 'Improvements',
           items: [
-            'How to use now has a Flow tab. Adjust range help is grouped by each tool on the right',
-            'When a save finishes, Saved appears large without covering the ad below',
-            'Fullscreen ads after saving are gone. A rectangle ad sits at the bottom of the done screen',
-            'Background removal starts with color-based (recommended). The screen stays in portrait',
+            'After Adjust range, you can zoom the preview the same way as after saving',
+            'Added how-to help on each screen',
           ],
         },
         {
           heading: 'Fixes',
           items: [
             'Fixed the app name staying in English on Japanese devices',
-            'Switching to the nudgeable crosshair no longer changes the loupe size',
-            'Fixed the merge button not appearing after a long-press on the split result',
+            'Fixed leftover images overlapping in Preview when you move to the next image while zoomed in',
           ],
         },
       ],

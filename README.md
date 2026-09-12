@@ -8,7 +8,7 @@ AIイラストシートからキャラクターを1体ずつ切り出し、背�
 
 選択した画像や生成した画像を外部サーバーへ送信しません。処理はすべて端末内で完結します。
 
-<a href="https://apps.apple.com/us/app/id6798574833"><img src="screenshots/app-icon-day-rounded.png" width="64" align="middle" alt="スタンプ抜き アプリアイコン"></a> &nbsp; [**App Store で見る**](https://apps.apple.com/us/app/id6798574833)
+<a href="https://apps.apple.com/us/app/id6798574833"><img src="screenshots/app-icon-day-rounded.png" width="64" align="middle" alt="スタンプ抜き アプリアイコン"></a> &nbsp; [**App Store で見る**](https://apps.apple.com/us/app/id6798574833) ／ [**Google Play で見る**](https://play.google.com/store/apps/details?id=com.seraapps.stampnuki)
 
 ---
 

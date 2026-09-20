@@ -789,15 +789,30 @@ function AppScreens() {
           // 失敗を伝えるだけで再度ゼロから選び直させるのは手間が大きい。
           const message = e instanceof Error ? e.message : t('common.unknownError');
           const retryWithFlood = await new Promise<boolean>(resolveRetry => {
-            ActionSheetIOS.showActionSheetWithOptions(
-              {
-                title: t('errors.processTitle'),
-                message,
-                options: [t('errors.retryWithFlood'), t('common.cancel')],
-                cancelButtonIndex: 1,
-                userInterfaceStyle: 'light',
-              },
-              idx => resolveRetry(idx === 0),
+            if (Platform.OS === 'ios') {
+              ActionSheetIOS.showActionSheetWithOptions(
+                {
+                  title: t('errors.processTitle'),
+                  message,
+                  options: [t('errors.retryWithFlood'), t('common.cancel')],
+                  cancelButtonIndex: 1,
+                  userInterfaceStyle: 'light',
+                },
+                idx => resolveRetry(idx === 0),
+              );
+              return;
+            }
+            // Android には ActionSheetIOS が無い（呼ぶと "ActionSheetManager doesn't
+            // exist" で例外になり、この導線ごと死ぬ）。同じ2択を Alert で出す。
+            // 枠外タップ・戻るボタンでも Promise が宙に浮かないよう onDismiss で閉じる。
+            Alert.alert(
+              t('errors.processTitle'),
+              message,
+              [
+                { text: t('errors.retryWithFlood'), onPress: () => resolveRetry(true) },
+                { text: t('common.cancel'), style: 'cancel', onPress: () => resolveRetry(false) },
+              ],
+              { cancelable: true, onDismiss: () => resolveRetry(false) },
             );
           });
           if (retryWithFlood) {

@@ -42,6 +42,57 @@ export function copyForStore(release: Release, locale: 'ja' | 'en', os: 'ios' | 
 
 export const RELEASES: Release[] = [
   {
+    version: '1.2.1',
+    jaAndroid: {
+      title: '不具合の修正',
+      sections: [
+        {
+          heading: '修正',
+          items: [
+            '日本語の端末で、アプリ名が英語のまま表示されていた不具合を直しました',
+            '木目のように背景が細かい写真で、透過の途中にアプリが終了したり、時間がかかったりする不具合を直しました',
+            '被写体検出で切り抜けなかったとき、色ベースでやり直す案内が出ずにエラーになる不具合を直しました',
+          ],
+        },
+      ],
+    },
+    ja: {
+      title: '不具合の修正',
+      sections: [
+        {
+          heading: '修正',
+          items: [
+            '木目のように背景が細かい写真で、透過の途中にアプリが終了したり、時間がかかったりする不具合を直しました',
+          ],
+        },
+      ],
+    },
+    enAndroid: {
+      title: 'Bug fixes',
+      sections: [
+        {
+          heading: 'Fixes',
+          items: [
+            'Fixed the app name staying in English on Japanese devices',
+            'Fixed the app closing or taking a long time while making photos with detailed backgrounds, such as wood grain, transparent',
+            'Fixed an error appearing instead of the option to try the color-based method when subject detection could not cut out an image',
+          ],
+        },
+      ],
+    },
+    en: {
+      title: 'Bug fixes',
+      sections: [
+        {
+          heading: 'Fixes',
+          items: [
+            'Fixed the app closing or taking a long time while making photos with detailed backgrounds, such as wood grain, transparent',
+          ],
+        },
+      ],
+    },
+  },
+  {
     version: '1.2.0',
     dateIos: '2026-09-05',
     jaIos: {

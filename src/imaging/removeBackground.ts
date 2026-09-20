@@ -384,10 +384,16 @@ function floodFill(
   startIdx: number,
   bgColors: BgColor[],
   tol: number,
+  queueBuf?: Int32Array,
 ): void {
   if (!matchesBg(rgba, startIdx * 4, bgColors, tol)) return;
 
-  const queue = new Int32Array(w * h);
+  // 呼び出しごとに w*h 個の Int32Array を作ると、皮むきのように何度も呼ぶ経路で
+  // 巨大な配列(1875x2500 なら約18.75MB)を大量に確保してしまう。木目のように背景が
+  // 細かく分かれた写真ではこれが Hermes のネイティブクラッシュ(SIGSEGV)と数十秒の
+  // 遅延を招いた。繰り返し呼ぶ側は使い回し用のバッファを渡す（中身は head/tail で
+  // 管理するのでゼロ初期化は不要）。
+  const queue = queueBuf ?? new Int32Array(w * h);
   let head = 0;
   let tail = 0;
 
@@ -879,9 +885,10 @@ function peelOnce(
 
   // いったん複製の上で塗ってみて、量を見てから採用を決める。
   const temp = visited.slice();
+  const queue = new Int32Array(pixelCount);
   for (const idx of boundary) {
     if (temp[idx]) continue;
-    floodFill(rgba, temp, w, h, idx, [dominant], tol);
+    floodFill(rgba, temp, w, h, idx, [dominant], tol, queue);
   }
 
   let newly = 0;

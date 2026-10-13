@@ -1876,6 +1876,23 @@ function AppScreens() {
   }, [appState]);
 
   // 保存先画面も同様に prevStateRef を使い、どの画面からでも元に戻れるようにする。
+  // 「背景を消す」画面まで来たら、作業の記録を「透過済み」にする。
+  // 以前は分割したときにしか変えていなかったので、背景を消してから分割せずに
+  // ホームへ戻ると「未処理」のままだった。自動で消していない（透過せずに編集）ときは
+  // まだ何も消えていないので変えない。分割済み・書き出し済みの記録は戻さない。
+  useEffect(() => {
+    if (appState !== 'bg_review' || !currentSessionId) return;
+    if (!editsRef.current.some(s => s.kind === 'autoBg')) return;
+    const id = currentSessionId;
+    void (async () => {
+      const s = await getSession(id);
+      if (s?.step !== 'picked') return;
+      await patchSession(id, { step: 'keyed', edits: editsRef.current, updatedAt: Date.now() });
+      await reloadSessions();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState, currentSessionId]);
+
   const goToSaved = useCallback(() => {
     prevStateRef.current = appState;
     setAppState('saved');

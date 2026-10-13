@@ -5665,11 +5665,18 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           disabled={!canPreview}
           onPress={handlePreview}
           pressedScale={0.96}
+          // 見た目は「保存へ」＋枚数の丸だけなので、読み上げには枚数入りの文言を渡す。
+          accessibilityLabel={t('editor.goToSave', { count: polygons.length })}
         >
           <Icon name="save-alt" size={20} color="#FFF" />
-          {/* 枚数は文言（保存へ（N枚））に入っているので、バッジは重ねない。
-              両方出すと幅の狭い Android でボタンからはみ出していた。 */}
-          <Text style={styles.exportBtnTxt} numberOfLines={1}>{t('editor.goToSave', { count: polygons.length })}</Text>
+          {/* 文言は「保存へ」だけにして、枚数は丸（バッジ）で見せる。以前は「保存へ（N枚）」と
+              バッジの両方に枚数が出ていて、幅の狭い Android でボタンからはみ出していた。 */}
+          <Text style={styles.exportBtnTxt} numberOfLines={1}>{t('editor.goToSaveLabel')}</Text>
+          {polygons.length > 0 && (
+            <View style={styles.exportBadge}>
+              <Text style={styles.exportBadgeTxt}>{polygons.length}</Text>
+            </View>
+          )}
         </AnimatedPressable>
       </View>
 
@@ -6217,5 +6224,14 @@ const styles = StyleSheet.create({
   },
   exportBtnDisabled: { opacity: 0.35 },
   exportBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
+
+  // 枚数バッジ（白の半透明の丸）
+  exportBadge: {
+    minWidth: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  exportBadgeTxt: { fontSize: 13, fontWeight: '700', color: '#FFF' },
 
 });

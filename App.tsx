@@ -627,7 +627,7 @@ function AppScreens() {
    * 「背景を消す」画面（bg_review）から、背景除去の方式を変えて同じ画像を最初からやり直す。
    * 変えるのはこの画像だけで、設定の既定値（appSettings.bgEngine）は書き換えない。
    * これまでの編集（スポイト等）は別方式でのやり直しには意味をなさないため破棄する。
-   * スポイトで消した分があるときだけ、捨てる前に確認する。
+   * スポイトで消した分も強さも戻るので、変える前に毎回確認する。
    */
   const changeEngineForImage = (engine: BgEngine) => {
     const uri = currentImageUri;
@@ -636,7 +636,7 @@ function AppScreens() {
       editsRef.current = []; redoStepsRef.current = [];
       await processImage(uri, splitMode, undefined, undefined, engine);
     };
-    if (editsRef.current.length <= 1) { run(); return; }
+    // スポイトで消していなくても、強さを変えていればそれも戻るので、毎回確認する。
     Alert.alert(
       t('removeBg.changeEngineTitle'),
       t('removeBg.changeEngineMessage'),

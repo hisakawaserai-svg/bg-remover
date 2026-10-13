@@ -215,7 +215,7 @@ export default function HowToScreen({
           <Card style={styles.card}>
             <Text style={styles.lead}>{t('howto.bgLead')}</Text>
             <SectionLabel text={t('howto.sectionBasics')} />
-            <ToolLine icon={{ name: 'compare' }} title={t('removeBg.showBefore')} body={t('howto.bgCompare')} />
+            <ToolLine icon={{ name: 'visibility' }} title={t('removeBg.showBefore')} body={t('howto.bgCompare')} />
             <ToolLine icon={{ name: 'grid-on' }} title={t('removeBg.bgToggle')} body={t('howto.bgBackdrop')} />
             <SectionLabel text={t('removeBg.disclosure')} />
             <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('removeBg.tabEye')} body={t('howto.bgEyedrop')} />

@@ -76,6 +76,8 @@ yarn-error.log
 
 # AI context and instructions
 .ai_context/
+# Cursor のローカル専用ルール（公開しない。alwaysApply なら Cursor は読む）
+.cursor/rules/*.local.mdc
 
 # リリース進捗（日付・判断・審査メモを書く。機密はここにも書かない）
 docs/release-status-ios.md

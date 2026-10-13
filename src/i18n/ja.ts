@@ -471,7 +471,7 @@ const ja = {
     version: 'バージョン',
     versionHint: 'タップして更新内容を見る',
     howTo: '使い方',
-    replayTutorial: 'チュートリアルをもう一度見る',
+    replayTutorial: 'はじめてガイドをもう一度見る',
     licenses: 'オープンソースライセンス',
     rateApp: 'アプリを評価する',
     support: 'お問い合わせ',

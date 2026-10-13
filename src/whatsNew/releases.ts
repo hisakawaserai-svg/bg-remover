@@ -42,6 +42,123 @@ export function copyForStore(release: Release, locale: 'ja' | 'en', os: 'ios' | 
 
 export const RELEASES: Release[] = [
   {
+    version: '1.2.2',
+    jaIos: {
+      title: '背景を消す画面を追加',
+      sections: [
+        {
+          heading: '背景を消す画面',
+          items: [
+            '背景を消したあと、元の画像と見比べられるようになりました。チェック柄のところが透明です',
+            '消し残しはこの画面で直せます。スポイト・強さ・消し方を、その画像だけに使えます',
+            '下地を市松・白・黒に切り替えて、消し残しや消えすぎを見つけられます',
+          ],
+        },
+        {
+          heading: '分割設定',
+          items: [
+            '動かした線を「線の位置をリセット」で元に戻せるようになりました',
+            '「分割の細かさ」をなくし、行数と列数だけで分けられるようにしました',
+          ],
+        },
+        {
+          heading: 'そのほか',
+          items: [
+            'はじめてガイドと使い方に、背景を消す画面の説明を入れました',
+            '「分割しない」で分けたあとにリセットすると、等分に分け直されていた不具合を直しました',
+            '木目のように背景が細かい写真で、透過中にアプリが終了したり時間がかかったりする不具合を直しました',
+            '表示の崩れと不具合をいくつか修正しました',
+          ],
+        },
+      ],
+    },
+    ja: {
+      title: '背景を消す画面を追加',
+      sections: [
+        {
+          heading: '背景を消す画面',
+          items: [
+            '背景を消したあと、元の画像と見比べられるようになりました。チェック柄のところが透明です',
+            '消し残しはこの画面で直せます。スポイト・強さ・消し方を、その画像だけに使えます',
+            '下地を市松・白・黒に切り替えて、消し残しや消えすぎを見つけられます',
+          ],
+        },
+        {
+          heading: '分割設定',
+          items: [
+            '動かした線を「線の位置をリセット」で元に戻せるようになりました',
+            '「分割の細かさ」をなくし、行数と列数だけで分けられるようにしました',
+          ],
+        },
+        {
+          heading: 'そのほか',
+          items: [
+            'はじめてガイドと使い方に、背景を消す画面の説明を入れました',
+            '「分割しない」で分けたあとにリセットすると、等分に分け直されていた不具合を直しました',
+            '表示の崩れと不具合をいくつか修正しました',
+          ],
+        },
+      ],
+    },
+    enIos: {
+      title: 'New Remove Background screen',
+      sections: [
+        {
+          heading: 'Remove Background screen',
+          items: [
+            'Compare the result with the original. Checkered means transparent',
+            'Fix leftovers here with Tap erase, Strength, and Method, for this image only',
+            'Switch the backdrop to spot leftovers or missing parts',
+          ],
+        },
+        {
+          heading: 'Split Settings',
+          items: [
+            'Reset line positions puts moved lines back',
+            'Split detail is gone; just set rows and columns',
+          ],
+        },
+        {
+          heading: 'Other',
+          items: [
+            'Tutorial and How to Use cover the new screen',
+            "Reset no longer re-splits evenly after Don't split",
+            'Fixed crashes and slowness with detailed backgrounds such as wood grain',
+            'Fixed some display issues and bugs',
+          ],
+        },
+      ],
+    },
+    en: {
+      title: 'New Remove Background screen',
+      sections: [
+        {
+          heading: 'Remove Background screen',
+          items: [
+            'Compare the result with the original. Checkered means transparent',
+            'Fix leftovers here with Tap erase, Strength, and Method, for this image only',
+            'Switch the backdrop to spot leftovers or missing parts',
+          ],
+        },
+        {
+          heading: 'Split Settings',
+          items: [
+            'Reset line positions puts moved lines back',
+            'Split detail is gone; just set rows and columns',
+          ],
+        },
+        {
+          heading: 'Other',
+          items: [
+            'Tutorial and How to Use cover the new screen',
+            "Reset no longer re-splits evenly after Don't split",
+            'Fixed some display issues and bugs',
+          ],
+        },
+      ],
+    },
+  },
+  {
     version: '1.2.1',
     jaAndroid: {
       title: '不具合の修正',

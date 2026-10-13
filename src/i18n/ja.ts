@@ -155,6 +155,7 @@ const ja = {
     previewGenerating: 'プレビューを生成中...',
     cellExitTitle: '編集内容を反映しています',
     cellExitSub: '少々お待ちください',
+    saved: '保存した画像を読み込んでいます…',
   },
 
   // ── 背景を消す画面（RemoveBgScreen）──────────────────────────────────────

@@ -16,7 +16,6 @@
  */
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   // 画面状態の AppState 型と名前がぶつかるので別名で入れる（App.tsx と同じ流儀）。
   AppState as RNAppState,
@@ -40,6 +39,7 @@ import Animated, {
 import type { SharedValue } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import ToolHint, { TOOL_ICONS } from './ui/ToolHint';
+import LoadingView from './ui/LoadingView';
 import { useT } from '../i18n';
 import type { TKey } from '../i18n';
 import Screen    from './ui/Screen';
@@ -4869,14 +4869,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
 
         {/* スポイト処理中の全面ブロック。処理は同期的に JS を止めるので、
             eyeBusy の描画が確定してから実処理に入る（下の useEffect が担保）。 */}
-        {eyeBusy && (
-          <View style={styles.busyOverlay}>
-            <View style={styles.busyCard}>
-              <ActivityIndicator color="#FFF" />
-              <Text style={styles.busyTxt}>{t(busyKey)}</Text>
-            </View>
-          </View>
-        )}
+        {eyeBusy && <LoadingView overlay dark message={t(busyKey)} />}
 
         {/* 現在のツールの説明。常時出す。
             アイコンだけだと何のツールか分からず、移動モードでは何も出ていなくて
@@ -6188,23 +6181,6 @@ const styles = StyleSheet.create({
   },
 
   // ── スポイト処理中のブロック表示 ──────────────────────────────────────────
-  busyOverlay: {
-    position: 'absolute',
-    left: 0, right: 0, top: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center', justifyContent: 'center',
-    // floatingTop・panelSlot（zIndex:2、なぞり用レイヤーより上に来るよう
-    // 明示した）よりさらに上に出す。ここが負けると処理中でも再透過カードの
-    // ボタンが押せてしまう。
-    zIndex: 3,
-  },
-  busyCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(30,30,30,0.92)',
-    paddingHorizontal: 18, paddingVertical: 14,
-    borderRadius: 14,
-  },
-  busyTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
 
 
 

@@ -12,7 +12,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ActionSheetIOS,
-  ActivityIndicator,
   Alert,
   // 画面状態の AppState 型と名前がぶつかるので別名で入れる。
   AppState as RNAppState,
@@ -2596,15 +2595,9 @@ function AppScreens() {
           </>
         )}
 
-        {/* ── ローディングスピナー ── */}
-        {isBusy && (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={IOS.blue} />
-            <Text style={styles.loadingTxt}>{t('home.processing')}</Text>
-          </View>
-        )}
-
     </Screen>
+    {/* ── 読み込み・背景を消している間: 共通の半透明ローディングを全面に重ねる ── */}
+    {isBusy && <LoadingView overlay message={t('home.processing')} />}
     <BgEngineChoiceModal
       visible={bgEngineChoiceVisible}
       subjectSupported={subjectSupported}
@@ -3019,8 +3012,6 @@ const styles = StyleSheet.create({
   secondaryBtnTxt: { color: IOS.secondary, fontSize: 15 },
 
   // ── ローディング ────────────────────────────────────────────────────────────
-  loading:    { alignItems: 'center', paddingVertical: 40, gap: 14 },
-  loadingTxt: { fontSize: 15, fontWeight: '400', color: IOS.secondary },
 
   // ── 自動分割プレビュー ──────────────────────────────────────────────────────
   section:      { width: '100%', alignItems: 'center', marginBottom: 16 },

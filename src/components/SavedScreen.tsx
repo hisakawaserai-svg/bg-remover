@@ -8,7 +8,6 @@
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  ActivityIndicator,
   Image,
   SectionList,
   StyleSheet,
@@ -25,6 +24,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import EmptyState from './ui/EmptyState';
+import LoadingView from './ui/LoadingView';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { t, useT } from '../i18n';
@@ -267,9 +267,7 @@ export default function SavedScreen({ onClose }: Props) {
     <Screen header={header} scrollable={false} bg={IOS.bg} footer={<AdBanner />}>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={IOS.blue} />
-        </View>
+        <LoadingView message={t('loading.saved')} />
       ) : photos.length === 0 ? (
         <EmptyState
           icon={<Icon name="photo-library" size={56} color={IOS.secondary} />}
@@ -347,5 +345,4 @@ const styles = StyleSheet.create({
     borderColor: '#C7C7CC',
   },
 
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

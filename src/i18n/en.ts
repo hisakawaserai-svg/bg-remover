@@ -135,6 +135,7 @@ const en: typeof ja = {
     previewGenerating: 'Generating preview...',
     cellExitTitle: 'Applying your edits',
     cellExitSub: 'This will just take a moment',
+    saved: 'Loading your saved images…',
   },
 
   removeBg: {

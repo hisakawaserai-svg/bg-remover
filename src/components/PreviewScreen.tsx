@@ -10,7 +10,6 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -27,6 +26,7 @@ import HeaderActions from './ui/HeaderActions';
 import CheckerboardBg from './ui/CheckerboardBg';
 import ImagePreviewModal from './ui/ImagePreviewModal';
 import ImageZoomModal from './ui/ImageZoomModal';
+import LoadingView from './ui/LoadingView';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { clearPreviewDir, savePolygons, writePreviewPolygons } from '../imaging';
 import { describeSaveError } from '../imaging/saveErrors';
@@ -153,10 +153,7 @@ export default function PreviewScreen({ bgResult, polygons, onBack, onSettings, 
           <Text style={styles.loadingTxt}>{t('preview.nothingToExport')}</Text>
         </View>
       ) : uris == null ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={IOS.blue} />
-          <Text style={styles.loadingTxt}>{t('loading.previewGenerating')}</Text>
-        </View>
+        <LoadingView message={t('loading.previewGenerating')} />
       ) : (
         <View style={styles.body}>
         <View style={styles.stickyChrome}>

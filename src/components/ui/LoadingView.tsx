@@ -14,6 +14,7 @@
  * overlay: 画面の上に半透明で重ねる使い方。画面を切り替えずに、その場で重い処理を
  * するとき（背景を消す画面で強さを変えて消し直すときなど）に使う。下の画面が
  * 透けて見えるので「今の画面のまま処理している」ことが分かり、タップも受け止める。
+ * dark: 暗い画面（範囲の調整など）の上に重ねるとき用。白く光らせないよう黒で暗くする。
  */
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -26,14 +27,16 @@ interface Props {
   sub?: string;
   /** true で画面の上に半透明で重ねる（呼び出し側は親の最後の子として置く）。 */
   overlay?: boolean;
+  /** overlay と一緒に使う。暗い画面の上で、黒く透ける見た目にする。 */
+  dark?: boolean;
 }
 
-export default function LoadingView({ message, sub, overlay = false }: Props) {
+export default function LoadingView({ message, sub, overlay = false, dark = false }: Props) {
   return (
-    <View style={[styles.wrap, overlay && styles.overlay]}>
-      <ActivityIndicator size="large" color={colors.accent} />
-      <Text style={styles.msg}>{message}</Text>
-      {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+    <View style={[styles.wrap, overlay && styles.overlay, overlay && dark && styles.overlayDark]}>
+      <ActivityIndicator size="large" color={dark ? '#FFF' : colors.accent} />
+      <Text style={[styles.msg, dark && styles.msgDark]}>{message}</Text>
+      {sub ? <Text style={[styles.sub, dark && styles.subDark]}>{sub}</Text> : null}
     </View>
   );
 }
@@ -53,6 +56,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
     backgroundColor: 'rgba(242,242,247,0.78)',
   },
+  overlayDark: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  msgDark: { color: '#FFF' },
+  subDark: { color: 'rgba(255,255,255,0.75)' },
   msg: {
     ...typography.headline,
     color: colors.label,

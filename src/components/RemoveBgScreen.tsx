@@ -301,6 +301,25 @@ export default function RemoveBgScreen({
     opacity: 1 - rippleV.value,
     transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
   }));
+  // 消し直し（スポイト・強さ・取り消し・やり直し・リセット）は全画素の再計算で、その間 JS が
+  // 止まる。先に半透明のローディングを描き、2フレーム待ってから計算する。待たずに呼ぶと
+  // ローディングが描かれる前に固まり、何も出ない。
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
+  const runBusy = useCallback((message: string, work: () => void, onDone?: () => void) => {
+    setBusyMessage(message);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        work();
+      } finally {
+        // 例外が出ても必ず解除する（漏らすとローディングが出たままになる）。
+        setBusyMessage(null);
+        onDone?.();
+      }
+    }));
+  }, []);
+  const handleUndo = useCallback(() => runBusy(t('removeBg.reprocessing'), onUndoEdit), [runBusy, t, onUndoEdit]);
+  const handleRedo = useCallback(() => runBusy(t('removeBg.reprocessing'), onRedoEdit), [runBusy, t, onRedoEdit]);
+
   // 1回の再計算は重いので、反映が終わるまで次のタップは捨てる（積むと固まり続ける）。
   const eyeBusyRef = useRef(false);
   const handleImagePress = useCallback((lx: number, ly: number) => {
@@ -319,15 +338,13 @@ export default function RemoveBgScreen({
       easing: Easing.out(Easing.quad),
       reduceMotion: ReduceMotion.Never,
     });
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try {
-        onEyedrop(x, y, settings.eyedropperTolerance, settings.featherEdges);
-      } finally {
-        // 例外が出ても必ず解除する（漏らすと以後スポイトが効かなくなる）。
-        eyeBusyRef.current = false;
-      }
-    }));
-  }, [eyeOn, fit, bgResult, onEyedrop, settings.eyedropperTolerance, settings.featherEdges, rippleV]);
+    runBusy(
+      t('editor.eyedropBusy'),
+      () => onEyedrop(x, y, settings.eyedropperTolerance, settings.featherEdges),
+      // 例外が出ても必ず解除する（漏らすと以後スポイトが効かなくなる）。
+      () => { eyeBusyRef.current = false; },
+    );
+  }, [eyeOn, fit, bgResult, onEyedrop, settings.eyedropperTolerance, settings.featherEdges, rippleV, runBusy, t]);
 
   /** スポイトで消した分を全部戻す。取り消せないので確認する（分割設定画面と同じ文言）。 */
   const handleReset = useCallback(() => {
@@ -336,10 +353,10 @@ export default function RemoveBgScreen({
       t('setup.resetMessage'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.reset'), style: 'destructive', onPress: onResetEdits },
+        { text: t('common.reset'), style: 'destructive', onPress: () => runBusy(t('removeBg.reprocessing'), onResetEdits) },
       ],
     );
-  }, [t, onResetEdits]);
+  }, [t, onResetEdits, runBusy]);
 
   // ── 強さ: 設定画面の「自動除去の強さ」と同じスライダー ──────────
   // 動かしている間は表示だけ変え、指を離したときだけ消し直す（消し直しは全画素の再計算で重い）。
@@ -347,21 +364,11 @@ export default function RemoveBgScreen({
   useEffect(() => {
     if (tolerance != null) setStrengthValue(tolerance);
   }, [tolerance]);
-  // 消し直しは全画素の再計算で、その間 JS が止まる。先に半透明のローディングを描いてから
-  // （2フレーム待ってから）消し直す。待たずに呼ぶとローディングが描かれる前に固まる。
-  const [reprocessing, setReprocessing] = useState(false);
   const commitStrength = useCallback((v: number) => {
     setStrengthValue(v);
     if (tolerance == null || v === tolerance) return;
-    setReprocessing(true);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try {
-        onChangeTolerance(v);
-      } finally {
-        setReprocessing(false);
-      }
-    }));
-  }, [tolerance, onChangeTolerance]);
+    runBusy(t('removeBg.reprocessing'), () => onChangeTolerance(v));
+  }, [tolerance, onChangeTolerance, runBusy, t]);
 
   const header = (
     <AppHeader
@@ -563,8 +570,8 @@ export default function RemoveBgScreen({
                     </Text>
                   </AnimatedPressable>
                   <View style={styles.editRow}>
-                    <EditButton icon="undo" label={t('removeBg.undo')} enabled={canUndoEdit} onPress={onUndoEdit} />
-                    <EditButton icon="redo" label={t('removeBg.redo')} enabled={canRedoEdit} onPress={onRedoEdit} />
+                    <EditButton icon="undo" label={t('removeBg.undo')} enabled={canUndoEdit} onPress={handleUndo} />
+                    <EditButton icon="redo" label={t('removeBg.redo')} enabled={canRedoEdit} onPress={handleRedo} />
                     <EditButton icon="refresh" label={t('removeBg.reset')} enabled={canUndoEdit} onPress={handleReset} />
                   </View>
                 </View>
@@ -618,7 +625,7 @@ export default function RemoveBgScreen({
           </Collapsible>
       </View>
     </Screen>
-    {reprocessing && <LoadingView overlay message={t('removeBg.reprocessing')} />}
+    {busyMessage != null && <LoadingView overlay message={busyMessage} />}
     </View>
   );
 }

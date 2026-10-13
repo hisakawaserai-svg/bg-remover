@@ -157,6 +157,37 @@ const ja = {
     cellExitSub: '少々お待ちください',
   },
 
+  // ── 背景を消す画面（RemoveBgScreen）──────────────────────────────────────
+  removeBg: {
+    title: '背景を消す',
+    headline: '背景を消しました',
+    explain: 'チェック柄のところは、透明（何もない）部分です。',
+    after: '消した後',
+    before: '元の画像',
+    showBefore: '元の画像を見る',
+    showAfter: '消した後に戻す',
+    disclosure: 'うまく消えていないときは',
+    tabEye: 'スポイト',
+    tabStrength: '優先',
+    tabMethod: '消し方',
+    eyeOff: 'スポイトで背景を消す',
+    eyeOn: 'スポイトを使用中',
+    eyeBanner: '消したい背景をタップしてください',
+    stop: 'やめる',
+    undo: '1つ戻す',
+    redo: '1つ進める',
+    reset: '最初に戻す',
+    strengthDesc: '左は絵を残します（消しすぎない）。右は背景まで広く消します。動かすと、消し直します。',
+    strengthOff: '「AIで見分ける」のときは、ここは使いません。',
+    byColor: '色で見分ける',
+    byAi: 'AIで見分ける',
+    methodNote: '変えると、スポイトで消した分は元に戻り、最初から消し直します。',
+    changeEngineTitle: '消し方を変えますか？',
+    changeEngineMessage: 'スポイトで消した分は元に戻り、最初から消し直します。',
+    changeEngineAction: '変える',
+    next: '分割へ進む',
+  },
+
   // ── 分割設定画面（SetupScreen）────────────────────────────────────────────
   setup: {
     title: '分割設定',

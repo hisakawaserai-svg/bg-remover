@@ -23,8 +23,6 @@ import Animated, {
   useSharedValue,
   withTiming,
   useAnimatedStyle,
-  Easing,
-  ReduceMotion,
 } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -40,17 +38,12 @@ import CheckerboardBg from './ui/CheckerboardBg';
 import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
 import { useT } from '../i18n';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
-import { useVisionSupported } from '../hooks/useVisionSupported';
-import { isTransparentAt, detectRowCount, detectColCount } from '../imaging';
+import { detectRowCount, detectColCount } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
-
-/** スポイトのタップ波紋の半径(px)。範囲を調整画面と同じ値にして見た目を揃える。 */
-const EYE_RIPPLE_R = 26;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -91,48 +84,26 @@ interface Props {
   ) => void;
   onBack: () => void;
   /**
-   * 画像編集は「元画像 + 操作列」を呼び出し側が持ち、この画面は操作を通知するだけ。
-   * 取り消し・やり直し・リセットも呼び出し側で列を操作して画像を作り直す。
-   * bgVersion は作り直しの通知（rgba は同一参照のまま中身が変わるため）。
+   * 画像の作り直しの通知（rgba は同一参照のまま中身が変わるため）。背景を消す画面で
+   * スポイト等をしてから戻ってきたときに、行数・列数を出し直す。
    */
-  onEyedrop?: (x: number, y: number, tolerance: number, feather: boolean) => void;
-  onUndoEdit?: () => void;
-  onRedoEdit?: () => void;
-  onResetEdits?: () => void;
-  canUndoEdit?: boolean;
-  canRedoEdit?: boolean;
   bgVersion?: number;
   onSettings?: () => void;
   onHelp?: () => void;
   /** ヘッダーの「元画像」ズーム用。分割結果(ResultScreen)とヘッダーを揃える。 */
   originalImageUri?: string;
-  /**
-   * removeBackground 完了でこの画面に遷移してきた時だけ true。マウント時に
-   * 「背景を透明にしました」トーストを1回出し、onAnnounced で下ろす。
-   * プレビュー等からの「戻る」では false のままなので誤発火しない。
-   */
-  announceTransparent?: boolean;
-  onAnnounced?: () => void;
-  /** 背景除去の方式を変えてやり直す（呼び出し側が画像選択時と同じ方式選択を再度出す）。 */
-  onChangeEngine?: () => void;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHelp, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, bgVersion = 0, onSettings, onHelp, originalImageUri }: Props) {
   const { settings } = useSettings();
   const { t } = useT();
-  const insets = useSafeAreaInsets();
   const thumbBg = useThumbBg();
-  const visionSupported = useVisionSupported();
   const [rows, setRows] = useState(initialRows);
   // 列数。行数ステッパーと全く同じUI・挙動。初期値は自動推定した列数(initialCols)。
   const [cols, setCols] = useState(initialCols ?? 1);
   // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
   const [zoomVisible, setZoomVisible] = useState(false);
   const [mode, setMode] = useState<SetupMode>(initialMode);
-  // スポイトモード: ON中は画像タップでその位置の色を消す（線のドラッグは無効化）。
-  // 枠付きシートのように自動透過が内側まで届かない画像で、背景を抜いてから
-  // 行数・列数の再検出に乗せるための下ごしらえ用。
-  const [eyedropperMode, setEyedropperMode] = useState(false);
   const [noSplit, setNoSplit] = useState(false);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
   // ── グリッド線の選択状態（今回は「タップ選択＋ハイライト表示」まで）─────────────
@@ -140,11 +111,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const [selected, setSelected] = useState<{ axis: 'row' | 'col'; index: number } | null>(null);
   // 行数/列数が変わると線の本数・添字がずれるので選択をリセットする。
   useEffect(() => { setSelected(null); }, [rows, cols]);
-  // モードを切り替えたらスポイトを必ず解除する。ONのまま手動モードへ行って戻ると
-  // ボタンは消えているのに eyedropperModeRef が true のまま残り、
-  // 線のタップ/ドラッグを黙って奪ってしまうため。
-  useEffect(() => { setEyedropperMode(false); }, [mode]);
-  // 画像が作り直されたら行数・列数を検出し直す（スポイト・取り消し・やり直し共通）。
+  // 画像が作り直されたら行数・列数を検出し直す（背景を消す画面でのスポイト・取り消し・やり直し）。
   // 検出は alpha の帯だけを見るので、背景が抜ける前は区切りが無く 1×1 になる。
   // 初期表示(bgVersion=0)は親が渡した推定値を尊重するので何もしない。
   // 画像そのものが作り直された場合は手動で決めた行数・列数の前提も崩れるので、
@@ -181,19 +148,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   }, [toastOpacity]);
   const toastAnim = useAnimatedStyle(() => ({ opacity: toastOpacity.value }));
 
-  // 背景除去の完了でこの画面へ来た時、市松模様が「透明」だと分からないユーザー向けに
-  // 「背景を透明にしました」を1回だけ知らせる。マウント時に限定し、フラグは即座に
-  // 下ろす（「戻る」での再遷移では announceTransparent=false なので出ない）。
-  const announcedRef = useRef(false);
-  useEffect(() => {
-    if (announceTransparent && !announcedRef.current) {
-      announcedRef.current = true;
-      showToast(t('setup.bgRemoved'));
-      onAnnounced?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // bgResult.rgba → base64 PNG URI（変換は1回だけ）
   const imageUri = useMemo(() => {
     const data = Skia.Data.fromBytes(bgResult.rgba);
@@ -214,19 +168,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     // bgVersion: 親が rgba の中身を作り直したときにプレビューを作り直すための依存。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgResult, bgVersion]);
-
-  /** 自動背景除去も含めて全部取り消し、元画像の状態に戻す。取り消せないので確認する。 */
-  const handleResetEdits = useCallback(() => {
-    Alert.alert(
-      t('setup.resetTitle'),
-      t('setup.resetMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.reset'), style: 'destructive', onPress: () => onResetEditsRef.current?.() },
-      ],
-    );
-  }, [t]);
-  const onResetEditsRef = useRef(onResetEdits); onResetEditsRef.current = onResetEdits;
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -365,18 +306,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const colRef = useRef(colXsImg); colRef.current = colXsImg;
   const imgWRef = useRef(bgResult.width); imgWRef.current = bgResult.width;
   const imgHRef = useRef(bgResult.height); imgHRef.current = bgResult.height;
-  // スポイト用。rgba/許容値も PanResponder のクロージャからは stale になるため ref 経由で読む
-  // （許容値は設定画面で変わるので直接参照すると初回値のまま固定されてしまう）。
-  const eyedropperModeRef = useRef(eyedropperMode); eyedropperModeRef.current = eyedropperMode;
-  // 連打対策。スポイト1回の再計算は重いので、反映が終わるまで次のタップは捨てる。
-  // 受け付けて積むと処理が直列に溜まって固まり続ける（範囲調整側と同じ方針）。
-  const eyeBusyRef = useRef(false);
-  const rgbaRef = useRef(bgResult.rgba); rgbaRef.current = bgResult.rgba;
-  const eyeTolRef = useRef(settings.eyedropperTolerance);
-  eyeTolRef.current = settings.eyedropperTolerance;
-  const featherRef = useRef(settings.featherEdges);
-  featherRef.current = settings.featherEdges;
-  const onEyedropRef = useRef(onEyedrop); onEyedropRef.current = onEyedrop;
   const rowsRef = useRef(rows); rowsRef.current = rows;
   const colsRef = useRef(cols); colsRef.current = cols;
   // ジェスチャー中の状態。snapVal = 掴んだ瞬間の線の画像座標（RectEditor の snap と同じ役割）。
@@ -392,44 +321,10 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // 線を掴んだ瞬間にスクロールを無効化し、離したら戻す。
   const [lineDragging, setLineDragging] = useState(false);
 
-  // ── スポイトのタップ波紋（範囲を調整画面と同じ挙動）──────────────────────
-  // 押してから画像が更新されるまでに間があり「押せたのか分からない」ため、
-  // タップ位置に波紋を出して即座に反応を返す。
-  // 【重要】波紋を出してから2フレーム待って実処理を呼ぶ。同じフレームで呼ぶと
-  // 重い再計算（親の applyEdits）が描画コミット前に走り、波紋が見えないまま固まる。
-  const [ripple, setRipple] = useState<{ x: number; y: number } | null>(null);
-  const rippleV = useSharedValue(0);
-  const rippleStyle = useAnimatedStyle(() => ({
-    opacity: 1 - rippleV.value,
-    transform: [{ scale: 0.25 + rippleV.value * 1.5 }],
-  }));
-  /** タップ位置に波紋を出し、描画が乗ってから run() を実行する。 */
-  const rippleThen = useCallback((lx: number, ly: number, run: () => void) => {
-    setRipple({ x: lx, y: ly });
-    rippleV.value = 0;
-    rippleV.value = withTiming(1, {
-      duration: 420,
-      easing: Easing.out(Easing.quad),
-      // OSの「アニメーションを減らす」でも波紋は出す（唯一の即時フィードバックのため）。
-      reduceMotion: ReduceMotion.Never,
-    });
-    requestAnimationFrame(() => requestAnimationFrame(run));
-  }, [rippleV]);
-  const rippleThenRef = useRef(rippleThen); rippleThenRef.current = rippleThen;
-
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => {
-        if (eyedropperModeRef.current) {
-          // スポイト中は線をドラッグできない。理由が画面から分からず「操作不能に
-          // 見える」との実機報告があったため、他の無効化ケース（行数/列数
-          // ステッパー、709・737行目）と同じ作法でトーストを出す。
-          // showToast 自体が表示中は再発火しない（toastBusy）ので、指を
-          // 動かし続けて何度呼ばれても連打表示にはならない。
-          showToast(t('setup.eyedropperDragBlocked'));
-          return false;
-        }
         return g.current.mode === 'drag';
       },
 
@@ -439,36 +334,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         const { scale, padX, padY } = fp;
         const lx = evt.nativeEvent.locationX;
         const ly = evt.nativeEvent.locationY;
-
-        // スポイトモード中は線のヒット判定を行わず、タップ位置の色を消して終了する。
-        if (eyedropperModeRef.current) {
-          const imgX = (lx - padX) / scale;
-          const imgY = (ly - padY) / scale;
-          const w = imgWRef.current;
-          const h = imgHRef.current;
-          if (imgX >= 0 && imgX < w && imgY >= 0 && imgY < h
-              // 透過済みの場所は見た目が変わらない（空振り）ので再検出まで走らせない。
-              && !isTransparentAt(rgbaRef.current, w, h, imgX, imgY)
-              // 前のスポイトが反映され終わるまでは受け付けない（連打対策）。
-              && !eyeBusyRef.current) {
-            // 画像の書き換えと記録は親が行う（元画像＋操作列を親が持っているため）。
-            // 先に波紋を描いてから実処理へ（処理中は JS が止まるので順序が重要）。
-            eyeBusyRef.current = true;
-            // 1回吸ったら自動的にスポイトを解除する。ON のまま気付かず線を
-            // ドラッグしようとして無反応に見える不具合の対策（実機報告）。
-            // 連続して使いたい場合はボタンを押し直す運用にする。
-            setEyedropperMode(false);
-            rippleThenRef.current(lx, ly, () => {
-              try {
-                onEyedropRef.current?.(imgX, imgY, eyeTolRef.current, featherRef.current);
-              } finally {
-                // 例外が出ても必ず解除する（漏らすと以後スポイトが死ぬ）。
-                eyeBusyRef.current = false;
-              }
-            });
-          }
-          return;
-        }
 
         const rys = rowRef.current;
         const cxs = colRef.current;
@@ -557,11 +422,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const header = (
     <AppHeader
       title={t('setup.title')}
-      // この画面では onBack と onHome が実質同じ動作（App.tsx側でどちらも reset）
-      // なので、アイコンを2つ並べず「戻る」を「ホーム」ラベルに変えて1つに統合する。
-      // ✨(方式変更)ボタンを追加してヘッダーが手狭になったための整理。
+      // 「戻る」は背景を消す画面へ（背景を直したくなったときのため。App.tsx 参照）。
       onBack={onBack}
-      backLabel={t('common.home')}
+      backLabel={t('common.back')}
       right={
         <HeaderActions
           showOriginal={!!originalImageUri}
@@ -607,64 +470,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           </AnimatedPressable>
         </View>
 
-        {/* スポイト: モード切替ではなく独立トグルなので、セグメンテッドコントロールの
-            外に単独の行として置く（中に入れると3等分されて文字が折り返す）。
-            枠付きシートなど自動透過が内側まで届かない画像で、背景を抜いて
-            行数・列数の検出に乗せるための下ごしらえにも使えるが、編集自体は
-            bgResult に対して行われるため noSplit（1カット書き出し）でも
-            残った背景を消す用途で普通に使える。よって noSplit でも表示する。*/}
-        {mode === 'auto' && (
-          <View style={styles.eyeRow}>
-            <AnimatedPressable
-              style={[styles.eyeBtn, eyedropperMode && styles.eyeBtnOn]}
-              onPress={() => setEyedropperMode(v => !v)}
-              pressedScale={0.98}
-            >
-              <Icon
-                name="colorize"
-                size={18}
-                color={eyedropperMode ? '#FFF' : IOS.label}
-              />
-              {/* ボタン幅は eyeBtn の flex:1 で固定なので、文字数が変わっても
-                  隣のアイコンは動かない。ただし枠に収まらないと省略記号になるため、
-                  文言は短く保つこと（英語で実際に見切れた）。*/}
-              <Text
-                style={[styles.eyeTxt, eyedropperMode && styles.eyeTxtOn]}
-                numberOfLines={1}
-              >
-                {eyedropperMode ? t('setup.tapToRemoveBg') : t('setup.eyedropperHint')}
-              </Text>
-            </AnimatedPressable>
-            {/* 取り消し / やり直し / リセットは常時表示し、使えない時は非活性にする。
-                アイコンは範囲を調整画面の下部バーと揃える。
-                取り消しは自動背景除去まで遡れるので、押し続ければ元画像に戻る。*/}
-            <AnimatedPressable
-              style={[styles.eyeIconBtn, !canUndoEdit && styles.eyeIconBtnOff]}
-              disabled={!canUndoEdit}
-              onPress={() => onUndoEdit?.()}
-              pressedScale={0.94}
-            >
-              <Icon name="undo" size={20} color={canUndoEdit ? IOS.label : IOS.secondary} />
-            </AnimatedPressable>
-            <AnimatedPressable
-              style={[styles.eyeIconBtn, !canRedoEdit && styles.eyeIconBtnOff]}
-              disabled={!canRedoEdit}
-              onPress={() => onRedoEdit?.()}
-              pressedScale={0.94}
-            >
-              <Icon name="redo" size={20} color={canRedoEdit ? IOS.label : IOS.secondary} />
-            </AnimatedPressable>
-            <AnimatedPressable
-              style={[styles.eyeIconBtn, !canUndoEdit && styles.eyeIconBtnOff]}
-              disabled={!canUndoEdit}
-              onPress={handleResetEdits}
-              pressedScale={0.94}
-            >
-              <Icon name="refresh" size={20} color={canUndoEdit ? IOS.label : IOS.secondary} />
-            </AnimatedPressable>
-          </View>
-        )}
-
         {/* プレビュー + 分割境界線オーバーレイ（自動モードのみ線を表示）*/}
         {/* PanResponder で線のタップ選択＋ドラッグ移動を処理（自動モード時のみ意味を持つ）*/}
         {/* 外側の View は「枠の幅」を測るためだけの器。高さは中の previewBox が
@@ -686,20 +491,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               source={{ uri: imageUri }}
               style={StyleSheet.absoluteFill}
               resizeMode="contain"
-            />
-          )}
-
-          {/* スポイトのタップ波紋。押した瞬間に出して「効いている」ことを示す。
-              処理中は JS が止まってアニメも止まるが、押した位置は残るので
-              「押せていない」という誤解は起きない。*/}
-          {ripple && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.eyeRipple,
-                { left: ripple.x - EYE_RIPPLE_R, top: ripple.y - EYE_RIPPLE_R },
-                rippleStyle,
-              ]}
             />
           )}
 
@@ -914,25 +705,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         </Animated.View>
       )}
 
-      {onChangeEngine && visionSupported ? (
-        <AnimatedPressable
-          style={[styles.engineFab, { bottom: Math.max(insets.bottom, 12) + 12 }]}
-          onPress={() => {
-            Alert.alert(
-              t('setup.changeEngineConfirmTitle'),
-              t('setup.changeEngineConfirmMessage'),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                { text: t('setup.changeEngineConfirmAction'), onPress: onChangeEngine },
-              ],
-            );
-          }}
-          pressedScale={0.94}
-          accessibilityLabel={t('settings.bgEngine')}
-        >
-          <Icon name="auto-awesome" size={24} color="#FFF" />
-        </AnimatedPressable>
-      ) : null}
     </View>
   );
 }
@@ -1010,46 +782,6 @@ const styles = StyleSheet.create({
     color: IOS.label,
     fontWeight: '600',
   },
-  // ── スポイトトグル（セグメンテッドコントロールの外の単独行）─────────────────
-  // トグルと「戻す」を横並びにする。戻すはスポイト使用後だけ現れる。
-  eyeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  eyeBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: IOS.fill,
-  },
-  eyeIconBtn: {
-    minWidth: 44,
-    paddingVertical: 11,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: IOS.fill,
-  },
-  eyeIconBtnOff: {
-    opacity: 0.4,
-  },
-  eyeBtnOn: {
-    backgroundColor: IOS.blue,
-  },
-  eyeTxt: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: IOS.label,
-  },
-  eyeTxtOn: {
-    color: '#FFF',
-  },
   // ── 「範囲を調整」タブのツール一覧 ────────────────────────────────────────
   toolList: {
     gap: 12,
@@ -1082,17 +814,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
-  // スポイトのタップ波紋。範囲を調整画面(PolygonEditor)と同じ見た目。
-  eyeRipple: {
-    position: 'absolute',
-    width: EYE_RIPPLE_R * 2,
-    height: EYE_RIPPLE_R * 2,
-    borderRadius: EYE_RIPPLE_R,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-
   previewBox: {
     width: '100%',
     // height は指定しない。画像のアスペクト比から求めた値をインラインで渡す
@@ -1302,23 +1023,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  engineFab: {
-    position: 'absolute',
-    left: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: IOS.blue,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.22,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-
   // ── ステッパー ─────────────────────────────────────────────────────────────
   stepper: {
     flexDirection: 'row',

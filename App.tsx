@@ -146,6 +146,7 @@ import { applyAppIcon, resolveAppIcon } from './src/appIcon';
 // 広告の同意フロー(UMP+ATT)。オンボーディング完了後に一度だけ呼ぶ（下の effect 参照）。
 import { gatherAdsConsentAndInit } from './src/ads/consent';
 import SetupScreen   from './src/components/SetupScreen';
+import RemoveBgScreen from './src/components/RemoveBgScreen';
 import ResultScreen          from './src/components/ResultScreen';
 import SaveCompleteScreen    from './src/components/SaveCompleteScreen';
 import PolygonTutorialScreen from './src/components/PolygonTutorialScreen';
@@ -180,7 +181,7 @@ type SplitMode = 'auto' | 'manual';
 // polygon_preview: 手動モードの切り取りプレビュー（PreviewScreen を表示）
 // settings:        設定画面
 // done:            書き出し完了
-type AppState = 'idle' | 'processing' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'polygon_tutorial' | 'complex_tutorial_help' | 'polygon_tutorial_help' | 'settings' | 'saved' | 'howto' | 'done';
+type AppState = 'idle' | 'processing' | 'bg_review' | 'row_confirm' | 'preview' | 'cell_editing' | 'editing' | 'polygon_preview' | 'polygon_tutorial' | 'complex_tutorial_help' | 'polygon_tutorial_help' | 'settings' | 'saved' | 'howto' | 'done';
 
 
 // DEFAULT_TOLERANCE は設定ロード前の初期値としてのみ使用。
@@ -336,10 +337,10 @@ function AppScreens() {
   const [bgResult,  setBgResult]  = useState<RemoveBgResult | null>(null);
   const bgResultRef = useRef<RemoveBgResult | null>(null);
   bgResultRef.current = bgResult;
-  // removeBackground 完了で row_confirm へ来た時だけ立てる一回きりのフラグ。
-  // SetupScreen が「背景を透明にしました」トーストを出したら下ろす（戻る操作では
-  // 立てないので誤発火しない）。
-  const [bgToastPending, setBgToastPending] = useState(false);
+  // 背景を消し終えて bg_review（背景を消す画面）へ来た時だけ立てる一回きりのフラグ。
+  // 画面が「元の画像から背景が消えていく」アニメーションを出したら下ろす
+  // （分割設定からの「戻る」では立てないので、毎回は出ない）。
+  const [bgIntroPending, setBgIntroPending] = useState(false);
   /**
    * セル個別編集(cell_editing)の間、bg.rgba（シート全体サイズ）の作り直しを
    * サボっているかどうか。cell_editing 中の画面表示は buildCellRgba が
@@ -617,19 +618,39 @@ function AppScreens() {
   };
 
   /**
-   * 「分割画面」（row_confirm/SetupScreen）から、背景除去の方式を選び直して
-   * 同じ画像を最初からやり直す。画像選択時と同じ質問（chooseBgEngine）を
-   * もう一度出すだけで、以降の処理は新規画像を選んだ時と完全に同じ経路を通る。
-   * これまでの編集（スポイト等）はどのみち別方式でのやり直しには意味を
-   * なさないため、破棄する。
+   * 「背景を消す」画面（bg_review）から、背景除去の方式を変えて同じ画像を最初からやり直す。
+   * 変えるのはこの画像だけで、設定の既定値（appSettings.bgEngine）は書き換えない。
+   * これまでの編集（スポイト等）は別方式でのやり直しには意味をなさないため破棄する。
+   * スポイトで消した分があるときだけ、捨てる前に確認する。
    */
-  const restartWithDifferentEngine = async () => {
-    if (!currentImageUri) return;
-    const engine = await chooseBgEngine(true);
-    if (engine == null) return; // 本当にキャンセル。分割画面はそのまま何も変わらない。
-    editsRef.current = []; redoStepsRef.current = [];
-    await processImage(currentImageUri, splitMode, undefined, undefined, engine);
+  const changeEngineForImage = (engine: BgEngine) => {
+    const uri = currentImageUri;
+    if (!uri) return;
+    const run = async () => {
+      editsRef.current = []; redoStepsRef.current = [];
+      await processImage(uri, splitMode, undefined, undefined, engine);
+    };
+    if (editsRef.current.length <= 1) { run(); return; }
+    Alert.alert(
+      t('removeBg.changeEngineTitle'),
+      t('removeBg.changeEngineMessage'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('removeBg.changeEngineAction'), style: 'destructive', onPress: run },
+      ],
+    );
   };
+
+  /**
+   * 「背景を消す」画面の「優先」（自動で消す強さ）を変えて消し直す。
+   * 操作列の先頭（自動の背景除去）の強さだけを差し替え、後ろのスポイトはそのまま
+   * 掛け直す（スポイトで消した分を残すため）。設定の既定値は書き換えない（この画像だけ）。
+   */
+  const changeAutoBgTolerance = useCallback((tolerance: number) => {
+    const [first, ...rest] = editsRef.current;
+    if (first?.kind !== 'autoBg') return;
+    applyEdits([{ ...first, tolerance }, ...rest], redoStepsRef.current);
+  }, [applyEdits]);
 
   /**
    * 選んだ／共有された画像1枚から処理を開始する。
@@ -858,10 +879,17 @@ function AppScreens() {
         setConfirmRows(dRows);
         // 列数の初期値も推定値にセット（行数と同じく、ユーザーが確認・修正する）
         setConfirmCols(detectColCount(result.rgba, result.width, result.height, dRows));
-        // 実際に自動透過を掛けた時だけトーストを予約する（「透過せずに編集」= steps[]
-        // では背景を透明化していないので出さない。recordTransparencyOp と同条件）。
-        setBgToastPending(steps.some(s => s.kind === 'autoBg'));
-        setAppState('row_confirm');
+        if (resumeEdits != null) {
+          // ホームの一覧から開き直したときは、背景はもう確認済みなので分割設定へ直接進む
+          // （分割設定の「戻る」で背景を消す画面に来られる）。
+          setAppState('row_confirm');
+        } else {
+          // 背景を消し終えたら、まず「背景を消す」画面で見比べてもらう。
+          // 消えていく様子のアニメーションは、実際に自動で消した時だけ出す
+          // （「透過せずに編集」= steps[] では消していない。recordTransparencyOp と同条件）。
+          setBgIntroPending(steps.some(s => s.kind === 'autoBg'));
+          setAppState('bg_review');
+        }
       }
     } catch (e: unknown) {
       Alert.alert(t('errors.processTitle'), e instanceof Error ? e.message : t('common.unknownError'));
@@ -1952,6 +1980,40 @@ function AppScreens() {
     );
   }
 
+  // ── 背景を消す画面（removeBackground 完了後・分割設定の前）────────────────
+  if (appState === 'bg_review' && bgResult) {
+    const first = edits[0];
+    const autoBg = first?.kind === 'autoBg' ? first : null;
+    return (
+      <RemoveBgScreen
+        bgResult={bgResult}
+        bgVersion={bgVersion}
+        originalImageUri={currentImageUri ?? undefined}
+        removed={autoBg != null}
+        playIntro={bgIntroPending}
+        onIntroPlayed={() => setBgIntroPending(false)}
+        engine={autoBg ? (autoBg.engine ?? 'flood') : null}
+        tolerance={autoBg ? autoBg.tolerance : null}
+        onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
+        onUndoEdit={undoEdit}
+        onRedoEdit={redoEdit}
+        onResetEdits={resetEdits}
+        // この画面の「1つ戻す」「最初に戻す」は、スポイトで消した分だけが対象。
+        // 自動の背景除去そのものまで戻すと「背景を消しました」の画面で背景が戻ってしまう。
+        canUndoEdit={edits.length > (autoBg ? 1 : 0)}
+        canRedoEdit={redoSteps.length > 0}
+        onChangeTolerance={changeAutoBgTolerance}
+        onChangeEngine={changeEngineForImage}
+        onNext={() => setAppState('row_confirm')}
+        // ホームへ戻る際は reset() を使う。setAppState('idle') 直行だと
+        // sessions 一覧が再読込されず、カードのラベルが古いまま残る（在庫の stale 表示）。
+        onBack={reset}
+        onSettings={goToSettings}
+        onHelp={() => goToHowTo('auto')}
+      />
+    );
+  }
+
   // ── 行数確認画面（自動モード: removeBackground 完了後・分割前）──────────
   if (appState === 'row_confirm' && bgResult) {
     return (
@@ -1962,14 +2024,7 @@ function AppScreens() {
         initialCols={confirmCols}
         initialBounds={confirmBounds}
         initialMode={splitMode}
-        onEyedrop={(x, y, tolerance, feather) => pushEdit({ kind: 'eyedrop', x, y, tolerance, feather })}
-        onUndoEdit={undoEdit}
-        onRedoEdit={redoEdit}
-        onResetEdits={resetEdits}
-        canUndoEdit={edits.length > 0}
-        canRedoEdit={redoSteps.length > 0}
         bgVersion={bgVersion}
-        onChangeEngine={restartWithDifferentEngine}
         onConfirm={(rows, cols, mode, noSplit, bounds) => {
           setSplitMode(mode);
           if (mode === 'auto') {
@@ -1979,24 +2034,11 @@ function AppScreens() {
             else setAppState('polygon_tutorial');
           }
         }}
-        // ホームへ戻る際は reset() を使う。setAppState('idle') 直行だと
-        // sessions 一覧が再読込されず、手動編集で mode:'custom' に変えても
-        // カードのラベルが「透過済み（自動）」のまま残る（在庫の stale 表示）。
-        // この画面では「戻る」も実質ホームへ戻る動作なので、ヘッダーの
-        // ホームアイコンは省略し「戻る」ラベルを「ホーム」にして1つに統合した
-        // （✨方式変更ボタン追加でヘッダーが手狭になったための整理）。
-        onBack={reset}
+        // 背景を直したくなったら戻れるよう、「戻る」は背景を消す画面へ。
+        onBack={() => setAppState('bg_review')}
         onSettings={goToSettings}
         onHelp={() => goToHowTo('auto')}
         originalImageUri={currentImageUri}
-        announceTransparent={bgToastPending}
-        onAnnounced={() => setBgToastPending(false)}
-      />
-      <BgEngineChoiceModal
-        visible={bgEngineChoiceVisible}
-        subjectSupported={subjectSupported}
-        onChoose={handleBgEngineChoose}
-        onCancel={handleBgEngineCancel}
       />
       </>
     );

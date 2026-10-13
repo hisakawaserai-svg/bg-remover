@@ -148,12 +148,18 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // 画像そのものが作り直された場合は手動で決めた行数・列数の前提も崩れるので、
   // 両方とも推定し直す。列数のしきい値は App.tsx の初期推定と同じ既定の定数を使う
   // （保存済みの splitTolerance を使うと、初期推定と再推定で基準がズレるため）。
+  // 自動で出した行数・列数。「線の位置をリセット」で行数・列数も戻すときにも使う。
+  // 検出は全画素を走査するので、画像が作り直されたとき（bgVersion）だけ計算し直す。
+  const detected = useMemo(() => {
+    const dRows = detectRowCount(bgResult.rgba, bgResult.width, bgResult.height);
+    return { rows: dRows, cols: detectColCount(bgResult.rgba, bgResult.width, bgResult.height, dRows) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgResult, bgVersion]);
   const firstVersionRef = useRef(true);
   useEffect(() => {
     if (firstVersionRef.current) { firstVersionRef.current = false; return; }
-    const dRows = detectRowCount(bgResult.rgba, bgResult.width, bgResult.height);
-    setRows(dRows);
-    setCols(detectColCount(bgResult.rgba, bgResult.width, bgResult.height, dRows));
+    setRows(detected.rows);
+    setCols(detected.cols);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgVersion]);
 
@@ -288,31 +294,35 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     setColXsImg(calcRowBoundaries(bgResult.width, cols));
   }, [bgResult.width, cols]);
 
-  // 「線の位置をリセット」: 行数・列数はそのままで、動かした線を等分割に戻す。
-  // すでに等分割なら押しても何も変わらないので無効にする（押せる＝動かした線がある、と分かる）。
+  // 「線の位置をリセット」: 押すと「位置だけ」か「位置と行数・列数も」かを選ぶ。
+  // 線が等分割で、行数・列数も自動で出した数のままなら、押しても何も変わらないので無効にする
+  // （押せる＝何か手を加えてある、と分かる）。
   const linesAreEven = useMemo(() => {
     const same = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
     return same(rowYsImg, calcRowBoundaries(bgResult.height, rows))
       && same(colXsImg, calcRowBoundaries(bgResult.width, cols));
   }, [rowYsImg, colXsImg, rows, cols, bgResult.width, bgResult.height]);
+  const nothingToReset = linesAreEven && rows === detected.rows && cols === detected.cols;
   // 線の移動は取り消し（undo）の対象外なので、押し間違いに備えて確認を出す。
   const resetLines = useCallback(() => {
+    // 線は行数・列数の変化でも等分割に作り直される（上の effect）が、本数が同じだと
+    // effect が走らないので、どちらの場合も線はここで明示的に等分割にする。
+    const resetTo = (r: number, c: number) => {
+      setRows(r);
+      setCols(c);
+      setRowYsImg(calcRowBoundaries(bgResult.height, r));
+      setColXsImg(calcRowBoundaries(bgResult.width, c));
+    };
     Alert.alert(
       t('setup.resetLinesTitle'),
       t('setup.resetLinesMessage'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.reset'),
-          style: 'destructive',
-          onPress: () => {
-            setRowYsImg(calcRowBoundaries(bgResult.height, rows));
-            setColXsImg(calcRowBoundaries(bgResult.width, cols));
-          },
-        },
+        { text: t('setup.resetLinesPositionsOnly'), style: 'destructive', onPress: () => resetTo(rows, cols) },
+        { text: t('setup.resetLinesWithCounts'), style: 'destructive', onPress: () => resetTo(detected.rows, detected.cols) },
       ],
     );
-  }, [t, bgResult.width, bgResult.height, rows, cols]);
+  }, [t, bgResult.width, bgResult.height, rows, cols, detected]);
 
   // 横線: 各 rowYsImg を display y に変換（全幅共通の線）
   const lineYs = useMemo(() => {
@@ -816,7 +826,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               <AnimatedPressable
                 style={styles.checkRow}
                 onPress={resetLines}
-                disabled={noSplit || linesAreEven}
+                disabled={noSplit || nothingToReset}
                 pressedScale={0.98}
               >
                 <Icon name="refresh" size={20} color={IOS.blue} />

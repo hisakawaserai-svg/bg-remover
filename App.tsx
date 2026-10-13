@@ -265,6 +265,9 @@ function AppScreens() {
   // confirmBounds: SetupScreen で編集した分割境界線（画像座標系）。分割後に SetupScreen へ
   // 戻った時の線の初期値に使う（null なら等分割で初期化）。編集内容を画面遷移で失わないため。
   const [confirmBounds, setConfirmBounds] = useState<{ rowYsImg: number[]; colXsImg: number[] } | null>(null);
+  // 前回「分割しない」で切ったか。分割設定へ戻ったときのチェックの初期値と、
+  // 分割結果の「リセット」で切り直すときに使う（覚えておかないと等分割に戻ってしまう）。
+  const [confirmNoSplit, setConfirmNoSplit] = useState(false);
   // cells: 自動分割結果のセル一覧。auto=BBox保持, poly=マスク済みRGBA保持。
   const [cells,     setCells]     = useState<Cell[]>([]);
   // editingCellIdx: cell_editing 中に手動分割中のセルのインデックス
@@ -961,6 +964,7 @@ function AppScreens() {
     setConfirmRows(n);
     setConfirmCols(c);
     setConfirmBounds(bounds ?? null);
+    setConfirmNoSplit(noSplit);
     setCells(prev => {
       // 再分割で置き換わる旧セルのサムネを削除（ユニーク名化により上書きされないため、孤児化防止）
       for (const old of prev) {
@@ -992,7 +996,7 @@ function AppScreens() {
         keyConfig: { tolerance: appSettings.tolerance, rows: n, cols: c },
         // bounds も保存し、復元後に SetupScreen へ戻っても編集した線を再現できるようにする。
         // noSplit でも保存する（切り出しには使わないが、戻って分割し直すときに線を残すため）。
-        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds },
+        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds, noSplit },
         thumbUri: newCells[0]?.thumbUri,
         updatedAt: Date.now(),
         edits: editsRef.current,
@@ -1117,14 +1121,15 @@ function AppScreens() {
         imageUri: currentImageUri,
         step: 'keyed',
         mode: 'auto',
-        keyConfig: { tolerance: appSettings.tolerance, rows },
-        autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells },
+        keyConfig: { tolerance: appSettings.tolerance, rows, cols },
+        // 線の位置と「分割しない」も残す。丸ごと置き換えるので、渡さないと消える。
+        autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells, bounds: confirmBounds ?? undefined, noSplit: confirmNoSplit },
         updatedAt: Date.now(),
         edits: editsRef.current,
       });
       void reloadSessions();
     }
-  }, [cells, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows]);
+  }, [cells, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, cols, confirmBounds, confirmNoSplit]);
 
   // ── 合体ブロックのポリゴン分割確定 ──────────────────────────────────────────
   // PolygonEditor からポリゴンを受け取り、cells[editingCellIdx] を差し替える。
@@ -1347,14 +1352,15 @@ function AppScreens() {
         imageUri: currentImageUri,
         step: 'keyed',
         mode: 'auto',
-        keyConfig: { tolerance: appSettings.tolerance, rows },
-        autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells },
+        keyConfig: { tolerance: appSettings.tolerance, rows, cols },
+        // 線の位置と「分割しない」も残す。丸ごと置き換えるので、渡さないと消える。
+        autoData: { rows, tolerance: appSettings.tolerance, cells: savedCells, bounds: confirmBounds ?? undefined, noSplit: confirmNoSplit },
         updatedAt: Date.now(),
         edits: editsRef.current,
       });
       void reloadSessions();
     }
-  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, flushBgRgba]);
+  }, [cells, editingCellIdx, bgResult, currentSessionId, currentImageUri, appSettings.tolerance, rows, cols, confirmBounds, confirmNoSplit, flushBgRgba]);
 
   /** 「決定/プレビュー」ボタン。確定して一覧へ戻る。 */
   const handleCellEditConfirm = useCallback((polys: Polygon[]) => { void commitCellEdit(polys); }, [commitCellEdit]);
@@ -1476,6 +1482,9 @@ function AppScreens() {
     setPolygons([]);
     setCurrentSessionId(null);
     setCurrentImageUri('');
+    // 次の画像に前の画像の線・「分割しない」を持ち越さない。
+    setConfirmBounds(null);
+    setConfirmNoSplit(false);
     setAppState('idle');
     void reloadSessions(); // ホームに戻ったときセッション一覧を最新化
   };
@@ -1551,6 +1560,7 @@ function AppScreens() {
     if (latest.keyConfig?.rows) setConfirmRows(latest.keyConfig.rows);
     if (latest.keyConfig?.cols) setConfirmCols(latest.keyConfig.cols);
     setConfirmBounds(latest.autoData?.bounds ?? null);
+    setConfirmNoSplit(latest.autoData?.noSplit ?? false);
 
     // ── 書き出し済み（step='done'）── 保存完了画面へ直行 ──────────────────────
     // 作業が完了しているセッションで分割結果を開いても「もう一度保存する」しか
@@ -2028,6 +2038,7 @@ function AppScreens() {
         initialRows={confirmRows}
         initialCols={confirmCols}
         initialBounds={confirmBounds}
+        initialNoSplit={confirmNoSplit}
         initialMode={splitMode}
         bgVersion={bgVersion}
         onConfirm={(rows, cols, mode, noSplit, bounds) => {
@@ -2064,7 +2075,7 @@ function AppScreens() {
         onHelp={() => goToHowTo('result')}
         onSave={doAutoExport}
         // リセット: 確定時の行数・列数・境界線で分割し直し、合体やカット編集を破棄して初期状態へ戻す
-        onReSplit={() => doSplit(rows, false, cols, confirmBounds ?? undefined)}
+        onReSplit={() => doSplit(rows, confirmNoSplit, cols, confirmBounds ?? undefined)}
         // どちらも PolygonEditor へ入るので goToEditor 経由（ローディングを挟む）
         onManualSplit={() => goToEditor('editing')}
         onEditCell={(i) => {

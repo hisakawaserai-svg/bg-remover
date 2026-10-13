@@ -116,5 +116,7 @@ export interface StickerSession {
      * 初期値に使う。未編集/等分のままでも等分値がそのまま入る。復元後の再編集用。
      */
     bounds?: { rowYsImg: number[]; colXsImg: number[] };
+    /** 「分割しない」で切ったか。分割設定へ戻ったときにチェックを付けたままにする。 */
+    noSplit?: boolean;
   };
 }

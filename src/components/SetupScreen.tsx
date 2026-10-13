@@ -74,6 +74,8 @@ interface Props {
    */
   initialBounds?: { rowYsImg: number[]; colXsImg: number[] } | null;
   initialMode?: SetupMode;
+  /** 「分割しない」の初期値。前回「分割しない」で切ってから戻ってきたときに true。 */
+  initialNoSplit?: boolean;
   onConfirm: (
     rows: number,
     cols: number,
@@ -94,7 +96,7 @@ interface Props {
   originalImageUri?: string;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, bgVersion = 0, onSettings, onHelp, originalImageUri }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', initialNoSplit = false, onConfirm, onBack, bgVersion = 0, onSettings, onHelp, originalImageUri }: Props) {
   const { settings } = useSettings();
   const { t } = useT();
   const thumbBg = useThumbBg();
@@ -104,7 +106,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
   const [zoomVisible, setZoomVisible] = useState(false);
   const [mode, setMode] = useState<SetupMode>(initialMode);
-  const [noSplit, setNoSplit] = useState(false);
+  const [noSplit, setNoSplit] = useState(initialNoSplit);
   const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
   // ── グリッド線の選択状態（今回は「タップ選択＋ハイライト表示」まで）─────────────
   // axis='row'→横線、'col'→縦線。index は lineYs / lineXs の添字。null=未選択。

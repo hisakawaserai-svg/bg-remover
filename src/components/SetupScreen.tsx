@@ -37,7 +37,6 @@ import HeaderActions from './ui/HeaderActions';
 import ImageZoomModal from './ui/ImageZoomModal';
 import Card from './ui/Card';
 import CheckerboardBg from './ui/CheckerboardBg';
-import ToleranceSlider from './ui/ToleranceSlider';
 import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
 import { useT } from '../i18n';
@@ -47,7 +46,7 @@ import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
 import { useThumbBg } from '../hooks/useThumbBg';
 import { useVisionSupported } from '../hooks/useVisionSupported';
-import { isTransparentAt, detectRowCount, detectColCount, toleranceToGapParams } from '../imaging';
+import { isTransparentAt, detectRowCount, detectColCount } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 
 /** スポイトのタップ波紋の半径(px)。範囲を調整画面と同じ値にして見た目を揃える。 */
@@ -119,7 +118,7 @@ interface Props {
 }
 
 export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHelp, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const { t } = useT();
   const insets = useSafeAreaInsets();
   const thumbBg = useThumbBg();
@@ -129,10 +128,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const [cols, setCols] = useState(initialCols ?? 1);
   // ヘッダー「元画像」ズームモーダルの表示状態（分割結果と同挙動）
   const [zoomVisible, setZoomVisible] = useState(false);
-  // スライダー操作中の表示用。確定時に updateSettings へ反映する。
-  // 背景除去の settings.tolerance とは別キー（splitTolerance）を使う。
-  // 共有していた頃は、分割の細かさを動かすと以後の背景除去の強さまで変わってしまった。
-  const [splitTolerance, setSplitTolerance] = useState(settings.splitTolerance);
   const [mode, setMode] = useState<SetupMode>(initialMode);
   // スポイトモード: ON中は画像タップでその位置の色を消す（線のドラッグは無効化）。
   // 枠付きシートのように自動透過が内側まで届かない画像で、背景を抜いてから
@@ -152,33 +147,15 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   // 画像が作り直されたら行数・列数を検出し直す（スポイト・取り消し・やり直し共通）。
   // 検出は alpha の帯だけを見るので、背景が抜ける前は区切りが無く 1×1 になる。
   // 初期表示(bgVersion=0)は親が渡した推定値を尊重するので何もしない。
-  // 列数の自動推定は「まだステッパーを手動で触っていない時だけ」効かせるためのフラグ。
-  // 手動で決めた列数を、スライダー操作の再推定で勝手に上書きしないための歯止め。
-  const colsManualRef = useRef(false);
-  /**
-   * 「分割の細かさ」(splitTolerance) を列検出のしきい値に変換して、列数を推定し直す。
-   * この値をここで使うのは、スライダーが動かしている対象が
-   * 「どれくらいの隙間を列の切れ目とみなすか」＝列検出のしきい値そのものだから。
-   * 既定値 30 では従来の定数(MIN_REAL_GAP=6 / RELATIVE_GAP_THRESHOLD=0.3)と
-   * 完全に一致するので、スライダーを触らない限り従来と同じ推定結果になる。
-   */
-  const recalcCols = useCallback((nextRows: number, tol: number) => {
-    const { minRealGap, relativeGapThreshold } = toleranceToGapParams(tol);
-    setCols(detectColCount(
-      bgResult.rgba, bgResult.width, bgResult.height, nextRows,
-      minRealGap, relativeGapThreshold,
-    ));
-  }, [bgResult]);
-
+  // 画像そのものが作り直された場合は手動で決めた行数・列数の前提も崩れるので、
+  // 両方とも推定し直す。列数のしきい値は App.tsx の初期推定と同じ既定の定数を使う
+  // （保存済みの splitTolerance を使うと、初期推定と再推定で基準がズレるため）。
   const firstVersionRef = useRef(true);
   useEffect(() => {
     if (firstVersionRef.current) { firstVersionRef.current = false; return; }
     const dRows = detectRowCount(bgResult.rgba, bgResult.width, bgResult.height);
     setRows(dRows);
-    // 画像そのものが作り直された場合は手動指定の前提が崩れるので、手動フラグを
-    // 解除して行数・列数とも推定し直す（従来どおりの挙動）。
-    colsManualRef.current = false;
-    recalcCols(dRows, splitTolerance);
+    setCols(detectColCount(bgResult.rgba, bgResult.width, bgResult.height, dRows));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgVersion]);
 
@@ -771,15 +748,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    // 直接操作したら以後は自動推定を止める（スライダーで上書きしない）
-                    onPress={() => { colsManualRef.current = true; setCols(v => clamp(v - 1, 1, 20)); }}
+                    onPress={() => setCols(v => clamp(v - 1, 1, 20))}
                   >
                     <Text style={styles.stepTxt}>−</Text>
                   </AnimatedPressable>
                   <Text style={styles.stepVal}>{cols}</Text>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => { colsManualRef.current = true; setCols(v => clamp(v + 1, 1, 20)); }}
+                    onPress={() => setCols(v => clamp(v + 1, 1, 20))}
                   >
                     <Text style={styles.stepTxt}>+</Text>
                   </AnimatedPressable>
@@ -826,18 +802,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
               </Animated.View>
             )}
             </View>
-            <ToleranceSlider
-              value={splitTolerance}
-              onChange={setSplitTolerance}
-              onComplete={final => {
-                // 書き込むのは splitTolerance だけ。背景除去用の tolerance には触らない。
-                void updateSettings({ splitTolerance: final });
-                // 確定時にだけ列数を推定し直す。detectColCount は全画素走査なので、
-                // ドラッグ中(onChange)の毎フレーム実行はコストが高すぎる。
-                // 手動でステッパーを触った後(colsManualRef)は上書きしない。
-                if (!colsManualRef.current) recalcCols(rows, final);
-              }}
-            />
           </>
         )}
 

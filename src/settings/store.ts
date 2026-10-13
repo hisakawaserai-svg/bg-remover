@@ -11,6 +11,8 @@
  *              デフォルト 30 / 範囲 0〜100
  *   splitTolerance: 「分割の細かさ」（列検出のしきい値に変換して使う値）
  *              デフォルト 30 / 範囲 0〜100
+ *              1.2.2 でスライダーを廃止し、どこからも読まれていない。
+ *              保存済みデータとの互換のためにキーだけ残している。
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

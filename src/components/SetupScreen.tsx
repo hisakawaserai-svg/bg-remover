@@ -61,6 +61,40 @@ function clampBetween(valImg: number, arr: number[], index: number, dim: number)
   return Math.round(clamp(valImg, lo, hi));
 }
 
+/**
+ * 線の本数を target に合わせる。手で動かした線はそのまま残し、増減した分だけ足し引きする。
+ * （線がまだ等間隔のままなら、増減後も等間隔に並べ直す）
+ * - 足す: いちばん広いすき間（端 0 / dim も含む）の真ん中に1本入れる、を繰り返す
+ * - 減らす: 両側のすき間の合計がいちばん狭い線を1本抜く、を繰り返す
+ *   （詰まっている所の線を抜くので、残りの格子の偏りが小さい）
+ */
+export function adjustLines(lines: number[], dim: number, target: number): number[] {
+  // まだ手で動かしていない（等間隔のまま）なら、増減後も等間隔にする。
+  // 足し引きで作ると 1段→3段 が 1/4・1/2 のように偏るため。
+  const even = calcRowBoundaries(dim, lines.length + 1);
+  if (even.length === lines.length && even.every((v, i) => v === lines[i])) {
+    return calcRowBoundaries(dim, target + 1);
+  }
+  const next = [...lines];
+  while (next.length < target) {
+    const edges = [0, ...next, dim];
+    let best = 0;
+    for (let i = 1; i < edges.length - 1; i++) {
+      if (edges[i + 1] - edges[i] > edges[best + 1] - edges[best]) best = i;
+    }
+    next.splice(best, 0, Math.round((edges[best] + edges[best + 1]) / 2));
+  }
+  while (next.length > target) {
+    const edges = [0, ...next, dim];
+    let worst = 0;
+    for (let i = 1; i < next.length; i++) {
+      if (edges[i + 2] - edges[i] < edges[worst + 2] - edges[worst]) worst = i;
+    }
+    next.splice(worst, 1);
+  }
+  return next;
+}
+
 type SetupMode = 'auto' | 'manual';
 
 interface Props {
@@ -76,6 +110,18 @@ interface Props {
   initialMode?: SetupMode;
   /** 「分割しない」の初期値。前回「分割しない」で切ってから戻ってきたときに true。 */
   initialNoSplit?: boolean;
+  /**
+   * 行数・列数・線の位置・モード・「分割しない」が変わるたびに呼ぶ。親はこれを次の initial* に使う。
+   * この画面は「戻る」や設定・使い方へ行くと閉じて state が消えるため、親に預けておかないと
+   * 戻ってきたときに分割前の線が等間隔に戻ってしまう。
+   */
+  onDraftChange?: (draft: {
+    rows: number;
+    cols: number;
+    mode: SetupMode;
+    noSplit: boolean;
+    bounds: { rowYsImg: number[]; colXsImg: number[] };
+  }) => void;
   onConfirm: (
     rows: number,
     cols: number,
@@ -96,7 +142,7 @@ interface Props {
   originalImageUri?: string;
 }
 
-export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', initialNoSplit = false, onConfirm, onBack, bgVersion = 0, onSettings, onHelp, originalImageUri }: Props) {
+export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', initialNoSplit = false, onDraftChange, onConfirm, onBack, bgVersion = 0, onSettings, onHelp, originalImageUri }: Props) {
   const { settings } = useSettings();
   const { t } = useT();
   const thumbBg = useThumbBg();
@@ -131,6 +177,9 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     if (firstVersionRef.current) { firstVersionRef.current = false; return; }
     setRows(detected.rows);
     setCols(detected.cols);
+    // 画像そのものが変わったので、手で動かした線の前提も崩れる。等間隔から出し直す。
+    setRowYsImg(calcRowBoundaries(bgResult.height, detected.rows));
+    setColXsImg(calcRowBoundaries(bgResult.width, detected.cols));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgVersion]);
 
@@ -226,18 +275,25 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
       ? initialBounds.colXsImg
       : calcRowBoundaries(bgResult.width, cols),
   );
-  // 行数/画像高さが「マウント後に」変わったら等分で再初期化（本数が変わり編集は保持不可のため破棄）。
-  // マウント初回は上の初期値(=前回編集の復元)を上書きしないよう ref でスキップする。
-  const rowInitRef = useRef(true);
-  const colInitRef = useRef(true);
+  // 行数・列数の ＋／− では、手で動かした線を残して増減した分だけ足し引きする（adjustLines）。
+  // 以前は本数が変わるたびに全部を等間隔に作り直していたので、1本足すだけで調整が消えていた。
+  // 等間隔に戻すのは「線の位置をリセット」と、画像が作り直されたとき（上の bgVersion）だけ。
+  const changeRows = useCallback((next: number) => {
+    const r = clamp(next, 1, 20);
+    setRows(r);
+    setRowYsImg(prev => adjustLines(prev, bgResult.height, r - 1));
+  }, [bgResult.height]);
+  const changeCols = useCallback((next: number) => {
+    const c = clamp(next, 1, 20);
+    setCols(c);
+    setColXsImg(prev => adjustLines(prev, bgResult.width, c - 1));
+  }, [bgResult.width]);
+
+  // 編集中の内容を親へ預ける（onDraftChange の説明を参照）。
   useEffect(() => {
-    if (rowInitRef.current) { rowInitRef.current = false; return; }
-    setRowYsImg(calcRowBoundaries(bgResult.height, rows));
-  }, [bgResult.height, rows]);
-  useEffect(() => {
-    if (colInitRef.current) { colInitRef.current = false; return; }
-    setColXsImg(calcRowBoundaries(bgResult.width, cols));
-  }, [bgResult.width, cols]);
+    onDraftChange?.({ rows, cols, mode, noSplit, bounds: { rowYsImg, colXsImg } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, cols, mode, noSplit, rowYsImg, colXsImg]);
 
   // 「線の位置をリセット」: 押すと「位置だけ」か「位置と行数・列数も」かを選ぶ。
   // 線が等分割で、行数・列数も自動で出した数のままなら、押しても何も変わらないので無効にする
@@ -250,8 +306,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
   const nothingToReset = linesAreEven && rows === detected.rows && cols === detected.cols;
   // 線の移動は取り消し（undo）の対象外なので、押し間違いに備えて確認を出す。
   const resetLines = useCallback(() => {
-    // 線は行数・列数の変化でも等分割に作り直される（上の effect）が、本数が同じだと
-    // effect が走らないので、どちらの場合も線はここで明示的に等分割にする。
+    // 行数・列数の ＋／− は線を残すので、リセットでは線をここで明示的に等分割にする。
     const resetTo = (r: number, c: number) => {
       setRows(r);
       setCols(c);
@@ -544,14 +599,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setRows(v => clamp(v - 1, 1, 20))}
+                    onPress={() => changeRows(rows - 1)}
                   >
                     <Text style={styles.stepTxt}>−</Text>
                   </AnimatedPressable>
                   <Text style={styles.stepVal}>{rows}</Text>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setRows(v => clamp(v + 1, 1, 20))}
+                    onPress={() => changeRows(rows + 1)}
                   >
                     <Text style={styles.stepTxt}>+</Text>
                   </AnimatedPressable>
@@ -574,14 +629,14 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 <View style={[styles.stepper, noSplit && styles.disabled]}>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setCols(v => clamp(v - 1, 1, 20))}
+                    onPress={() => changeCols(cols - 1)}
                   >
                     <Text style={styles.stepTxt}>−</Text>
                   </AnimatedPressable>
                   <Text style={styles.stepVal}>{cols}</Text>
                   <AnimatedPressable
                     style={styles.stepBtn}
-                    onPress={() => setCols(v => clamp(v + 1, 1, 20))}
+                    onPress={() => changeCols(cols + 1)}
                   >
                     <Text style={styles.stepTxt}>+</Text>
                   </AnimatedPressable>

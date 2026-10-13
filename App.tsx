@@ -2056,6 +2056,14 @@ function AppScreens() {
         initialCols={confirmCols}
         initialBounds={confirmBounds}
         initialNoSplit={confirmNoSplit}
+        // 編集中の行数・列数・線を預かる。背景を消す画面・設定・使い方へ行って戻っても残すため。
+        onDraftChange={d => {
+          setConfirmRows(d.rows);
+          setConfirmCols(d.cols);
+          setConfirmBounds(d.bounds);
+          setConfirmNoSplit(d.noSplit);
+          setSplitMode(d.mode);
+        }}
         initialMode={splitMode}
         bgVersion={bgVersion}
         onConfirm={(rows, cols, mode, noSplit, bounds) => {

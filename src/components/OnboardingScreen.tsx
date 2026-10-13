@@ -36,6 +36,7 @@ import Screen from './ui/Screen';
 import { colors, spacing, radius } from './ui/theme';
 import OnboardingStep1 from './onboarding/OnboardingStep1';
 import OnboardingStep2 from './onboarding/OnboardingStep2';
+import OnboardingStepBg, { STEP_BG_CYCLE_MS } from './onboarding/OnboardingStepBg';
 import OnboardingStep3 from './onboarding/OnboardingStep3';
 import OnboardingStep4 from './onboarding/OnboardingStep4';
 import { useT } from '../i18n';
@@ -45,7 +46,7 @@ const SLIDE_Y = 28;
 
 // 各ステップのアニメ1ループ長(ms)。プログレスバーをそのステップの再生に同期させる。
 // 各 OnboardingStepN の CYCLE_MS と対応(ズレたらここを合わせる)。
-const STEP_DURATIONS = [12000, 16000, 11000, 11000];
+const STEP_DURATIONS = [12000, STEP_BG_CYCLE_MS, 16000, 11000, 11000];
 
 /**
  * ProgressSegment — プログレスバーの1ステップ分。
@@ -111,6 +112,8 @@ function Placeholder({ label, tint }: { label: string; tint: string }) {
 
 const STEPS: StepDef[] = [
   { key: 'step1', tint: '#D6E6FF', render: active => <OnboardingStep1 active={active} /> },
+  // 背景を消す画面（画像を選んだ直後に出る。消えたことの確認と、下地・強さでの直し方）
+  { key: 'stepBg', tint: '#DFF1FA', render: active => <OnboardingStepBg active={active} /> },
   { key: 'step2', tint: '#D9F2E3', render: active => <OnboardingStep2 active={active} /> },
   { key: 'step3', tint: '#FFE7D6', render: active => <OnboardingStep3 active={active} /> },
   { key: 'step4', tint: '#EADBFF', render: active => <OnboardingStep4 active={active} /> },

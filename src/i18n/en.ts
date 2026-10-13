@@ -582,6 +582,13 @@ const en: typeof ja = {
       dragHint: "If a line's off, drag it with your finger",
       bubble: 'Set the rows and columns, then tap "Split"',
     },
+    stepBg: {
+      removed: 'The checkered area is now transparent',
+      compare: 'You can compare it with the original',
+      backdrop: 'Change the backdrop to find spots removed by mistake',
+      strength: 'Move toward "Keep subject" a little at a time to bring them back',
+      next: 'Looks clean? Tap "Next: Split"',
+    },
     step3: {
       caption: 'Check the cutouts!',
       bubble: 'If they look good, tap "Save"',

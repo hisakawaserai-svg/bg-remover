@@ -2404,6 +2404,9 @@ function AppScreens() {
     <Screen
       style={styles.container}
       header={appState === 'idle' ? homeHeader : undefined}
+      // 読み込み・背景を消している間は、共通の半透明ローディングを本文の上に重ねる。
+      // 画面全体に重ねると下の広告を覆ってしまう（AdMob のポリシー違反）ので、overlay に渡す。
+      overlay={isBusy ? <LoadingView overlay message={t('home.processing')} /> : undefined}
       footer={
         <>
           {appState === 'idle' && (
@@ -2607,8 +2610,6 @@ function AppScreens() {
         )}
 
     </Screen>
-    {/* ── 読み込み・背景を消している間: 共通の半透明ローディングを全面に重ねる ── */}
-    {isBusy && <LoadingView overlay message={t('home.processing')} />}
     <BgEngineChoiceModal
       visible={bgEngineChoiceVisible}
       subjectSupported={subjectSupported}

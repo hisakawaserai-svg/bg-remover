@@ -16,6 +16,10 @@
  *                   画面内でドラッグ操作をする間、ScrollView にジェスチャーを
  *                   奪われないよう false にする用途。
  *   bg        — 背景色（デフォルト #F2F2F7）
+ *   overlay   — 本文の上だけに重ねるもの（半透明のローディングなど）。
+ *               ヘッダーとフッターの間だけを覆う。フッターには広告があり、
+ *               広告に何かを重ねるのは AdMob のポリシー違反になるため、
+ *               画面全体ではなくここに置く。
  */
 
 import React from 'react';
@@ -43,6 +47,8 @@ interface Props {
    */
   scrollEnabled?: boolean;
   bg?: string;
+  /** 本文（ヘッダーとフッターの間）だけに重ねるもの。広告のあるフッターは覆わない。 */
+  overlay?: React.ReactNode;
 }
 
 export default function Screen({
@@ -53,6 +59,7 @@ export default function Screen({
   scrollable = true,
   scrollEnabled = true,
   bg = '#F2F2F7',
+  overlay,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -66,6 +73,7 @@ export default function Screen({
         </View>
       )}
 
+      <View style={styles.fill}>
       {scrollable ? (
         <ScrollView
           style={styles.fill}
@@ -92,6 +100,8 @@ export default function Screen({
           {children}
         </View>
       )}
+      {overlay}
+      </View>
 
       {footer && (
         // ScrollView の外に固定。ホームインジケータ分の padding を確保。

@@ -9,7 +9,7 @@ import { pointInPolygon } from './maskPolygon';
 import { splitRowsThenCols, splitNone, cropToImage } from './splitObjects';
 import type { BBox } from './splitObjects';
 
-export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace, analyzeExistingTransparency } from './removeBackground';
+export { removeBackground, TOLERANCE, removeColorAt, isTransparentAt, loadImagePixels, removeBackgroundInPlace, analyzeExistingTransparency, estimateBackgroundColors } from './removeBackground';
 export type { TransparencyStats } from './removeBackground';
 export {
   removeBackgroundVision,

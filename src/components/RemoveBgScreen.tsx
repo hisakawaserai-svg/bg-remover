@@ -44,6 +44,7 @@ import Screen from './ui/Screen';
 import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import CheckerboardBg from './ui/CheckerboardBg';
+import LoadingView from './ui/LoadingView';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import ToleranceSlider, { REMOVAL_SNAPS, REMOVAL_EDGE_ICONS, EDGE_LABEL_STYLE } from './ui/ToleranceSlider';
 import { colors, radius, shadow, spacing } from './ui/theme';
@@ -54,7 +55,7 @@ import { useVisionSupported } from '../hooks/useVisionSupported';
 import { isTransparentAt } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
 import { DEFAULTS } from '../settings/store';
-import type { BgEngine } from '../settings/store';
+import type { BgEngine, ThumbBg } from '../settings/store';
 
 /**
  * 道具を開閉するときの動き。見出し・ボタンの出入りと画像の伸び縮みを同じ曲線でそろえる
@@ -108,6 +109,37 @@ function Collapsible({ progress, children, style }: {
   );
 }
 
+/** 下地の切り替えアイコン。分割結果・プレビュー・範囲を調整と同じ対応。 */
+const BG_ICONS: Record<ThumbBg, string> = {
+  checker: 'grid-on',
+  white: 'wb-sunny',
+  black: 'brightness-2',
+  gray: 'grid-on',
+};
+const BG_MODES = ['checker', 'white', 'black'] as const;
+
+/**
+ * 色ベースで消した背景の色（最大2色）を小さな四角で見せる。
+ * 1色ならその色で塗り、2色なら対角線で区切って左上・右下に塗り分ける。
+ * 色が分からない（求められなかった）ときは、元の画像を表す薄い空色にする。
+ */
+function BgColorSwatch({ colors: cs, size }: { colors: { r: number; g: number; b: number }[]; size: number }) {
+  const css = (c: { r: number; g: number; b: number }) => `rgb(${c.r},${c.g},${c.b})`;
+  if (cs.length === 0) return <View style={[StyleSheet.absoluteFill, styles.statusSwatchBefore]} />;
+  if (cs.length === 1) return <View style={[StyleSheet.absoluteFill, { backgroundColor: css(cs[0]) }]} />;
+  // 幅・高さ 0 の View に上と右の太い枠を付けると、左下→右上の対角線で2色の三角に分かれる。
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <View style={[styles.swatchTriangle, {
+        borderTopWidth: size, borderRightWidth: size,
+        borderTopColor: css(cs[0]), borderRightColor: css(cs[1]),
+      }]} />
+      {/* 区切り線。2色が似ていても境目が分かるよう、白い細線を対角線に重ねる。 */}
+      <View style={[styles.swatchDivider, { width: size * Math.SQRT2, top: size / 2, left: -(size * Math.SQRT2 - size) / 2 }]} />
+    </View>
+  );
+}
+
 /** スポイトのタップ波紋の半径(px)。分割設定・範囲を調整と同じ値。 */
 const EYE_RIPPLE_R = 26;
 
@@ -126,6 +158,8 @@ interface Props {
   /** 処理直後だけ true。元の画像から背景が消えていくアニメーションを1回見せる。 */
   playIntro: boolean;
   onIntroPlayed: () => void;
+  /** 色ベースで背景とみなした色（最大2色）。「元の画像」表示中に左の四角で見せる。 */
+  bgColors: { r: number; g: number; b: number }[];
   /** 自動で背景を消したときの方式と強さ。消していなければ null。 */
   engine: BgEngine | null;
   tolerance: number | null;
@@ -146,13 +180,16 @@ interface Props {
 }
 
 export default function RemoveBgScreen({
-  bgResult, bgVersion, originalImageUri, removed, playIntro, onIntroPlayed,
+  bgResult, bgVersion, originalImageUri, removed, playIntro, onIntroPlayed, bgColors,
   engine, tolerance, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit,
   onChangeTolerance, onChangeEngine, onNext, onBack, onHelp, onSettings,
 }: Props) {
   const { t } = useT();
   const { settings } = useSettings();
-  const thumbBg = useThumbBg();
+  // 下地はこの画面の中だけで切り替える（分割結果画面と同じ。設定は書き換えない）。
+  const defaultBg = useThumbBg();
+  const [bgMode, setBgMode] = useState<ThumbBg>(defaultBg);
+  const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const visionSupported = useVisionSupported();
 
   const [open, setOpen] = useState(false);
@@ -310,10 +347,20 @@ export default function RemoveBgScreen({
   useEffect(() => {
     if (tolerance != null) setStrengthValue(tolerance);
   }, [tolerance]);
+  // 消し直しは全画素の再計算で、その間 JS が止まる。先に半透明のローディングを描いてから
+  // （2フレーム待ってから）消し直す。待たずに呼ぶとローディングが描かれる前に固まる。
+  const [reprocessing, setReprocessing] = useState(false);
   const commitStrength = useCallback((v: number) => {
     setStrengthValue(v);
     if (tolerance == null || v === tolerance) return;
-    onChangeTolerance(v);
+    setReprocessing(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        onChangeTolerance(v);
+      } finally {
+        setReprocessing(false);
+      }
+    }));
   }, [tolerance, onChangeTolerance]);
 
   const header = (
@@ -349,7 +396,10 @@ export default function RemoveBgScreen({
   ];
 
   return (
-    <Screen header={header} footer={footer} scrollable={false} style={[styles.body, open && styles.bodyOpen]}>
+    <View style={styles.root}>
+    {/* 小さい画面で道具を開いても全部に手が届くよう、全体をスクロールできるようにする。
+        収まるときは flexGrow で画面いっぱいに広げ、画像が残りの場所を使う。 */}
+    <Screen header={header} footer={footer} style={[styles.body, open && styles.bodyOpen]}>
       {/* 見出しと説明。道具を開いたら隠して、画像を大きく使う。 */}
       <Collapsible progress={closedP} style={styles.headline}>
           {removed && (
@@ -380,7 +430,7 @@ export default function RemoveBgScreen({
           <View style={styles.statusLeft}>
             <View style={styles.statusSwatch}>
               {showBefore
-                ? <View style={[StyleSheet.absoluteFill, styles.statusSwatchBefore]} />
+                ? <BgColorSwatch colors={bgColors} size={24} />
                 : <CheckerboardBg mode="checker" tile={6} width={24} height={24} />}
             </View>
             <Text style={[styles.statusTxt, !showBefore && styles.statusTxtAfter]}>
@@ -399,6 +449,31 @@ export default function RemoveBgScreen({
               </Text>
             </AnimatedPressable>
           ) : null}
+          {/* 下地の切り替え。画像には重ねない（実機の判断）。選択肢はボタンの左に開く。 */}
+          <View style={styles.bgToggleWrap}>
+            <AnimatedPressable
+              style={[styles.bgToggleBtn, bgPickerOpen && styles.bgToggleBtnOn]}
+              onPress={() => setBgPickerOpen(o => !o)}
+              pressedScale={0.9}
+              accessibilityLabel={t('removeBg.bgToggle')}
+            >
+              <Icon name={BG_ICONS[bgMode]} size={22} color="#FFF" />
+            </AnimatedPressable>
+            {bgPickerOpen && (
+              <View style={styles.bgToggleRow}>
+                {BG_MODES.map(m => (
+                  <AnimatedPressable
+                    key={m}
+                    style={[styles.bgToggleDot, bgMode === m && styles.bgToggleDotOn]}
+                    onPress={() => { setBgMode(m); setBgPickerOpen(false); }}
+                    pressedScale={0.9}
+                  >
+                    <Icon name={BG_ICONS[m]} size={20} color="#FFF" />
+                  </AnimatedPressable>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
       )}
 
@@ -415,7 +490,7 @@ export default function RemoveBgScreen({
             onPress={e => handleImagePress(e.nativeEvent.locationX, e.nativeEvent.locationY)}
           >
             <View style={[StyleSheet.absoluteFill, styles.imageClip]}>
-              <CheckerboardBg mode={thumbBg} tile={20} width={fit.width} height={fit.height} />
+              <CheckerboardBg mode={bgMode} tile={20} width={fit.width} height={fit.height} />
               {afterUri && (
                 <Image source={{ uri: afterUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
               )}
@@ -543,6 +618,8 @@ export default function RemoveBgScreen({
           </Collapsible>
       </View>
     </Screen>
+    {reprocessing && <LoadingView overlay message={t('removeBg.reprocessing')} />}
+    </View>
   );
 }
 
@@ -570,7 +647,8 @@ function SegButton({ icon, label, on, onPress }: { icon?: string; label: string;
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg },
+  root: { flex: 1 },
+  body: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   bodyOpen: { paddingTop: spacing.md },
   collapse: { overflow: 'hidden' },
   collapseInner: { position: 'absolute', top: 0, left: 0, right: 0 },
@@ -588,7 +666,7 @@ const styles = StyleSheet.create({
   explainTxt: { flex: 1, fontSize: 17, lineHeight: 25, color: colors.label2 },
 
   // ── 表示中ラベル ＋ 元の画像トグル ─────────────────────────────────────────
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44, marginBottom: spacing.sm },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44, marginBottom: spacing.sm, zIndex: 10 },
   statusLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minWidth: 0 },
   statusSwatch: {
     width: 24, height: 24, borderRadius: 6, overflow: 'hidden',
@@ -596,6 +674,29 @@ const styles = StyleSheet.create({
   },
   // 元の画像側の印。市松ではない「普通の背景」を表す薄い空色（デザインと同じ色）。
   statusSwatchBefore: { backgroundColor: '#CFE8F7' },
+  swatchTriangle: { width: 0, height: 0 },
+  swatchDivider: {
+    position: 'absolute', height: 1.5, backgroundColor: '#FFF',
+    transform: [{ rotate: '-45deg' }],
+  },
+  bgToggleWrap: { position: 'relative', zIndex: 10 },
+  bgToggleBtn: {
+    width: 44, height: 44, borderRadius: radius.md,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(30,30,30,0.80)',
+  },
+  bgToggleBtnOn: { backgroundColor: colors.accent },
+  bgToggleRow: {
+    position: 'absolute', top: 0, right: '100%', marginRight: 6,
+    flexDirection: 'row', gap: 4, padding: 4,
+    borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.80)',
+  },
+  bgToggleDot: {
+    width: 44, height: 36, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  bgToggleDotOn: { backgroundColor: colors.accent },
   statusTxt: { fontSize: 17, fontWeight: '700', color: colors.label },
   statusTxtAfter: { color: colors.accent },
   beforeBtn: {
@@ -621,7 +722,8 @@ const styles = StyleSheet.create({
   eyeStopTxt: { fontSize: 15, fontWeight: '600', color: colors.accent },
 
   // ── 画像 ───────────────────────────────────────────────────────────────────
-  imageArea: { flex: 1, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
+  // 小さい画面ではこれより縮めず、代わりに画面全体をスクロールさせる。
+  imageArea: { flex: 1, minHeight: 260, alignItems: 'center', justifyContent: 'center' },
   imageBox: { borderRadius: radius.md },
   imageClip: { borderRadius: radius.md, overflow: 'hidden' },
   // スポイト中は青枠で「この画像をタップする」と示す（outline-offset 相当の少し外側に出す）。

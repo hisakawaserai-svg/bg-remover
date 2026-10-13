@@ -334,6 +334,20 @@ function clusterColors(
   return clusters;
 }
 
+/**
+ * 色ベースの背景除去が「背景」とみなす色（最大 MAX_BG_COLORS 色）を、元画像から求める。
+ * removeBackgroundInPlace が内部で使うのと同じ判定。背景を消す画面で
+ * 「何色を消したか」を見せるために公開している（透過する前の画素を渡すこと）。
+ */
+export function estimateBackgroundColors(
+  rgba: Uint8Array,
+  w: number,
+  h: number,
+  tol: number = TOLERANCE,
+): { r: number; g: number; b: number }[] {
+  return estimateBgColors(rgba, w, h, tol).map(({ r, g, b }) => ({ r, g, b }));
+}
+
 function estimateBgColors(
   rgba: Uint8Array,
   w: number,

@@ -163,6 +163,8 @@ const en: typeof ja = {
     changeEngineTitle: 'Change the method?',
     changeEngineMessage: 'Your tap-erases will be undone and it starts over.',
     changeEngineAction: 'Change',
+    reprocessing: 'Removing again…',
+    bgToggle: 'Change the backdrop',
     next: 'Next: Split',
   },
 

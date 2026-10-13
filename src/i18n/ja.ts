@@ -185,6 +185,8 @@ const ja = {
     changeEngineTitle: '消し方を変えますか？',
     changeEngineMessage: 'スポイトで消した分は元に戻り、最初から消し直します。',
     changeEngineAction: '変える',
+    reprocessing: '消し直しています…',
+    bgToggle: '下地を切り替える',
     next: '分割へ進む',
   },
 

@@ -41,6 +41,7 @@ import {
   splitNone,
   detectRowCount,
   detectColCount,
+  estimateBackgroundColors,
   cropToImage,
   trimToForeground,
   maskOutsidePolygon,
@@ -341,6 +342,9 @@ function AppScreens() {
   // 画面が「元の画像から背景が消えていく」アニメーションを出したら下ろす
   // （分割設定からの「戻る」では立てないので、毎回は出ない）。
   const [bgIntroPending, setBgIntroPending] = useState(false);
+  // 色ベースが背景とみなす色（最大2色）。背景を消す画面で「元の画像」の印として見せる。
+  // 元画像（透過前）から1回だけ求める。
+  const [bgSampleColors, setBgSampleColors] = useState<{ r: number; g: number; b: number }[]>([]);
   /**
    * セル個別編集(cell_editing)の間、bg.rgba（シート全体サイズ）の作り直しを
    * サボっているかどうか。cell_editing 中の画面表示は buildCellRgba が
@@ -718,6 +722,7 @@ function AppScreens() {
       // 保存済みの操作列があればそれを、無ければ自動背景除去1件から始める。
       const result = await loadImagePixels(uri);
       baseRgbaRef.current = result.rgba.slice();
+      setBgSampleColors(estimateBackgroundColors(result.rgba, result.width, result.height, appSettings.tolerance));
 
       let steps: EditStep[];
       if (resumeEdits != null) {
@@ -1991,6 +1996,7 @@ function AppScreens() {
         originalImageUri={currentImageUri ?? undefined}
         removed={autoBg != null}
         playIntro={bgIntroPending}
+        bgColors={bgSampleColors}
         onIntroPlayed={() => setBgIntroPending(false)}
         engine={autoBg ? (autoBg.engine ?? 'flood') : null}
         tolerance={autoBg ? autoBg.tolerance : null}

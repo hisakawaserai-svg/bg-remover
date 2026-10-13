@@ -13,7 +13,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
+import type { StyleProp, TextStyle } from 'react-native';
 import Slider from '@react-native-community/slider';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useT } from '../../i18n';
 import type { TKey } from '../../i18n';
 import {
@@ -105,6 +107,13 @@ interface Props {
   edgeLabels?: boolean;
   /** 既定値。指定するとトラック上に控えめなマーカーを表示する（スナップとは別枠）。 */
   defaultValue?: number;
+  /**
+   * edgeLabels の左右に添えるアイコン（Material Icons 名）。例: ['person', 'image']。
+   * 文字だけだと「人物優先⇄背景優先」の向きが伝わりにくい人向け（背景を消す画面）。
+   */
+  edgeIcons?: [string, string];
+  /** 目盛りラベルの文字の見た目を上書きする（大きい文字にしたい画面向け）。 */
+  labelStyle?: StyleProp<TextStyle>;
 }
 
 export default function ToleranceSlider({
@@ -119,6 +128,8 @@ export default function ToleranceSlider({
   bare = false,
   edgeLabels = false,
   defaultValue,
+  edgeIcons,
+  labelStyle,
 }: Props) {
   const { t } = useT();
   // つまみ位置の表示用。スナップ時はここをアニメで動かす（親の値とは別管理）。
@@ -219,8 +230,14 @@ export default function ToleranceSlider({
       {edgeLabels ? (
         // 左端・右端に固定した2ラベルだけ（詳しくは Props.edgeLabels 参照）。
         <View style={styles.edgeLabelRow} pointerEvents="none">
-          <Text numberOfLines={1} style={styles.stepLabel}>{t(snaps[0].labelKey)}</Text>
-          <Text numberOfLines={1} style={styles.stepLabel}>{t(snaps[snaps.length - 1].labelKey)}</Text>
+          <View style={styles.edgeLabel}>
+            {edgeIcons && <Icon name={edgeIcons[0]} size={18} color={colors.secondary} />}
+            <Text numberOfLines={1} style={[styles.stepLabel, labelStyle]}>{t(snaps[0].labelKey)}</Text>
+          </View>
+          <View style={styles.edgeLabel}>
+            {edgeIcons && <Icon name={edgeIcons[1]} size={18} color={colors.secondary} />}
+            <Text numberOfLines={1} style={[styles.stepLabel, labelStyle]}>{t(snaps[snaps.length - 1].labelKey)}</Text>
+          </View>
         </View>
       ) : (
         // ラベルもスナップ点の実値の比率位置に置く（吸い付く点の真下）。
@@ -333,6 +350,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: -spacing.xs,
+  },
+  edgeLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   /**
    * 目盛りの真上に中心を合わせるためのアンカー。

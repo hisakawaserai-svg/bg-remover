@@ -37,7 +37,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import type { StyleProp, ViewStyle } from 'react-native';
-import Slider from '@react-native-community/slider';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Skia, ColorType, AlphaType } from '@shopify/react-native-skia';
 
@@ -46,6 +45,7 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import CheckerboardBg from './ui/CheckerboardBg';
 import { AnimatedPressable } from './ui/AnimatedPressable';
+import ToleranceSlider, { REMOVAL_SNAPS } from './ui/ToleranceSlider';
 import { colors, radius, shadow, spacing } from './ui/theme';
 import { useT } from '../i18n';
 import { useSettings } from '../settings/SettingsContext';
@@ -53,23 +53,8 @@ import { useThumbBg } from '../hooks/useThumbBg';
 import { useVisionSupported } from '../hooks/useVisionSupported';
 import { isTransparentAt } from '../imaging';
 import type { RemoveBgResult } from '../imaging';
+import { DEFAULTS } from '../settings/store';
 import type { BgEngine } from '../settings/store';
-
-/**
- * 「優先」スライダーの3段。左=人物優先（消しすぎない）、右=背景優先（広く消す）。
- * 設定画面の「自動除去の強さ」と同じ語彙・アイコンにそろえている。
- * 中央の 30 は設定の既定値。両端は以前の分割スライダーの目盛り（15 / 50）と同じ幅にした。
- */
-const STRENGTH_STEPS = [15, 30, 50] as const;
-
-/** 今の許容値に一番近い段。設定画面で連続値に変えていても、どこかの段に寄せて見せる。 */
-function nearestStep(tolerance: number): number {
-  let best = 0;
-  STRENGTH_STEPS.forEach((v, i) => {
-    if (Math.abs(v - tolerance) < Math.abs(STRENGTH_STEPS[best] - tolerance)) best = i;
-  });
-  return best;
-}
 
 /**
  * 道具を開閉するときの動き。見出し・ボタンの出入りと画像の伸び縮みを同じ曲線でそろえる
@@ -178,7 +163,7 @@ export default function RemoveBgScreen({
   // 消し方タブは被写体検出が使える端末だけ。判定中(null)も出さない（出してから消えるとちらつく）。
   const canSwitchEngine = visionSupported === true && engine != null;
   const activeTab: ToolTab = tab === 'method' && !canSwitchEngine ? 'eye' : tab;
-  // 被写体検出（AI）では強さは結果に影響しない（Vision の結果で rgba を丸ごと置き換えるため）。
+  // 被写体検出では強さは結果に影響しない（Vision の結果で rgba を丸ごと置き換えるため）。
   const strengthUsable = engine === 'flood' && tolerance != null;
 
   // 道具の開き具合（1=開いている）。見出し・ボタン・道具の欄は、これに合わせて伸び縮みする。
@@ -319,16 +304,16 @@ export default function RemoveBgScreen({
     );
   }, [t, onResetEdits]);
 
-  // ── 優先（強さ）: 3段。動かし終えたときだけ消し直す（消し直しは全画素の再計算で重い）──
-  const [stepIdx, setStepIdx] = useState(() => nearestStep(tolerance ?? settings.tolerance));
+  // ── 優先（自動で消す強さ）: 設定画面の「自動除去の強さ」と同じスライダー ──────────
+  // 動かしている間は表示だけ変え、指を離したときだけ消し直す（消し直しは全画素の再計算で重い）。
+  const [strengthValue, setStrengthValue] = useState(tolerance ?? settings.tolerance);
   useEffect(() => {
-    if (tolerance != null) setStepIdx(nearestStep(tolerance));
+    if (tolerance != null) setStrengthValue(tolerance);
   }, [tolerance]);
-  const commitStep = useCallback((i: number) => {
-    const idx = Math.round(i);
-    setStepIdx(idx);
-    if (tolerance == null || STRENGTH_STEPS[idx] === tolerance) return;
-    onChangeTolerance(STRENGTH_STEPS[idx]);
+  const commitStrength = useCallback((v: number) => {
+    setStrengthValue(v);
+    if (tolerance == null || v === tolerance) return;
+    onChangeTolerance(v);
   }, [tolerance, onChangeTolerance]);
 
   const header = (
@@ -512,25 +497,20 @@ export default function RemoveBgScreen({
 
               {activeTab === 'strength' && (
                 <View style={[styles.panelCol, !strengthUsable && styles.dimmed]}>
-                  <Slider
-                    style={styles.slider}
-                    minimumValue={0}
-                    maximumValue={STRENGTH_STEPS.length - 1}
-                    step={1}
-                    value={stepIdx}
-                    disabled={!strengthUsable}
-                    onSlidingComplete={commitStep}
-                    minimumTrackTintColor={strengthUsable ? colors.accent : colors.separator}
-                    maximumTrackTintColor={colors.fill}
-                    thumbTintColor={strengthUsable ? colors.accent : colors.separator}
-                  />
-                  <View style={styles.stepLabels}>
-                    <StepLabel icon="person" label={t('granularity.personPriority')} on={strengthUsable && stepIdx === 0} align="left"
-                      onPress={strengthUsable ? () => commitStep(0) : undefined} />
-                    <StepLabel label={t('granularity.normal')} on={strengthUsable && stepIdx === 1} align="center"
-                      onPress={strengthUsable ? () => commitStep(1) : undefined} />
-                    <StepLabel icon="image" label={t('granularity.backgroundPriority')} on={strengthUsable && stepIdx === 2} align="right"
-                      onPress={strengthUsable ? () => commitStep(2) : undefined} />
+                  {/* 被写体検出のときは強さが結果に影響しないので触れなくする */}
+                  <View pointerEvents={strengthUsable ? 'auto' : 'none'}>
+                    <ToleranceSlider
+                      bare
+                      showLabel={false}
+                      edgeLabels
+                      edgeIcons={['person', 'image']}
+                      labelStyle={styles.edgeLabelTxt}
+                      snaps={REMOVAL_SNAPS}
+                      value={strengthValue}
+                      defaultValue={DEFAULTS.tolerance}
+                      onChange={setStrengthValue}
+                      onComplete={commitStrength}
+                    />
                   </View>
                   <Text style={styles.note}>
                     {strengthUsable ? t('removeBg.strengthDesc') : t('removeBg.strengthOff')}
@@ -543,7 +523,7 @@ export default function RemoveBgScreen({
                   <View style={styles.seg}>
                     <SegButton label={t('removeBg.byColor')} on={engine === 'flood'}
                       onPress={() => engine !== 'flood' && onChangeEngine('flood')} />
-                    <SegButton icon="auto-awesome" label={t('removeBg.byAi')} on={engine === 'vision'}
+                    <SegButton icon="auto-awesome" label={t('removeBg.bySubject')} on={engine === 'vision'}
                       onPress={() => engine !== 'vision' && onChangeEngine('vision')} />
                   </View>
                   <Text style={styles.note}>{t('removeBg.methodNote')}</Text>
@@ -567,22 +547,6 @@ function EditButton({ icon, label, enabled, onPress }: { icon: string; label: st
       <Icon name={icon} size={22} color={colors.label} />
       <Text style={styles.editBtnTxt} numberOfLines={2}>{label}</Text>
     </AnimatedPressable>
-  );
-}
-
-function StepLabel({ icon, label, on, align, onPress }: {
-  icon?: string; label: string; on: boolean; align: 'left' | 'center' | 'right'; onPress?: () => void;
-}) {
-  const color = on ? colors.accent : colors.secondary;
-  return (
-    <Pressable
-      style={[styles.stepLabel, align === 'left' && styles.stepLeft, align === 'right' && styles.stepRight]}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      {icon && <Icon name={icon} size={18} color={color} />}
-      <Text style={[styles.stepTxt, { color }, on && styles.stepTxtOn]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -704,13 +668,7 @@ const styles = StyleSheet.create({
   },
   editBtnTxt: { fontSize: 15, lineHeight: 18, textAlign: 'center', color: colors.label },
 
-  slider: { height: 44 },
-  stepLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -spacing.xs },
-  stepLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 32 },
-  stepLeft: { justifyContent: 'flex-start' },
-  stepRight: { justifyContent: 'flex-end' },
-  stepTxt: { fontSize: 15 },
-  stepTxtOn: { fontWeight: '700' },
+  edgeLabelTxt: { fontSize: 15 },
   note: { fontSize: 15, lineHeight: 22, color: colors.secondary },
 
   seg: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: radius.md, backgroundColor: colors.fill },

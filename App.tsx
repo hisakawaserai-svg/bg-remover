@@ -924,9 +924,11 @@ function AppScreens() {
     setCols(c); // 再分割時に同じ列数指定を引き継ぐため保持
     // SetupScreen へ戻った時の初期値を実際に切った内容へ揃える。
     // bounds があればその線を、なければ等分割(=confirmBounds:null)を初期値にする。
+    // noSplit でも bounds は捨てない。「分割しない」で進んでから戻り、チェックを外したときに
+    // 動かしておいた線が等分割に戻ってしまうため（noSplit の切り出しは bounds を使わない）。
     setConfirmRows(n);
     setConfirmCols(c);
-    setConfirmBounds(noSplit ? null : (bounds ?? null));
+    setConfirmBounds(bounds ?? null);
     setCells(prev => {
       // 再分割で置き換わる旧セルのサムネを削除（ユニーク名化により上書きされないため、孤児化防止）
       for (const old of prev) {
@@ -957,7 +959,8 @@ function AppScreens() {
         mode: 'auto',
         keyConfig: { tolerance: appSettings.tolerance, rows: n, cols: c },
         // bounds も保存し、復元後に SetupScreen へ戻っても編集した線を再現できるようにする。
-        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds: noSplit ? undefined : bounds },
+        // noSplit でも保存する（切り出しには使わないが、戻って分割し直すときに線を残すため）。
+        autoData: { rows: n, tolerance: appSettings.tolerance, cells: savedCells, bounds },
         thumbUri: newCells[0]?.thumbUri,
         updatedAt: Date.now(),
         edits: editsRef.current,

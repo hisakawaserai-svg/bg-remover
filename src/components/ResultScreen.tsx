@@ -552,6 +552,8 @@ export default function ResultScreen({
                 ? t('result.selectedCount', { count: selectedIndices.size })
                 : t('result.longPressHint')}
             </Text>
+            {/* ボタン類はまとめて右端に寄せる（英語でヒントが改行されても左に寄らない） */}
+            <View style={styles.toolBtnGroup}>
             <AnimatedPressable
               style={styles.bgToggleBtn}
               onPress={() => setZoomVisible(true)}
@@ -588,6 +590,7 @@ export default function ResultScreen({
                   ))}
                 </View>
               )}
+            </View>
             </View>
           </View>
         </View>
@@ -701,6 +704,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    // 見出しの残り幅（改行時は1行全部）を埋める。埋めないと toolBtnGroup の
+    // marginLeft:'auto' で寄せる先の余白ができず、英語で改行した時に左に寄ってしまう。
+    flexGrow: 1,
+  },
+  toolBtnGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 'auto',
   },
   bgToggleWrap: {
     // 起点。ポップアップ(bgToggleColumn)はこれを基準に絶対配置するので、

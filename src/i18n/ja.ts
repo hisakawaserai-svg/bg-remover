@@ -171,6 +171,7 @@ const ja = {
     columnsDisabled: '分割しない時は列数を指定できません',
     moveHLine: '横線を移動',
     moveVLine: '縦線を移動',
+    resetLines: '線の位置をリセット',
     addRect: '四角を追加',
     addRectHint: '保存したいキャラを囲む',
     tapToRemoveBg: 'タップで背景を消す',

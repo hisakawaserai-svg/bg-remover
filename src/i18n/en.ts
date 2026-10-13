@@ -150,6 +150,7 @@ const en: typeof ja = {
     columnsDisabled: 'Columns cannot be set when splitting is off',
     moveHLine: 'Move horizontal line',
     moveVLine: 'Move vertical line',
+    resetLines: 'Reset line positions',
     addRect: 'Add rectangle',
     addRectHint: 'Enclose the characters you want to save',
     tapToRemoveBg: 'Tap to erase',

@@ -290,6 +290,18 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     setColXsImg(calcRowBoundaries(bgResult.width, cols));
   }, [bgResult.width, cols]);
 
+  // 「線の位置をリセット」: 行数・列数はそのままで、動かした線を等分割に戻す。
+  // すでに等分割なら押しても何も変わらないので無効にする（押せる＝動かした線がある、と分かる）。
+  const linesAreEven = useMemo(() => {
+    const same = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+    return same(rowYsImg, calcRowBoundaries(bgResult.height, rows))
+      && same(colXsImg, calcRowBoundaries(bgResult.width, cols));
+  }, [rowYsImg, colXsImg, rows, cols, bgResult.width, bgResult.height]);
+  const resetLines = useCallback(() => {
+    setRowYsImg(calcRowBoundaries(bgResult.height, rows));
+    setColXsImg(calcRowBoundaries(bgResult.width, cols));
+  }, [bgResult.width, bgResult.height, rows, cols]);
+
   // 横線: 各 rowYsImg を display y に変換（全幅共通の線）
   const lineYs = useMemo(() => {
     if (!fitParams) return [];
@@ -765,6 +777,18 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
                 </View>
               </View>
 
+              {/* 線の位置をリセット: noSplit 時は線が出ていないので押せない */}
+              <Divider />
+              <AnimatedPressable
+                style={styles.checkRow}
+                onPress={resetLines}
+                disabled={noSplit || linesAreEven}
+                pressedScale={0.98}
+              >
+                <Icon name="refresh" size={20} color={IOS.blue} />
+                <Text style={styles.resetLabel}>{t('setup.resetLines')}</Text>
+              </AnimatedPressable>
+
               {/* 分割しないチェックボックス */}
               <Divider />
               <AnimatedPressable
@@ -1231,6 +1255,10 @@ const styles = StyleSheet.create({
   checkLabel: {
     fontSize: 15,
     color: IOS.label,
+  },
+  resetLabel: {
+    fontSize: 15,
+    color: IOS.blue,
   },
 
   // ── トースト ───────────────────────────────────────────────────────────────

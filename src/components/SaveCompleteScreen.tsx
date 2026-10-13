@@ -13,7 +13,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { AnimatedPressable } from './ui/AnimatedPressable';
@@ -193,17 +192,14 @@ export default function SaveCompleteScreen({ savedCount, localUris, onNewImage, 
 
         {/* サムネ領域だけ覆う。下のボタンと MREC は隠さない。 */}
         {showSavedBeat && (
-          <Animated.View
-            entering={FadeIn.duration(180)}
-            exiting={FadeOut.duration(280)}
-            pointerEvents="none"
-            style={styles.savedBeat}
-          >
+          // entering/exiting のフェードは付けない。この環境（新アーキ + Reanimated 4.5）では
+          // entering が途中で止まり、透明のまま残って見えなくなる。
+          <View pointerEvents="none" style={styles.savedBeat}>
             <View style={styles.savedBeatIcon}>
               <Icon name="check" size={36} color="#0F6E56" />
             </View>
             <Text style={styles.savedBeatTxt}>{t('saveComplete.savedBeat')}</Text>
-          </Animated.View>
+          </View>
         )}
       </View>
 

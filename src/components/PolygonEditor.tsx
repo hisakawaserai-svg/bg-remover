@@ -33,8 +33,6 @@ import Animated, {
   withTiming,
   Easing,
   ReduceMotion,
-  FadeIn,
-  FadeOut,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { AnimatedPressable } from './ui/AnimatedPressable';
@@ -5457,7 +5455,8 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
             {/* 畳んだ時のズームバッジ。ドロップダウンの真上に出す。押すと元の
                 フルサイズのズームバーへ戻る（zoomTopRow 側の畳むボタンと対）。 */}
             {!chromeHidden && zoomCompact && (
-              <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)}>
+              // entering/exiting のフェードは付けない（下のツールメニューと同じ理由）。
+              <View>
                 <AnimatedPressable
                   style={styles.zoomCompactBtn}
                   onPress={() => setZoomCompact(false)}
@@ -5466,7 +5465,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                   <Text style={styles.zoomCompactTxt}>×{formatZoom(sliderToZoom(sliderV))}</Text>
                   <Icon name="unfold-more" size={14} color="rgba(255,255,255,0.85)" />
                 </AnimatedPressable>
-              </Animated.View>
+              </View>
             )}
           <View style={styles.toolDropdown} pointerEvents="box-none">
             {/* 現在のツール。押すと展開する。 */}
@@ -5488,12 +5487,10 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
               />
             </AnimatedPressable>
 
+            {/* entering/exiting のフェードは付けない。この環境（新アーキ + Reanimated 4.5）では
+                entering が途中で止まり、枠だけ出てボタンが透明のまま残る。 */}
             {toolMenuOpen && (
-              <Animated.View
-                entering={FadeIn.duration(160)}
-                exiting={FadeOut.duration(120)}
-                style={styles.toolDropdownExpanded}
-              >
+              <View style={styles.toolDropdownExpanded}>
                 {(['draw', 'move', 'eyedropper', ...(onRestore ? ['restore', 'erase'] as const : [])] as ToolKind[])
                   .filter(m => m !== currentTool)
                   .map(m => (
@@ -5620,7 +5617,7 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
                 >
                   <Icon name={chromeHidden ? 'visibility' : 'visibility-off'} size={22} color="#FFF" />
                 </AnimatedPressable>
-              </Animated.View>
+              </View>
             )}
           </View>
           </View>

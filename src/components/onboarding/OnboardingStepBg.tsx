@@ -3,7 +3,7 @@
  *
  * 器(OnboardingScreen)の STEPS[1] に差し込む中身。
  * 実画面(RemoveBgScreen)を簡略に再現し、次の流れをループアニメで見せる。
- *   1) 元の画像の背景が消えて市松模様になる(チェック柄＝透明)
+ *   1) 元の画像(他のステップと同じ暗い地色＋day/night の2体)の背景が消えて市松模様になる
  *   2) 「元の画像を見る」で見比べる(押して戻す)
  *   3) 下地を月(黒)に変える → 市松では紛れていた「消えすぎた所」が黒い穴として見つかる
  *   4) 強さを人物優先へ2回に分けて動かす → 消し直し → 穴が半分 → 全部埋まる
@@ -11,7 +11,7 @@
  * 1〜3 は画面の上側の操作なので上スロットで話し、4〜5 は下側なので下スロットへ移る
  * (OnboardingStep2 と同じ「フレーム位置でグルーピング」作法)。
  *
- * 「消えすぎた所」は実際に画像を処理せず、鳥のお腹の端に小さな丸を重ねて表す。
+ * 「消えすぎた所」は実際に画像を処理せず、夜の鳥の白い体に小さな丸を重ねて表す。
  * 市松のときは市松に紛れる灰色、黒のときは黒で描くので、黒にしたときだけ目立つ。
  * 欠けが埋まるのは、その丸を消すだけで表せる。
  *
@@ -42,11 +42,12 @@ import { useT } from '../../i18n';
 // 5拍あるので Step2(16000ms)より長い。OnboardingScreen の STEP_DURATIONS と合わせる。
 export const STEP_BG_CYCLE_MS = 26000;
 
-const BIRD = 100;
-// 元の画像の背景色(実画面の「背景の色が取れなかったとき」と同じ水色)。
-const ORIGINAL_BG = '#CFE8F7';
+const BIRD = 92;
+// 元の画像の背景色。1枚目(画像を選ぶ)のサムネと2枚目以降(分割設定)の画像と同じ暗い地色に
+// そろえ、ガイド全体で「同じ1枚の画像」を扱っているように見せる。
+const ORIGINAL_BG = '#1C1C1E';
 // 市松に紛れる穴の色(市松の濃い方と薄い方の間)。
-const HOLE_ON_CHECKER = '#E2E2E2';
+const HOLE_ON_CHECKER = '#EDEDED';
 const HOLE_ON_BLACK = '#1C1C1E';
 
 // ── タイムライン(喋り→間→操作) ─────────────────────────────────────────────
@@ -75,11 +76,11 @@ const THUMB_START = 0.5;
 const THUMB_MID = 0.38;
 const THUMB_END = 0.26;
 
-// 穴(消えすぎた所)。鳥(100基準)の白い体の左下の縁。縁にかかっている＝背景とつながって消えた形。
+// 穴(消えすぎた所)。夜の鳥(100基準)の白い体の左下。白いので市松の白に紛れ、黒の下地で目立つ。
 const HOLES = [
-  { cx: 24, cy: 66, r: 9 },
-  { cx: 33, cy: 80, r: 7 },
-  { cx: 22, cy: 50, r: 5 },
+  { cx: 30, cy: 66, r: 8 },
+  { cx: 38, cy: 78, r: 6 },
+  { cx: 28, cy: 52, r: 4.5 },
 ];
 
 export default function OnboardingStepBg({ active = true }: { active?: boolean }) {
@@ -282,9 +283,11 @@ export default function OnboardingStepBg({ active = true }: { active?: boolean }
             <CheckerboardBg mode="checker" tile={12} width={FRAME_W} height={600} />
             <Animated.View style={[s.fill, s.black, blackStyle]} />
             <Animated.View style={[s.fill, s.original, originalStyle]} />
+            {/* 他のステップと同じ day/night の2体 */}
             <View style={s.birds}>
+              <BirdMascot variant="day" size={BIRD} />
               <View>
-                <BirdMascot variant="day" size={BIRD} showScene={false} />
+                <BirdMascot variant="night" size={BIRD} />
                 {HOLES.map((h, i) => (
                   <React.Fragment key={i}>
                     <Animated.View style={[s.hole, holeBox(h), { backgroundColor: HOLE_ON_CHECKER }, holeCheckerStyle]} />
@@ -292,7 +295,6 @@ export default function OnboardingStepBg({ active = true }: { active?: boolean }
                   </React.Fragment>
                 ))}
               </View>
-              <BirdMascot variant="day" size={BIRD} showScene={false} />
             </View>
             {/* 消し直し中(実画面と同じ半透明のローディング) */}
             <Animated.View style={[s.fill, s.redo, redoStyle]} pointerEvents="none">
@@ -438,7 +440,7 @@ const s = StyleSheet.create({
   fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   black: { backgroundColor: HOLE_ON_BLACK },
   original: { backgroundColor: ORIGINAL_BG },
-  birds: { flexDirection: 'row', gap: 20 },
+  birds: { flexDirection: 'row', gap: 28 },
   hole: { position: 'absolute' },
   redo: {
     backgroundColor: 'rgba(242,242,247,0.78)',

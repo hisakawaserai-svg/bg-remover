@@ -74,6 +74,9 @@ yarn-error.log
 !.yarn/sdks
 !.yarn/versions
 
+# Claude Design から書き出したデザイン（約30MB。依頼文は docs/design/*.md に残す）
+docs/design/export/
+
 # AI context and instructions
 .ai_context/
 # Cursor のローカル専用ルール（公開しない。alwaysApply なら Cursor は読む）

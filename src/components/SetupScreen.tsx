@@ -304,9 +304,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     return colXsImg.map(x => padX + x * scale);
   }, [fitParams, colXsImg]);
 
-  // splitCount: 均等グリッドなので rows × cols の単純な掛け算
-  const splitCount = rows * cols;
-
   const lineColor = settings.splitLineColor ?? '#007AFF';
   // 選択中の線の色（未選択の線と明確に見分けるためオレンジで強調）
   const selColor = '#FF9500';
@@ -701,7 +698,7 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
         </View>
         </View>
 
-        {/* 自動モード: 行数ステッパー + 許容値スライダー */}
+        {/* 自動モード: 行数・列数ステッパー */}
         {mode === 'auto' && (
           <>
             {/* カードを relative コンテナで包み、微調整コントロールをその上端に絶対配置する。

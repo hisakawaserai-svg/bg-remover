@@ -21,12 +21,14 @@ import { colors, spacing, typography, radius } from './ui/theme';
 import { useT } from '../i18n';
 import type { TKey } from '../i18n';
 import { TOOL_ICONS } from './ui/ToolHint';
+import { REMOVAL_EDGE_ICONS } from './ui/ToleranceSlider';
 import { LOUPE_MODE_ICONS } from '../settings/store';
 
-export type HowToTab = 'flow' | 'auto' | 'editor' | 'result' | 'trouble';
+export type HowToTab = 'flow' | 'bg' | 'auto' | 'editor' | 'result' | 'trouble';
 
 const TABS: { id: HowToTab; labelKey: TKey }[] = [
   { id: 'flow',    labelKey: 'howto.tabFlow' },
+  { id: 'bg',      labelKey: 'howto.tabBg' },
   { id: 'auto',    labelKey: 'howto.tabAuto' },
   { id: 'editor',  labelKey: 'howto.tabEditor' },
   { id: 'result',  labelKey: 'howto.tabResult' },
@@ -182,6 +184,7 @@ export default function HowToScreen({
               <StepLine n={2} text={t('howto.flowAuto2')} />
               <StepLine n={3} text={t('howto.flowAuto3')} />
               <StepLine n={4} text={t('howto.flowAuto4')} />
+              <StepLine n={5} text={t('howto.flowAuto5')} />
               <Text style={styles.footNote}>{t('howto.flowAutoNote')}</Text>
             </Card>
             <Card style={styles.card}>
@@ -193,6 +196,7 @@ export default function HowToScreen({
               <StepLine n={4} text={t('howto.flowManual4')} />
               <StepLine n={5} text={t('howto.flowManual5')} />
               <StepLine n={6} text={t('howto.flowManual6')} />
+              <StepLine n={7} text={t('howto.flowManual7')} />
             </Card>
             {!isOnboarding && onPolygonTutorial && (
               <AnimatedPressable style={styles.linkRow} onPress={onPolygonTutorial} pressedScale={0.98}>
@@ -207,6 +211,35 @@ export default function HowToScreen({
           </>
         )}
 
+        {tab === 'bg' && (
+          <Card style={styles.card}>
+            <Text style={styles.lead}>{t('howto.bgLead')}</Text>
+            <SectionLabel text={t('howto.sectionBasics')} />
+            <ToolLine icon={{ name: 'compare' }} title={t('removeBg.showBefore')} body={t('howto.bgCompare')} />
+            <ToolLine icon={{ name: 'grid-on' }} title={t('removeBg.bgToggle')} body={t('howto.bgBackdrop')} />
+            <SectionLabel text={t('removeBg.disclosure')} />
+            <ToolLine icon={{ name: TOOL_ICONS.eyedropper }} title={t('removeBg.tabEye')} body={t('howto.bgEyedrop')} />
+            <ToolGroup icon={{ name: 'tune' }} title={t('removeBg.tabStrength')} body={t('howto.bgStrength')}>
+              <AxisGuide
+                leftIcon={REMOVAL_EDGE_ICONS[0]}
+                leftLabel={t('granularity.personPriority')}
+                rightIcon={REMOVAL_EDGE_ICONS[1]}
+                rightLabel={t('granularity.backgroundPriority')}
+                body={t('settings.autoToleranceHint')}
+              />
+            </ToolGroup>
+            <ToolLine
+              icon={{ name: 'auto-awesome' }}
+              title={t('removeBg.tabMethod')}
+              body={t('howto.bgMethod')}
+              warn={t('howto.bgMethodWarn')}
+            />
+            <ToolLine icon={{ name: 'undo' }} title={`${t('removeBg.undo')}・${t('removeBg.redo')}・${t('removeBg.reset')}`} body={t('howto.bgUndo')} />
+            <SectionLabel text={t('howto.sectionWhere')} />
+            <ToolLine icon={{ name: 'chevron-right' }} title={t('removeBg.next')} body={t('howto.bgNext')} />
+          </Card>
+        )}
+
         {tab === 'auto' && (
           <Card style={styles.card}>
             <Text style={styles.lead}>{t('howto.autoLead')}</Text>
@@ -214,25 +247,10 @@ export default function HowToScreen({
             <ToolLine icon={{ name: 'view-headline' }} title={t('setup.rows')} body={t('howto.autoRows')} />
             <ToolLine icon={{ name: 'view-week' }} title={t('setup.columns')} body={t('howto.autoCols')} />
             <ToolLine icon={{ name: 'remove' }} title={t('setup.moveLines')} body={t('howto.autoLines')} />
-            <ToolLine icon={{ name: 'tune' }} title={t('granularity.label')} body={t('howto.autoDetail')} />
-            <ToolGroup icon={{ name: TOOL_ICONS.eyedropper }} title={t('editor.modeEyedropper')} body={t('howto.autoEyedrop')}>
-              <AxisGuide
-                leftIcon="center-focus-strong"
-                leftLabel={t('granularity.narrowRange')}
-                rightIcon="blur-on"
-                rightLabel={t('granularity.wideRange')}
-                body={t('howto.editorEyedropSlider')}
-              />
-            </ToolGroup>
+            <ToolLine icon={{ name: 'refresh' }} title={t('setup.resetLines')} body={t('howto.autoReset')} />
             <ToolLine icon={{ name: 'crop' }} title={t('setup.noSplit')} body={t('howto.autoNoSplit')} />
             <SectionLabel text={t('howto.sectionWhere')} />
             <ToolLine icon={{ name: 'image' }} title={t('common.originalImage')} body={t('howto.autoOriginal')} />
-            <ToolLine
-              icon={{ name: 'auto-awesome' }}
-              title={t('settings.bgEngine')}
-              body={t('howto.autoEngine')}
-              warn={t('howto.autoEngineWarn')}
-            />
             <Text style={styles.footNote}>{t('howto.autoToManual')}</Text>
           </Card>
         )}
@@ -366,9 +384,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
   },
+  // 6個を3個×2段に並べる。1段に詰めると「背景を消す」などが省略され、
+  // 折り返しに任せると最後の1個だけが2段目に残って不揃いになるため。
   tabBtn: {
     flexGrow: 1,
-    minWidth: 64,
+    flexBasis: '30%',
     paddingVertical: 8,
     paddingHorizontal: 4,
     borderRadius: 8,

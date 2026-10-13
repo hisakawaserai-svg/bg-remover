@@ -2041,7 +2041,7 @@ function AppScreens() {
         // sessions 一覧が再読込されず、カードのラベルが古いまま残る（在庫の stale 表示）。
         onBack={reset}
         onSettings={goToSettings}
-        onHelp={() => goToHowTo('auto')}
+        onHelp={() => goToHowTo('bg')}
       />
     );
   }

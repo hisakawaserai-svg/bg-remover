@@ -40,7 +40,6 @@ import SpeechBubble from '../SpeechBubble';
 import TouchIndicator from '../TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, wiggle, SPEAK_FADE, FRAME_SLIDE } from '../shared';
 import { useT } from '../../../i18n';
-import type { TKey } from '../../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // A/B/Cの3ビート分の間を確保するため、旧版(2ビート・12000ms)より長め。
@@ -50,13 +49,6 @@ export const CYCLE_MS = 15000;
 // プレビュー内のキャラの大きさ。2段×2列を収めるので Step2(84)より小さめ。
 const BIRD = 64;
 
-// 細かさスライダーのスナップラベル(粗い/中/細かい)。位置は簡略のため等間隔。
-const STRENGTHS = [
-  { labelKey: 'granularity.coarse' as TKey, pct: 25 },
-  { labelKey: 'granularity.medium' as TKey, pct: 50 },
-  { labelKey: 'granularity.fine' as TKey, pct: 75 },
-] as const;
-const STRENGTH_ON = 1; // つまみの位置(中)
 
 // 分割線(v/h とも共通)が上から/左から伸びる窓。
 const LINE_GROW: [number, number] = [0.24, 0.34];
@@ -247,28 +239,6 @@ export default function AutoSplitAnimation({ active = true }: { active?: boolean
             </View>
           </View>
 
-          {/* 分割の細かさ(連続スライダー風・簡略表示。STEP1では操作しない) */}
-          <View style={s.sliderCard}>
-            <Text style={s.rowLabel}>{t('granularity.label')}</Text>
-            <View style={s.track}>
-              <View style={[s.trackFill, { width: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
-              {STRENGTHS.map(snp => (
-                <View key={snp.labelKey} style={[s.tick, { left: `${snp.pct}%` }]} />
-              ))}
-              <View style={[s.thumb, { left: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
-            </View>
-            <View style={s.labelRow}>
-              {STRENGTHS.map((snp, i) => (
-                <Text
-                  key={snp.labelKey}
-                  style={[s.snapTxt, { left: `${snp.pct}%` }, i === STRENGTH_ON && s.snapTxtOn]}
-                >
-                  {t(snp.labelKey)}
-                </Text>
-              ))}
-            </View>
-          </View>
-
           {/* 「この行数で分割」ボタン(押下スケール) */}
           <Animated.View style={[s.cta, ctaStyle]}>
             <Text style={s.ctaTxt}>{t('setup.splitWithRows')}</Text>
@@ -424,63 +394,6 @@ const s = StyleSheet.create({
   },
   stepTxt: { fontSize: 20, color: '#007AFF', lineHeight: 24 },
   stepVal: { fontSize: 16, fontWeight: '600', color: '#000', minWidth: 24, textAlign: 'center' },
-
-  // 細かさ(連続スライダー風)
-  sliderCard: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
-    gap: 14,
-  },
-  track: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E5EA',
-    marginHorizontal: 10,
-    justifyContent: 'center',
-  },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#007AFF',
-  },
-  tick: {
-    position: 'absolute',
-    width: 2,
-    height: 8,
-    marginLeft: -1,
-    borderRadius: 1,
-    backgroundColor: '#C6C6C8',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    marginLeft: -10,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#007AFF',
-  },
-  labelRow: {
-    position: 'relative',
-    height: 16,
-    marginHorizontal: 10,
-  },
-  snapTxt: {
-    position: 'absolute',
-    fontSize: 12,
-    color: '#8E8E93',
-    transform: [{ translateX: -8 }],
-    minWidth: 16,
-    textAlign: 'center',
-  },
-  snapTxtOn: { color: '#007AFF', fontWeight: '600' },
 
   // CTA
   cta: {

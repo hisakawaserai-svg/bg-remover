@@ -5,7 +5,7 @@
  * 実画面(SetupScreen の自動分割)をそっくり再現し、
  *   A) 「自動分割」で切り分ける案内
  *   B) 分割線が上から伸びる → ズレてたら指で動かせる、という独立の説明
- *   C) 行数・細かさを整えて「分割」をタップ
+ *   C) 行数・列数を整えて「分割」をタップ
  * をループアニメで見せる。A/B は同じ上スロットで話者を差し替え、
  * C だけ下スロットへ移る(MergeCellsAnimation と同じ「フレーム位置でグルーピング」作法)。
  *
@@ -35,19 +35,10 @@ import SpeechBubble from './SpeechBubble';
 import TouchIndicator from './TouchIndicator';
 import { shared, norm, easeIO, fadeHold, jumpY, wiggle, SPEAK_FADE, FRAME_SLIDE } from './shared';
 import { useT } from '../../i18n';
-import type { TKey } from '../../i18n';
 
 // ── 定数 ───────────────────────────────────────────────────────────────────────
 // A/B/Cの3ビート分の間を確保するため、旧版(バッジのみ・13000ms)より長め。
 const CYCLE_MS = 16000;
-
-// 細かさスライダーのスナップラベル(粗い/中/細かい)。位置は簡略のため等間隔(25/50/75%)。
-const STRENGTHS = [
-  { labelKey: 'granularity.coarse' as TKey, pct: 25 },
-  { labelKey: 'granularity.medium' as TKey, pct: 50 },
-  { labelKey: 'granularity.fine' as TKey, pct: 75 },
-] as const;
-const STRENGTH_ON = 1; // つまみの位置(中)
 
 // 「自動分割」タブをタップする窓(フェーズA末)。
 const TAB_TAP: [number, number] = [0.24, 0.30];
@@ -55,8 +46,8 @@ const TAB_TAP: [number, number] = [0.24, 0.30];
 const LINE_GROW: [number, number] = [0.32, 0.42];
 // フェーズB(線はドラッグで動かせる)の説明が終わった後、線を軽く揺らして実演する窓。
 const DRAG_WIGGLE: [number, number] = [0.50, 0.60];
-// 細かさスライダーのつまみをタップする窓(フェーズC中)。
-const SLIDER_TAP: [number, number] = [0.82, 0.90];
+// 列数のステッパーをタップする窓(フェーズC中)。「行数・列数を整える」操作を見せる。
+const COLS_TAP: [number, number] = [0.82, 0.90];
 // 「この行数で分割」ボタンを押す窓(フェーズC末)。
 const BUTTON_PRESS: [number, number] = [0.92, 0.97];
 
@@ -92,7 +83,7 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
   // ── タイムライン(喋り→間→操作のリズム) ───────────────────────────────────
   // A喋り[0.04,0.20] → タブtap[0.24,0.30] → 分割線[0.32,0.42]
   //  → B喋り[0.32,0.48](線はドラッグで動かせる) → 線をゆらして実演[0.50,0.60]
-  //  → C喋り[0.64,0.80] → スライダーtap[0.82,0.90] → ボタン押下[0.92,0.97]
+  //  → C喋り[0.64,0.80] → 列数＋tap[0.82,0.90] → ボタン押下[0.92,0.97]
 
   // 「自動分割」タブのハイライト: タップ前後で脈打つ
   const tabHiStyle = useAnimatedStyle(() => {
@@ -215,7 +206,8 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
             <Animated.View style={[s.vLine, lineStyle]} pointerEvents="none" />
           </View>
 
-          {/* 行数(段数)ステッパー + 分割しないチェック(静的・OFF表示) */}
+          {/* 行数・列数ステッパー + 分割しないチェック(静的・OFF表示)。
+              実画面から「分割の細かさ」スライダーはなくなったので、ここでも出さない。 */}
           <View style={s.card}>
             <View style={s.cardRow}>
               <Text style={s.rowLabel}>{t('setup.rows')}</Text>
@@ -226,36 +218,22 @@ export default function OnboardingStep2({ active = true }: { active?: boolean })
               </View>
             </View>
             <View style={s.cardDivider} />
+            <View style={s.cardRow}>
+              <Text style={s.rowLabel}>{t('setup.columns')}</Text>
+              <View style={s.stepper}>
+                <View style={s.stepBtn}><Text style={s.stepTxt}>−</Text></View>
+                <Text style={s.stepVal}>2</Text>
+                <View style={s.stepBtn}>
+                  <Text style={s.stepTxt}>＋</Text>
+                  {/* タップ表現: フェーズCで列数を確かめる */}
+                  <TouchIndicator progress={phase} window={COLS_TAP} />
+                </View>
+              </View>
+            </View>
+            <View style={s.cardDivider} />
             <View style={s.checkRow}>
               <View style={s.checkbox} />
               <Text style={s.checkLabel}>{t('setup.noSplit')}</Text>
-            </View>
-          </View>
-
-          {/* 分割の細かさ(連続スライダー風・粗い/中/細かいスナップ。簡略表示) */}
-          <View style={s.sliderCard}>
-            <Text style={s.rowLabel}>{t('granularity.label')}</Text>
-            {/* トラック + 塗り + つまみ + スナップ目盛り */}
-            <View style={s.track}>
-              <View style={[s.trackFill, { width: `${STRENGTHS[STRENGTH_ON].pct}%` }]} />
-              {STRENGTHS.map(snp => (
-                <View key={snp.labelKey} style={[s.tick, { left: `${snp.pct}%` }]} />
-              ))}
-              <View style={[s.thumb, { left: `${STRENGTHS[STRENGTH_ON].pct}%` }]}>
-                {/* タップ表現: フェーズCでつまみを操作 */}
-                <TouchIndicator progress={phase} window={SLIDER_TAP} />
-              </View>
-            </View>
-            {/* 粗い/中/細かいラベル(スナップ点の真下) */}
-            <View style={s.labelRow}>
-              {STRENGTHS.map((snp, i) => (
-                <Text
-                  key={snp.labelKey}
-                  style={[s.snapTxt, { left: `${snp.pct}%` }, i === STRENGTH_ON && s.snapTxtOn]}
-                >
-                  {t(snp.labelKey)}
-                </Text>
-              ))}
             </View>
           </View>
 
@@ -419,63 +397,6 @@ const s = StyleSheet.create({
   },
   stepTxt: { fontSize: 20, color: '#007AFF', lineHeight: 24 },
   stepVal: { fontSize: 16, fontWeight: '600', color: '#000', minWidth: 24, textAlign: 'center' },
-
-  // 細かさ(連続スライダー風)
-  sliderCard: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
-    gap: 14,
-  },
-  track: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E5EA',
-    marginHorizontal: 10, // つまみ半径ぶん内側に
-    justifyContent: 'center',
-  },
-  trackFill: {
-    position: 'absolute',
-    left: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#007AFF',
-  },
-  tick: {
-    position: 'absolute',
-    width: 2,
-    height: 8,
-    marginLeft: -1,
-    borderRadius: 1,
-    backgroundColor: '#C6C6C8',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    marginLeft: -10,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#007AFF',
-  },
-  labelRow: {
-    position: 'relative',
-    height: 16,
-    marginHorizontal: 10,
-  },
-  snapTxt: {
-    position: 'absolute',
-    fontSize: 12,
-    color: '#8E8E93',
-    transform: [{ translateX: -8 }],
-    minWidth: 16,
-    textAlign: 'center',
-  },
-  snapTxtOn: { color: '#007AFF', fontWeight: '600' },
 
   // CTA
   cta: {

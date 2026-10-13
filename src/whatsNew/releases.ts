@@ -160,6 +160,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: '1.2.1',
+    dateAndroid: '2026-09-20',
     jaAndroid: {
       title: '不具合の修正',
       sections: [

@@ -56,7 +56,8 @@ export default function SpeechBubble({
           <View style={s.numCircle}>
             <Text style={s.numTxt}>{stepNumber}</Text>
           </View>
-          <Text style={s.text} numberOfLines={2}>{text}</Text>
+          {/* 英語は日本語より長くなりやすいので3行まで許す（2行だと「…」で切れていた）。 */}
+          <Text style={s.text} numberOfLines={3}>{text}</Text>
         </View>
         {direction === 'right' && <View style={[s.tail, s.tailRight]} />}
       </View>

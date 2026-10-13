@@ -255,9 +255,12 @@ export default function OnboardingStepBg({ active = true }: { active?: boolean }
             </View>
             <View style={s.beforeBtn}>
               <Icon name="visibility" size={16} color="#000" />
+              {/* 2つの文言を同じ場所に重ねる。片方を absolute にすると幅が短い方に合わせられて
+                  長い方(英語の Back to result など)が折り返すので、両方を流れに置いて
+                  2つ目を1行ぶん上へずらす(幅は長い方、高さは1行になる)。 */}
               <View>
-                <Animated.Text style={[s.beforeBtnTxt, afterTxtStyle]}>{t('removeBg.showBefore')}</Animated.Text>
-                <Animated.Text style={[s.beforeBtnTxt, s.overlayTxt, beforeTxtStyle]}>{t('removeBg.showAfter')}</Animated.Text>
+                <Animated.Text style={[s.beforeBtnTxt, afterTxtStyle]} numberOfLines={1}>{t('removeBg.showBefore')}</Animated.Text>
+                <Animated.Text style={[s.beforeBtnTxt, s.stackedTxt, beforeTxtStyle]} numberOfLines={1}>{t('removeBg.showAfter')}</Animated.Text>
               </View>
               <TouchIndicator progress={phase} window={BEFORE_TAP} />
               <TouchIndicator progress={phase} window={AFTER_TAP} />
@@ -307,7 +310,7 @@ export default function OnboardingStepBg({ active = true }: { active?: boolean }
           <View style={s.card}>
             <View style={s.disclosureRow}>
               <Icon name="tune" size={18} color="#007AFF" />
-              <Text style={s.disclosureTxt} numberOfLines={1}>{t('removeBg.disclosure')}</Text>
+              <Text style={s.disclosureTxt} numberOfLines={2}>{t('removeBg.disclosure')}</Text>
               <Icon name="expand-more" size={20} color="#8E8E93" />
               <TouchIndicator progress={phase} window={DISCLOSURE_TAP} />
             </View>
@@ -407,7 +410,8 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#C6C6C8',
   },
-  beforeBtnTxt: { fontSize: 12, fontWeight: '600', color: '#000' },
+  beforeBtnTxt: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#000' },
+  stackedTxt: { marginTop: -16 },
   bgBtn: {
     width: 34,
     height: 34,

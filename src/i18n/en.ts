@@ -585,8 +585,8 @@ const en: typeof ja = {
     stepBg: {
       removed: 'The checkered area is now transparent',
       compare: 'You can compare it with the original',
-      backdrop: 'Change the backdrop to find spots removed by mistake',
-      strength: 'Move toward "Keep subject" a little at a time to bring them back',
+      backdrop: 'Change the backdrop to spot missing parts',
+      strength: 'Nudge toward "Keep subject" bit by bit to restore them',
       next: 'Looks clean? Tap "Next: Split"',
     },
     step3: {

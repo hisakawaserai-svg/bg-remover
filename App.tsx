@@ -2680,6 +2680,10 @@ export default function App() {
 
   return (
     <View style={styles.appRoot}>
+      {/* 上の時刻・電池の文字は全画面で黒にする。Android は何も指定しないと白になり、
+          明るいヘッダーの上で見えなくなる（保存完了画面だけ黒にしていたので、
+          そこを通るまで白いままだった）。隠す画面は各画面の <StatusBar hidden /> が優先される。 */}
+      <StatusBar barStyle="dark-content" />
       <AppScreens />
       {/* pointerEvents="none" で演出中も下のホーム画面を操作可能にする。 */}
       {showSplash && (

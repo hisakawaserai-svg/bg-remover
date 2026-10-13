@@ -5667,12 +5667,9 @@ export default function PolygonEditor({ bgResult, displayW, displayH, onPreview,
           pressedScale={0.96}
         >
           <Icon name="save-alt" size={20} color="#FFF" />
-          <Text style={styles.exportBtnTxt}>{t('editor.goToSave', { count: polygons.length })}</Text>
-          {polygons.length > 0 && (
-            <View style={styles.exportBadge}>
-              <Text style={styles.exportBadgeTxt}>{polygons.length}</Text>
-            </View>
-          )}
+          {/* 枚数は文言（保存へ（N枚））に入っているので、バッジは重ねない。
+              両方出すと幅の狭い Android でボタンからはみ出していた。 */}
+          <Text style={styles.exportBtnTxt} numberOfLines={1}>{t('editor.goToSave', { count: polygons.length })}</Text>
         </AnimatedPressable>
       </View>
 
@@ -6221,12 +6218,4 @@ const styles = StyleSheet.create({
   exportBtnDisabled: { opacity: 0.35 },
   exportBtnTxt: { fontSize: 17, fontWeight: '600', color: '#FFF' },
 
-  // 枚数バッジ（白地・青テキスト）
-  exportBadge: {
-    minWidth: 20, height: 20, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  exportBadgeTxt: { fontSize: 11, fontWeight: '600', color: '#FFF' },
 });

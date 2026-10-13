@@ -40,7 +40,6 @@ import CheckerboardBg from './ui/CheckerboardBg';
 import { TOOL_ICONS } from './ui/ToolHint';
 import Divider from './ui/Divider';
 import { useT } from '../i18n';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // 均等グリッド化に伴い calcColEdgesPerRow の呼び出しは廃止（関数自体は splitObjects 側に残置）。
 import { calcRowBoundaries } from '../imaging/splitObjects';
 import { useSettings } from '../settings/SettingsContext';
@@ -120,7 +119,6 @@ interface Props {
 export default function SetupScreen({ bgResult, initialRows, initialCols, initialBounds, initialMode = 'auto', onConfirm, onBack, onEyedrop, onUndoEdit, onRedoEdit, onResetEdits, canUndoEdit, canRedoEdit, bgVersion = 0, onSettings, onHelp, originalImageUri, announceTransparent = false, onAnnounced, onChangeEngine }: Props) {
   const { settings } = useSettings();
   const { t } = useT();
-  const insets = useSafeAreaInsets();
   const thumbBg = useThumbBg();
   const visionSupported = useVisionSupported();
   const [rows, setRows] = useState(initialRows);
@@ -722,6 +720,28 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
             </>
           )}
         </View>
+        {/* 背景除去の方式を変えるボタン: 画像の右上に重ねる。以前は画面左下に浮かせていたが、
+            カードが伸びると「分割しない」のチェックボックスに重なって押しにくかった。
+            previewBox の中に置くと線のドラッグ（PanResponder）と取り合うので、外側の器に置く。*/}
+        {onChangeEngine && visionSupported ? (
+          <AnimatedPressable
+            style={styles.engineFab}
+            onPress={() => {
+              Alert.alert(
+                t('setup.changeEngineConfirmTitle'),
+                t('setup.changeEngineConfirmMessage'),
+                [
+                  { text: t('common.cancel'), style: 'cancel' },
+                  { text: t('setup.changeEngineConfirmAction'), onPress: onChangeEngine },
+                ],
+              );
+            }}
+            pressedScale={0.94}
+            accessibilityLabel={t('settings.bgEngine')}
+          >
+            <Icon name="auto-awesome" size={22} color="#FFF" />
+          </AnimatedPressable>
+        ) : null}
         </View>
 
         {/* 自動モード: 行数・列数ステッパー */}
@@ -903,26 +923,6 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
           <Text style={styles.toastTxt}>{toastMsg}</Text>
         </Animated.View>
       )}
-
-      {onChangeEngine && visionSupported ? (
-        <AnimatedPressable
-          style={[styles.engineFab, { bottom: Math.max(insets.bottom, 12) + 12 }]}
-          onPress={() => {
-            Alert.alert(
-              t('setup.changeEngineConfirmTitle'),
-              t('setup.changeEngineConfirmMessage'),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                { text: t('setup.changeEngineConfirmAction'), onPress: onChangeEngine },
-              ],
-            );
-          }}
-          pressedScale={0.94}
-          accessibilityLabel={t('settings.bgEngine')}
-        >
-          <Icon name="auto-awesome" size={24} color="#FFF" />
-        </AnimatedPressable>
-      ) : null}
     </View>
   );
 }
@@ -1294,10 +1294,11 @@ const styles = StyleSheet.create({
   },
   engineFab: {
     position: 'absolute',
-    left: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    top: 8,
+    right: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: IOS.blue,
     alignItems: 'center',
     justifyContent: 'center',

@@ -172,6 +172,8 @@ const ja = {
     moveHLine: '横線を移動',
     moveVLine: '縦線を移動',
     resetLines: '線の位置をリセット',
+    resetLinesTitle: '線の位置をリセット',
+    resetLinesMessage: '動かした線をすべて等間隔に戻します。\n行数・列数は変わりません。',
     addRect: '四角を追加',
     addRectHint: '保存したいキャラを囲む',
     tapToRemoveBg: 'タップで背景を消す',

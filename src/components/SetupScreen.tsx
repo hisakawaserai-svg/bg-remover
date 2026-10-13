@@ -297,10 +297,24 @@ export default function SetupScreen({ bgResult, initialRows, initialCols, initia
     return same(rowYsImg, calcRowBoundaries(bgResult.height, rows))
       && same(colXsImg, calcRowBoundaries(bgResult.width, cols));
   }, [rowYsImg, colXsImg, rows, cols, bgResult.width, bgResult.height]);
+  // 線の移動は取り消し（undo）の対象外なので、押し間違いに備えて確認を出す。
   const resetLines = useCallback(() => {
-    setRowYsImg(calcRowBoundaries(bgResult.height, rows));
-    setColXsImg(calcRowBoundaries(bgResult.width, cols));
-  }, [bgResult.width, bgResult.height, rows, cols]);
+    Alert.alert(
+      t('setup.resetLinesTitle'),
+      t('setup.resetLinesMessage'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.reset'),
+          style: 'destructive',
+          onPress: () => {
+            setRowYsImg(calcRowBoundaries(bgResult.height, rows));
+            setColXsImg(calcRowBoundaries(bgResult.width, cols));
+          },
+        },
+      ],
+    );
+  }, [t, bgResult.width, bgResult.height, rows, cols]);
 
   // 横線: 各 rowYsImg を display y に変換（全幅共通の線）
   const lineYs = useMemo(() => {

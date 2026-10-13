@@ -151,6 +151,8 @@ const en: typeof ja = {
     moveHLine: 'Move horizontal line',
     moveVLine: 'Move vertical line',
     resetLines: 'Reset line positions',
+    resetLinesTitle: 'Reset Line Positions',
+    resetLinesMessage: 'All moved lines will go back to even spacing.\nThe number of rows and columns stays the same.',
     addRect: 'Add rectangle',
     addRectHint: 'Enclose the characters you want to save',
     tapToRemoveBg: 'Tap to erase',

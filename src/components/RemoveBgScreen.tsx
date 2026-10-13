@@ -78,12 +78,21 @@ function nearestStep(tolerance: number): number {
  * （RN 0.86 新アーキテクチャ + Reanimated 4.5）では効かなかった。entering は途中で止まり、
  * 中身が透明のまま残る。そのため、測った高さと透明度を withTiming で自前で動かしている。
  */
-const OPEN_TIMING = { duration: 420, easing: Easing.bezier(0.32, 0.72, 0, 1) };
+// reduceMotion: Never — 端末の「視差効果を減らす」がオンでも動かす。Reanimated の既定（System）
+// だと一瞬で切り替わり、何が開いて何が隠れたのか分からなくなる（実機で確認）。
+// ゆっくり伸び縮みするだけで、酔いやすい大きな移動はしないので常に出す。
+const OPEN_TIMING = { duration: 420, easing: Easing.bezier(0.32, 0.72, 0, 1), reduceMotion: ReduceMotion.Never };
+/** 元の画像 ⇔ 消した後の切り替え。上と同じ理由で常に動かす。 */
+const TOGGLE_TIMING = { duration: 200, reduceMotion: ReduceMotion.Never };
 
 /**
- * 高さを 0 ⇔ 中身の高さ で開閉する入れ物。中身の高さは onLayout で測る
- * （入れ物を高さ 0 にしても中身は本来の高さでレイアウトされるので測れる）。
+ * 高さを 0 ⇔ 中身の高さ で開閉する入れ物。中身の高さは onLayout で測る。
  * progress: 1=開いている、0=閉じている。
+ *
+ * 中身は絶対配置にして、入れ物の高さに左右されないようにしている。普通に置くと、
+ * 入れ物を高さ 0 に縮めたときに中身まで 0 と測り直されることがあり、次に開くときも
+ * 「高さ 0 まで伸ばす」ことになって、二度と出てこなくなった（実機で確認）。
+ * 念のため 0 と測られた値も無視する。
  */
 function Collapsible({ progress, children, style }: {
   progress: SharedValue<number>;
@@ -92,9 +101,8 @@ function Collapsible({ progress, children, style }: {
 }) {
   const h = useSharedValue(-1);
   const anim = useAnimatedStyle(() => {
-    // 測る前: 閉じていれば高さ 0（一瞬だけ場所を取ってちらつくのを防ぐ）、
-    // 開いていれば中身の本来の高さで出す。どちらでも中身は本来の高さでレイアウトされ、測れる。
-    if (h.value < 0) return progress.value === 0 ? { height: 0, opacity: 0 } : { opacity: 1 };
+    // 測る前は高さ 0 で待つ（中身は絶対配置なので、高さ 0 でも本来の高さで測れる）。
+    if (h.value < 0) return { height: 0, opacity: 0 };
     return {
       height: h.value * progress.value,
       opacity: interpolate(progress.value, [0, 0.6, 1], [0, 0, 1]),
@@ -102,7 +110,13 @@ function Collapsible({ progress, children, style }: {
   });
   return (
     <Animated.View style={[styles.collapse, anim]}>
-      <View style={style} onLayout={e => { h.value = e.nativeEvent.layout.height; }}>
+      <View
+        style={[styles.collapseInner, style]}
+        onLayout={e => {
+          const height = e.nativeEvent.layout.height;
+          if (height > 0) h.value = height;
+        }}
+      >
         {children}
       </View>
     </Animated.View>
@@ -208,7 +222,7 @@ export default function RemoveBgScreen({
   const toggleBefore = useCallback(() => {
     setShowBefore(v => {
       const next = !v;
-      beforeOpacity.value = withTiming(next ? 1 : 0, { duration: 200 });
+      beforeOpacity.value = withTiming(next ? 1 : 0, TOGGLE_TIMING);
       return next;
     });
   }, [beforeOpacity]);
@@ -217,7 +231,7 @@ export default function RemoveBgScreen({
     setEyeOn(v => {
       if (!v && showBefore) {
         setShowBefore(false);
-        beforeOpacity.value = withTiming(0, { duration: 200 });
+        beforeOpacity.value = withTiming(0, TOGGLE_TIMING);
       }
       return !v;
     });
@@ -585,6 +599,7 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   bodyOpen: { paddingTop: spacing.md },
   collapse: { overflow: 'hidden' },
+  collapseInner: { position: 'absolute', top: 0, left: 0, right: 0 },
 
   // ── 見出し ─────────────────────────────────────────────────────────────────
   // 下の余白は margin ではなく padding で取る（Collapsible が測る高さに含めるため）。

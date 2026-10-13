@@ -59,6 +59,13 @@ export const REMOVAL_SNAPS: Snap[] = [
   { value: 0, labelKey: 'granularity.personPriority' },
   { value: 100, labelKey: 'granularity.backgroundPriority' },
 ];
+/**
+ * REMOVAL_SNAPS の両端に添えるアイコン（人物優先＝人物、背景優先＝画像）。
+ * 設定画面と背景を消す画面で同じものを使い、見た目をそろえる。
+ */
+export const REMOVAL_EDGE_ICONS: [string, string] = ['person', 'image'];
+/** edgeLabels を大きめの文字で出すときの共通スタイル（設定画面・背景を消す画面）。 */
+export const EDGE_LABEL_STYLE = { fontSize: 15 } as const;
 
 /**
  * スポイト用の目盛り。こちらは「その場でタップした色の周りをどれだけ

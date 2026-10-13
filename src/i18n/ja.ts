@@ -168,7 +168,7 @@ const ja = {
     showAfter: '消した後に戻す',
     disclosure: 'うまく消えていないときは',
     tabEye: 'スポイト',
-    tabStrength: '優先',
+    tabStrength: '強さ',
     tabMethod: '消し方',
     eyeOff: 'スポイトで背景を消す',
     eyeOn: 'スポイトを使用中',
@@ -177,7 +177,6 @@ const ja = {
     undo: '1つ戻す',
     redo: '1つ進める',
     reset: '最初に戻す',
-    strengthDesc: '左は絵を残します（消しすぎない）。右は背景まで広く消します。動かすと、消し直します。',
     strengthOff: '「被写体を検出」のときは、ここは使いません。',
     // 設定画面の「背景除去の方式」と同じ呼び方にそろえる（同じ機能に2つの名前を付けない）。
     byColor: '色ベース',

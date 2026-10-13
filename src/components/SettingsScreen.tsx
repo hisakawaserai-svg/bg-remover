@@ -33,7 +33,7 @@ import {
 import { AdsConsent } from 'react-native-google-mobile-ads';
 import { AnimatedPressable } from './ui/AnimatedPressable';
 import Screen from './ui/Screen';
-import ToleranceSlider, { REMOVAL_SNAPS, SPOT_SNAPS } from './ui/ToleranceSlider';
+import ToleranceSlider, { REMOVAL_SNAPS, SPOT_SNAPS, REMOVAL_EDGE_ICONS, EDGE_LABEL_STYLE } from './ui/ToleranceSlider';
 import AppHeader from './ui/AppHeader';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -387,6 +387,8 @@ export default function SettingsScreen({ onClose, onHowTo, onDeleteAllData }: Pr
             bare
             showLabel={false}
             edgeLabels
+            edgeIcons={REMOVAL_EDGE_ICONS}
+            labelStyle={EDGE_LABEL_STYLE}
             snaps={REMOVAL_SNAPS}
             value={tolerance}
             defaultValue={DEFAULTS.tolerance}

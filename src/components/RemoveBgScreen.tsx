@@ -4,7 +4,7 @@
  * 背景を消した直後に挟む画面。目的は2つ:
  *   1. 背景が消えたことを伝える。市松模様＝透明だと分からない人（祖父母世代の実機報告）
  *      向けに、見出しと説明を出し、元の画像と見比べられるようにする。
- *   2. うまく消えていなかったときに直す。スポイト・優先（自動で消す強さ）・消し方は
+ *   2. うまく消えていなかったときに直す。スポイト・強さ（自動除去の強さ）・消し方は
  *      すべてこの画面に集め、分割設定画面は分割だけを行う画面にした。
  *
  * 画像編集は「元画像 + 操作列」を呼び出し側（App）が持ち、この画面は操作を通知するだけ
@@ -45,7 +45,7 @@ import AppHeader from './ui/AppHeader';
 import HeaderActions from './ui/HeaderActions';
 import CheckerboardBg from './ui/CheckerboardBg';
 import { AnimatedPressable } from './ui/AnimatedPressable';
-import ToleranceSlider, { REMOVAL_SNAPS } from './ui/ToleranceSlider';
+import ToleranceSlider, { REMOVAL_SNAPS, REMOVAL_EDGE_ICONS, EDGE_LABEL_STYLE } from './ui/ToleranceSlider';
 import { colors, radius, shadow, spacing } from './ui/theme';
 import { useT } from '../i18n';
 import { useSettings } from '../settings/SettingsContext';
@@ -304,7 +304,7 @@ export default function RemoveBgScreen({
     );
   }, [t, onResetEdits]);
 
-  // ── 優先（自動で消す強さ）: 設定画面の「自動除去の強さ」と同じスライダー ──────────
+  // ── 強さ: 設定画面の「自動除去の強さ」と同じスライダー ──────────
   // 動かしている間は表示だけ変え、指を離したときだけ消し直す（消し直しは全画素の再計算で重い）。
   const [strengthValue, setStrengthValue] = useState(tolerance ?? settings.tolerance);
   useEffect(() => {
@@ -497,14 +497,24 @@ export default function RemoveBgScreen({
 
               {activeTab === 'strength' && (
                 <View style={[styles.panelCol, !strengthUsable && styles.dimmed]}>
+                  {/* 見出し・数値・説明文は設定画面の「自動除去の強さ」とそろえる（同じ値を扱うため）。 */}
+                  <View style={styles.strengthHead}>
+                    <Text style={styles.strengthTitle}>{t('settings.autoTolerance')}</Text>
+                    <Text style={styles.strengthValue}>
+                      {Math.round(strengthValue)}
+                      {Math.round(strengthValue) === DEFAULTS.tolerance && (
+                        <Text style={styles.strengthDefaultTag}>  {t('common.default')}</Text>
+                      )}
+                    </Text>
+                  </View>
                   {/* 被写体検出のときは強さが結果に影響しないので触れなくする */}
                   <View pointerEvents={strengthUsable ? 'auto' : 'none'}>
                     <ToleranceSlider
                       bare
                       showLabel={false}
                       edgeLabels
-                      edgeIcons={['person', 'image']}
-                      labelStyle={styles.edgeLabelTxt}
+                      edgeIcons={REMOVAL_EDGE_ICONS}
+                      labelStyle={EDGE_LABEL_STYLE}
                       snaps={REMOVAL_SNAPS}
                       value={strengthValue}
                       defaultValue={DEFAULTS.tolerance}
@@ -513,7 +523,7 @@ export default function RemoveBgScreen({
                     />
                   </View>
                   <Text style={styles.note}>
-                    {strengthUsable ? t('removeBg.strengthDesc') : t('removeBg.strengthOff')}
+                    {strengthUsable ? t('settings.autoToleranceHint') : t('removeBg.strengthOff')}
                   </Text>
                 </View>
               )}
@@ -668,7 +678,11 @@ const styles = StyleSheet.create({
   },
   editBtnTxt: { fontSize: 15, lineHeight: 18, textAlign: 'center', color: colors.label },
 
-  edgeLabelTxt: { fontSize: 15 },
+  strengthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  strengthTitle: { flexShrink: 1, fontSize: 17, fontWeight: '600', color: colors.label },
+  // 設定画面の rowValue / rowValueDefaultTag と同じ見た目。
+  strengthValue: { fontSize: 22, fontWeight: '600', color: colors.accent, minWidth: 36, textAlign: 'right' },
+  strengthDefaultTag: { fontSize: 12, fontWeight: '600', color: colors.secondary },
   note: { fontSize: 15, lineHeight: 22, color: colors.secondary },
 
   seg: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: radius.md, backgroundColor: colors.fill },

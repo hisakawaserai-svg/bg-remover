@@ -560,10 +560,11 @@ function AppScreens() {
   // 素の関数のままだと毎レンダリングで別物になり、doAutoExport も毎回作り直しになる。
   const requestSave = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
-    const perm = (Platform.Version as number) >= 33
-      ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
-      : PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
-    const r = await PermissionsAndroid.request(perm, {
+    // Android 10 以上は、自分のアプリの画像をアルバムへ保存するのに許可が要らない。
+    // 以前は 13 以上で READ_MEDIA_IMAGES を求めていたが、保存には不要で、
+    // Google Play のポリシー違反として指摘されたため外した。
+    if ((Platform.Version as number) >= 29) return true;
+    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE, {
       title: t('permission.saveTitle'), message: t('permission.saveMessage'),
       buttonPositive: t('common.allow'), buttonNegative: t('common.cancel'),
     });

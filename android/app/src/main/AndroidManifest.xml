@@ -4,8 +4,10 @@
 
     <!-- ギャラリー読み込み用（Android 12以下） -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <!-- ギャラリー読み込み用（Android 13以上） -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 13 以上では写真の読み取り許可（READ_MEDIA_IMAGES）を宣言しない。
+         画像はシステムの写真ピッカー（react-native-image-picker）で選ぶので許可が要らず、
+         保存と「保存先」画面の一覧は、このアプリが保存した画像だけを扱うので許可なしで読める。
+         Google Play のポリシーでも、ピッカーで足りるアプリはこの許可を要求できない（1.2.2 の審査で指摘）。 -->
     <!-- ギャラリー書き込み用（Android 9以下） -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
